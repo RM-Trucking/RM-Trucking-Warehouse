@@ -18,6 +18,8 @@ export const LoginPage = Loadable(lazy(() => import('../pages/auth/LoginPage')))
 
 // Dashboard Page
 export const DashboardPage = Loadable(lazy(() => import('../pages/dashboard/DashboardPage')));
+export const ShipmentFormPage = Loadable(lazy(() => import('../pages/shipment/ShipmentFormPage')));
+
 
 // Error pages
 export const Page500 = Loadable(lazy(() => import('../pages/Page500')));

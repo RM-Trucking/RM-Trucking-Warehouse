@@ -37,5 +37,6 @@ export const PATH_DASHBOARD = {
   general: {
     dashboard: path(ROOTS_DASHBOARD, '/dashboard'),
   },
+    shipmentBuilding: path(ROOTS_DASHBOARD, '/shipment-form'),
 };
 
