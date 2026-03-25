@@ -11,6 +11,9 @@ import { useDispatch, useSelector } from '../../../../../RM-Trucking/frontend/sr
 import { setCurrentCarrierTab } from '../../../../../RM-Trucking/frontend/src/redux/slices/carrier';
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
+import AirPickupEntryForm from './AirPickupEntryForm';
+import LCLPickupEntryForm from './LCLPickupEntryForm';
+import FCLPickupEntryForm from './FCLPickupEntryForm';
 // ----------------------------------------------------------------------
 
 
@@ -21,6 +24,8 @@ export default function ShipmentTabs({ }) {
     const dispatch = useDispatch();
     const navigate = useNavigate();
     const [currentTab, setCurrentTab] = useState('active');
+    const [openForm, setOpenForm] = useState(null);
+    const [selectedRowData, setSelectedRowData] = useState(null);
 
     // Dummy data for each shipment type
     const airFormData = [
@@ -75,9 +80,20 @@ export default function ShipmentTabs({ }) {
         dispatch(setCurrentCarrierTab(newValue));
     }
 
-    const handleAction = (rmNumber) => {
-        console.log('Action clicked for:', rmNumber);
-        // Add action logic here
+    const handleAction = (rowData) => {
+        setSelectedRowData(rowData);
+        if (currentTab === 'active') {
+            setOpenForm('air');
+        } else if (currentTab === 'inactive') {
+            setOpenForm('lcl');
+        } else if (currentTab === 'incomplete') {
+            setOpenForm('fcl');
+        }
+    }
+
+    const handleCloseForm = () => {
+        setOpenForm(null);
+        setSelectedRowData(null);
     }
 
     return (
@@ -131,39 +147,48 @@ export default function ShipmentTabs({ }) {
                 </Box>
                 <Divider sx={{ borderColor: 'rgba(143, 143, 143, 1)', mb: 2 }} />
 
-                {/* Table Section */}
-                <TableContainer component={Paper} sx={{ mt: 2 }}>
-                    <Table>
-                        <TableHead sx={{ bgcolor: '#dbdbdb' }}>
-                            <TableRow>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>RM Number</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Customer</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Station</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Bill Number</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '14px', textAlign: 'center' }}>Action</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {dataMap[currentTab].map((row, index) => (
-                                <TableRow key={index} sx={{ '&:nth-of-type(odd)': { bgcolor: '#f9f9f9' } }}>
-                                    <TableCell>{row.rmNumber}</TableCell>
-                                    <TableCell>{row.customer}</TableCell>
-                                    <TableCell>{row.station}</TableCell>
-                                    <TableCell>{row.billNumber}</TableCell>
-                                    <TableCell sx={{ textAlign: 'center' }}>
-                                        <IconButton
-                                            size="small"
-                                            onClick={() => handleAction(row.rmNumber)}
-                                            sx={{ color: '#A22' }}
-                                        >
-                                            <Iconify icon="eva:eye-fill" width={20} />
-                                        </IconButton>
-                                    </TableCell>
+                {/* Conditionally render form or table */}
+                {openForm === 'air' && selectedRowData ? (
+                    <AirPickupEntryForm rowData={selectedRowData} handleClose={handleCloseForm} />
+                ) : openForm === 'lcl' && selectedRowData ? (
+                    <LCLPickupEntryForm rowData={selectedRowData} handleClose={handleCloseForm} />
+                ) : openForm === 'fcl' && selectedRowData ? (
+                    <FCLPickupEntryForm rowData={selectedRowData} handleClose={handleCloseForm} />
+                ) : (
+                    /* Table Section */
+                    <TableContainer component={Paper} sx={{ mt: 2 }}>
+                        <Table>
+                            <TableHead sx={{ bgcolor: '#dbdbdb' }}>
+                                <TableRow>
+                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>RM Number</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Customer</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Station</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Bill Number</TableCell>
+                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px', textAlign: 'center' }}>Action</TableCell>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                            </TableHead>
+                            <TableBody>
+                                {dataMap[currentTab].map((row, index) => (
+                                    <TableRow key={index} sx={{ '&:nth-of-type(odd)': { bgcolor: '#f9f9f9' } }}>
+                                        <TableCell>{row.rmNumber}</TableCell>
+                                        <TableCell>{row.customer}</TableCell>
+                                        <TableCell>{row.station}</TableCell>
+                                        <TableCell>{row.billNumber}</TableCell>
+                                        <TableCell sx={{ textAlign: 'center' }}>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => handleAction(row)}
+                                                sx={{ color: '#A22' }}
+                                            >
+                                                <Iconify icon="eva:eye-fill" width={20} />
+                                            </IconButton>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                )}
             </ErrorBoundary>
         </>
     );
