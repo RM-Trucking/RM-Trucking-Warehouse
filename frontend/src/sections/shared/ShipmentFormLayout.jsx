@@ -104,7 +104,7 @@ export function TopInfoPanel({
             
             {/* Movie Icon on the bottom right */}
             <Box sx={{ position: 'absolute', right: 16, bottom: 16, color: '#A22', cursor: 'pointer' }}>
-                <Iconify icon="mdi:movie-open" width={24} height={24} />
+                <Iconify icon="streamline-ultimate:notes-book-bold" width={24} height={24} />
             </Box>
         </Box>
     );
