@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import maintenanceRouter from './maintanance';
+import authRouter from './auth';
+
 
 const router = Router();
 
 // Mount module routers
-router.use('/maintenance', maintenanceRouter);
 
+router.use('/auth', authRouter);
 
 export default router;

@@ -1,0 +1,35 @@
+openapi: 3.0.0
+info:
+  title: Auth API
+  version: 1.0.0
+  description: API documentation for Authentication endpoints
+
+tags:
+  - name: Authentication
+    description: Operations related to authentication
+
+paths:
+  /api/maintenance/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - loginUserName
+                - password
+              properties:
+                loginUserName:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful - returns access token, refresh token and user info
+        "401":
+          description: Authentication failed
