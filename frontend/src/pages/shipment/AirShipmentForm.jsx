@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
-import { useForm, Controller, useFieldArray } from 'react-hook-form';
+import { useState } from 'react';
+import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { Typography, Stack, Grid, IconButton, Box } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -9,6 +10,7 @@ import dayjs from 'dayjs';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/ShipmentFormLayout';
+
 
 NewAirShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
@@ -28,21 +30,29 @@ export default function NewAirShipmentForm({ handleClose }) {
         bookingDate: dayjs('2026-02-26'),
         instructions: 'UN1234, Biomedical waste N.O.S. , (Sulfate), 2.4A, N/A, 200 lbs',
         containers: [{ containerNo: '' }],
-        warehouses: [{ warehouseNo: '' }],
+        warehouses: [{ warehouseNo: '', pieces: '', weight: '' }],
     };
 
-    const { control, handleSubmit } = useForm({ defaultValues });
+    const { control, handleSubmit, watch } = useForm({ defaultValues });
+
+    const [barcodeValue, setBarcodeValue] = useState('');
+
+    const rmProValue = useWatch({ control, name: 'rmProNo' });
 
     // Field arrays for dynamic Container and Warehouse lists
-    const { fields: containerFields, append: appendContainer } = useFieldArray({
+    const { fields: containerFields, append: appendContainer, remove: removeContainer } = useFieldArray({
         control,
         name: "containers"
     });
 
-    const { fields: warehouseFields, append: appendWarehouse } = useFieldArray({
+    const { fields: warehouseFields, append: appendWarehouse, remove: removeWarehouse } = useFieldArray({
         control,
         name: "warehouses"
     });
+
+    const watchedWarehouses = watch('warehouses');
+    const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
+    const totalWeight = watchedWarehouses.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
 
     const onSubmit = (data) => {
         console.log('Form Submitted (Air Shipment):', data);
@@ -57,6 +67,8 @@ export default function NewAirShipmentForm({ handleClose }) {
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false} // Hides the barcode to match the Air mockup
+                    barcodeValue={barcodeValue}
+                    onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"
@@ -124,7 +136,7 @@ export default function NewAirShipmentForm({ handleClose }) {
                 </fieldset>
 
                 {/* Instructions */}
-                <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px', width: '60%' }}>
+                <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px'}}>
                     <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Instructions</Typography></legend>
                     <Controller name="instructions" control={control} render={({ field }) => (
                         <StyledTextField {...field} variant="standard" fullWidth multiline InputProps={{ disableUnderline: true }} sx={{ '& .MuiInputBase-root': { padding: 0 } }} />
@@ -132,9 +144,9 @@ export default function NewAirShipmentForm({ handleClose }) {
                 </fieldset>
 
                 {/* Dynamic Lists Section (Container & Warehouse) */}
-                <Grid container spacing={4}>
+               <Grid container spacing={4} sx={{ width: '100%' }}>
                     {/* Container Table */}
-                    <Grid item xs={12} md={6}>
+                   <Grid item xs={12} md={6} sx={{ flex: 1 }}>
                         <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
                             <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: 1 }}>
                                 <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px' }}>Sno</Typography>
@@ -150,13 +162,17 @@ export default function NewAirShipmentForm({ handleClose }) {
                                     </Box>
                                     <Box sx={{ width: '65%' }}>
                                         <Controller name={`containers.${index}.containerNo`} control={control} render={({ field }) => (
-                                            <StyledTextField {...field} size="small" sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }} />
+                                            <StyledTextField {...field} fullWidth size="small" sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }} />
                                         )} />
                                     </Box>
                                     <Box sx={{ width: '20%', textAlign: 'center' }}>
-                                        {index === containerFields.length - 1 && (
+                                        {index === containerFields.length - 1 ? (
                                             <IconButton size="small" onClick={() => appendContainer({ containerNo: '' })} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}>
                                                 <Iconify icon="akar-icons:plus" width={16} />
+                                            </IconButton>
+                                        ) : (
+                                            <IconButton size="small" onClick={() => removeContainer(index)} sx={{ color: '#000' }}>
+                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
                                             </IconButton>
                                         )}
                                     </Box>
@@ -166,34 +182,62 @@ export default function NewAirShipmentForm({ handleClose }) {
                     </Grid>
 
                     {/* Warehouse Table */}
-                    <Grid item xs={12} md={6}>
+                    <Grid item xs={12} md={6} sx={{ flex: 1 }}>
                         <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
                             <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: 1 }}>
-                                <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px' }}>Sno</Typography>
-                                <Typography sx={{ width: '65%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
-                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
+                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
+                                <Typography sx={{ width: '40%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
+                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
+                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
+                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
                             </Stack>
                             {warehouseFields.map((item, index) => (
-                                <Stack direction="row" alignItems="center" sx={{ p: 1 }} key={item.id}>
-                                    <Box sx={{ width: '15%' }}>
-                                        <Box sx={{ bgcolor: '#e0e0e0', p: '4px 8px', borderRadius: 1, display: 'inline-block', fontSize: '13px' }}>
+                                <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
+                                    <Box sx={{ width: '10%', pl: 1 }}>
+                                        <Typography sx={{ fontSize: '13px', color: '#555' }}>
                                             {String(index + 1).padStart(2, '0')}
-                                        </Box>
+                                        </Typography>
                                     </Box>
-                                    <Box sx={{ width: '65%' }}>
+                                    <Box sx={{ width: '40%', pr: 1 }}>
                                         <Controller name={`warehouses.${index}.warehouseNo`} control={control} render={({ field }) => (
-                                            <StyledTextField {...field} size="small" sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }} />
+                                            <StyledTextField {...field} size="small" variant="standard" InputProps={{ disableUnderline: true }} sx={{ bgcolor: 'transparent' }} />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '20%', textAlign: 'center' }}>
-                                        {index === warehouseFields.length - 1 && (
-                                            <IconButton size="small" onClick={() => appendWarehouse({ warehouseNo: '' })} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}>
+                                    <Box sx={{ width: '20%', pr: 1 }}>
+                                        <Controller name={`warehouses.${index}.pieces`} control={control} render={({ field }) => (
+                                            <StyledTextField {...field} type="number" size="small" variant="standard" InputProps={{ disableUnderline: true }} sx={{ bgcolor: 'transparent' }} />
+                                        )} />
+                                    </Box>
+                                    <Box sx={{ width: '20%', pr: 1 }}>
+                                        <Controller name={`warehouses.${index}.weight`} control={control} render={({ field }) => (
+                                            <StyledTextField {...field} type="number" size="small" variant="standard" InputProps={{ disableUnderline: true }} sx={{ bgcolor: 'transparent' }} />
+                                        )} />
+                                    </Box>
+                                    <Box sx={{ width: '10%', textAlign: 'center' }}>
+                                        {index === warehouseFields.length - 1 ? (
+                                            <IconButton size="small" onClick={() => appendWarehouse({ warehouseNo: '', pieces: '', weight: '' })} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}>
                                                 <Iconify icon="akar-icons:plus" width={16} />
+                                            </IconButton>
+                                        ) : (
+                                            <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000' }}>
+                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
                                             </IconButton>
                                         )}
                                     </Box>
                                 </Stack>
                             ))}
+
+                            <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
+                                <Box sx={{ width: '10%' }} />
+                                <Box sx={{ width: '40%' }} />
+                                <Box sx={{ width: '20%' }}>
+                                    <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalPieces}</Typography>
+                                </Box>
+                                <Box sx={{ width: '20%' }}>
+                                    <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalWeight}</Typography>
+                                </Box>
+                                <Box sx={{ width: '10%' }} />
+                            </Stack>
                         </Box>
                     </Grid>
                 </Grid>

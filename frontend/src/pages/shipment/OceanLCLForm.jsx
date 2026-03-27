@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
-import { useForm, Controller, useFieldArray } from 'react-hook-form';
+import { useState } from 'react';
+import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { Typography, Stack, Grid, IconButton, Box } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -16,7 +17,7 @@ NewOceanLCLShipmentForm.propTypes = {
 
 export default function NewOceanLCLShipmentForm({ handleClose }) {
     const defaultValues = {
-        rmProNo: '78297982897287',
+        rmProNo: '',
         customer: '',
         station: '',
         consignee: '',
@@ -25,15 +26,23 @@ export default function NewOceanLCLShipmentForm({ handleClose }) {
         additionalRefNo: '',
         bookingDate: dayjs('2026-02-26'),
         instructions: 'UN1234, Biomedical waste N.O.S. , (Sulfate), 2.4A, N/A, 200 lbs',
-        warehouses: [{ warehouseNo: '' }],
+        warehouses: [{ warehouseNo: '', pieces: 5, weight: 100 }],
     };
 
-    const { control, handleSubmit } = useForm({ defaultValues });
+    const { control, handleSubmit, watch } = useForm({ defaultValues });
 
-    const { fields: warehouseFields, append: appendWarehouse } = useFieldArray({
+    const [barcodeValue, setBarcodeValue] = useState('');
+    const rmProValue = useWatch({ control, name: 'rmProNo' });
+
+    const { fields: warehouseFields, append: appendWarehouse, remove: removeWarehouse } = useFieldArray({
         control,
         name: "warehouses"
     });
+
+    // Watch the warehouses array to dynamically calculate the totals in the footer
+    const watchedWarehouses = watch("warehouses");
+    const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
+    const totalWeight = watchedWarehouses.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
 
     const onSubmit = (data) => {
         console.log('Form Submitted (Ocean LCL):', data);
@@ -46,7 +55,9 @@ export default function NewOceanLCLShipmentForm({ handleClose }) {
             onSubmit={handleSubmit(onSubmit)}
             topInfoPanel={
                 <TopInfoPanel 
-                    showBarcodeGraphic={true} 
+                    showBarcodeGraphic={false}
+                    barcodeValue={barcodeValue}
+                    onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"
@@ -119,34 +130,70 @@ export default function NewOceanLCLShipmentForm({ handleClose }) {
 
                 {/* Dynamic Warehouse List */}
                 <Grid container spacing={4}>
-                    <Grid item xs={12} sm={6}>
+                    <Grid item xs={12} md={7}>
                         <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
+                            {/* Table Header */}
                             <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: 1 }}>
-                                <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px' }}>Sno</Typography>
-                                <Typography sx={{ width: '65%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
-                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
+                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
+                                <Typography sx={{ width: '40%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
+                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
+                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
+                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
                             </Stack>
+
+                            {/* Table Body */}
                             {warehouseFields.map((item, index) => (
-                                <Stack direction="row" alignItems="center" sx={{ p: 1 }} key={item.id}>
-                                    <Box sx={{ width: '15%' }}>
-                                        <Box sx={{ bgcolor: '#e0e0e0', p: '4px 8px', borderRadius: 1, display: 'inline-block', fontSize: '13px' }}>
+                                <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
+                                    <Box sx={{ width: '10%', pl: 1 }}>
+                                        <Typography sx={{ fontSize: '13px', color: '#555' }}>
                                             {String(index + 1).padStart(2, '0')}
-                                        </Box>
+                                        </Typography>
                                     </Box>
-                                    <Box sx={{ width: '65%' }}>
+                                    <Box sx={{ width: '40%', pr: 1 }}>
                                         <Controller name={`warehouses.${index}.warehouseNo`} control={control} render={({ field }) => (
-                                            <StyledTextField {...field} size="small" sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }} />
+                                            <StyledTextField {...field} size="small" variant="standard" InputProps={{ disableUnderline: true }} sx={{ bgcolor: 'transparent' }} />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '20%', textAlign: 'center' }}>
-                                        {index === warehouseFields.length - 1 && (
-                                            <IconButton size="small" onClick={() => appendWarehouse({ warehouseNo: '' })} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}>
+                                    <Box sx={{ width: '20%', pr: 1 }}>
+                                        <Controller name={`warehouses.${index}.pieces`} control={control} render={({ field }) => (
+                                            <StyledTextField {...field} type="number" size="small" variant="standard" InputProps={{ disableUnderline: true }} sx={{ bgcolor: 'transparent' }} />
+                                        )} />
+                                    </Box>
+                                    <Box sx={{ width: '20%', pr: 1 }}>
+                                        <Controller name={`warehouses.${index}.weight`} control={control} render={({ field }) => (
+                                            <StyledTextField {...field} type="number" size="small" variant="standard" InputProps={{ disableUnderline: true }} sx={{ bgcolor: 'transparent' }} />
+                                        )} />
+                                    </Box>
+                                    <Box sx={{ width: '10%', textAlign: 'center' }}>
+                                        {index === warehouseFields.length - 1 ? (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => appendWarehouse({ warehouseNo: '', pieces: '', weight: '' })}
+                                                sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}
+                                            >
                                                 <Iconify icon="akar-icons:plus" width={16} />
+                                            </IconButton>
+                                        ) : (
+                                            <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000' }}>
+                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
                                             </IconButton>
                                         )}
                                     </Box>
                                 </Stack>
                             ))}
+
+                            {/* Table Footer with Sums */}
+                            <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
+                                <Box sx={{ width: '10%' }} />
+                                <Box sx={{ width: '40%' }} />
+                                <Box sx={{ width: '20%' }}>
+                                    <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalPieces}</Typography>
+                                </Box>
+                                <Box sx={{ width: '20%' }}>
+                                    <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalWeight}</Typography>
+                                </Box>
+                                <Box sx={{ width: '10%' }} />
+                            </Stack>
                         </Box>
                     </Grid>
                 </Grid>

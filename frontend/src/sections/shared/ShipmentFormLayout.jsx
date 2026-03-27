@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import { Box, Stack, Typography, Button } from '@mui/material';
 import Iconify from '../../components/iconify';
+import Barcode from "react-barcode";
 
 // --- Shared Layout Wrapper ---
 export default function ShipmentFormLayout({ 
@@ -68,7 +69,9 @@ ShipmentFormLayout.propTypes = {
 export function TopInfoPanel({ 
     showBarcodeGraphic, 
     rmProInputNode, 
-    status = "At Warehouse" 
+    status = "At Warehouse",
+    barcodeValue,
+    onBarcodeGenerate
 }) {
     return (
         <Box sx={{ bgcolor: '#dbdbdb', p: 2, borderRadius: 1, position: 'relative' }}>
@@ -76,7 +79,11 @@ export function TopInfoPanel({
                 {/* Conditionally render the Barcode Graphic or just the text label */}
                 <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography sx={{ width: '100px', fontSize: '14px' }}>Bar Code :</Typography>
-                    {showBarcodeGraphic && (
+                    {barcodeValue ? (
+                        <Box sx={{ bgcolor: '#fff', px: 1, borderRadius: 0.5, display: 'flex', alignItems: 'center' }}>
+                            <Barcode value={barcodeValue} height={40} />
+                        </Box>
+                    ) : showBarcodeGraphic && (
                         <Box sx={{ bgcolor: '#fff', px: 1, borderRadius: 0.5, display: 'flex', alignItems: 'center', height: '36px' }}>
                             <Typography sx={{ letterSpacing: '2px', fontWeight: 'bold', fontSize: '20px' }}>
                                 ||| || |||| | |||
@@ -91,7 +98,7 @@ export function TopInfoPanel({
                     <Box sx={{ flex: 1 }}>
                         {rmProInputNode}
                     </Box>
-                    <Box sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px 4px', display: 'flex', cursor: 'pointer' }}>
+                    <Box sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px 4px', display: 'flex', cursor: 'pointer' }} onClick={onBarcodeGenerate}>
                         <Iconify icon="mdi:barcode-scan" />
                     </Box>
                 </Stack>
@@ -114,4 +121,6 @@ TopInfoPanel.propTypes = {
     showBarcodeGraphic: PropTypes.bool,
     rmProInputNode: PropTypes.node.isRequired,
     status: PropTypes.string,
+    barcodeValue: PropTypes.string,
+    onBarcodeGenerate: PropTypes.func,
 };

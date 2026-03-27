@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
-import { useForm, Controller, useFieldArray } from 'react-hook-form';
+import { useState } from 'react';
+import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { Typography, Stack, Grid, IconButton, Box, MenuItem } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -17,7 +18,7 @@ NewOceanFCLShipmentForm.propTypes = {
 export default function NewOceanFCLShipmentForm({ handleClose }) {
     // Define default values based on the Ocean FCL image mockup
     const defaultValues = {
-        rmProNo: '78297982897287',
+        rmProNo: '',
         customer: '',
         station: '',
         destination: '',
@@ -32,10 +33,13 @@ export default function NewOceanFCLShipmentForm({ handleClose }) {
         instructions: 'UN1234, Biomedical waste N.O.S. , (Sulfate), 2.4A, N/A, 200 lbs',
         loadManifestType: 'Direct Entry',
         // Pre-filling with one row, calculations will update dynamically
-        warehouses: [{ warehouseNo: '2526752652', pieces: 5, weight: 100 }],
+        warehouses: [{ warehouseNo: '', pieces: 5, weight: 100 }],
     };
 
     const { control, handleSubmit, watch } = useForm({ defaultValues });
+
+    const [barcodeValue, setBarcodeValue] = useState('');
+    const rmProValue = useWatch({ control, name: 'rmProNo' });
 
     const { fields: warehouseFields, append: appendWarehouse, remove: removeWarehouse } = useFieldArray({
         control,
@@ -59,7 +63,9 @@ export default function NewOceanFCLShipmentForm({ handleClose }) {
             onSubmit={handleSubmit(onSubmit)}
             topInfoPanel={
                 <TopInfoPanel 
-                    showBarcodeGraphic={true} 
+                    showBarcodeGraphic={false}
+                    barcodeValue={barcodeValue}
+                    onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"
@@ -193,14 +199,24 @@ export default function NewOceanFCLShipmentForm({ handleClose }) {
                                         )} />
                                     </Box>
                                     <Box sx={{ width: '10%', textAlign: 'center' }}>
-                                        <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000' }}>
-                                            <Iconify icon="mingcute:delete-2-fill" width={18} />
-                                        </IconButton>
+                                        {index === warehouseFields.length - 1 ? (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => appendWarehouse({ warehouseNo: '', pieces: '', weight: '' })}
+                                                sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}
+                                            >
+                                                <Iconify icon="akar-icons:plus" width={16} />
+                                            </IconButton>
+                                        ) : (
+                                            <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000' }}>
+                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
+                                            </IconButton>
+                                        )}
                                     </Box>
                                 </Stack>
                             ))}
 
-                            {/* Table Footer with Sums and Add Action */}
+                            {/* Table Footer with Sums */}
                             <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
                                 <Box sx={{ width: '10%' }} />
                                 <Box sx={{ width: '40%' }} />
@@ -210,15 +226,7 @@ export default function NewOceanFCLShipmentForm({ handleClose }) {
                                 <Box sx={{ width: '20%' }}>
                                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalWeight}</Typography>
                                 </Box>
-                                <Box sx={{ width: '10%', textAlign: 'center' }}>
-                                    <IconButton 
-                                        size="small" 
-                                        onClick={() => appendWarehouse({ warehouseNo: '', pieces: '', weight: '' })} 
-                                        sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}
-                                    >
-                                        <Iconify icon="akar-icons:plus" width={16} />
-                                    </IconButton>
-                                </Box>
+                                <Box sx={{ width: '10%' }} />
                             </Stack>
                         </Box>
                     </Grid>
