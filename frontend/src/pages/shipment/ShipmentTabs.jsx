@@ -2,159 +2,70 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Box, Divider, Tabs, Tab,
-    Button, Dialog, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-    DialogContent, DialogTitle, IconButton
+    Box, Divider, Tabs, Tab, IconButton
 } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
-import { useDispatch, useSelector } from 'react-redux';
-import { setCurrentCarrierTab } from '../../redux/slices/carrier';
-import { getShipmentData } from '../../redux/slices/shipment';
-import ErrorFallback from '../../sections/shared/ErrorBoundary';
+import { useDispatch, useSelector } from '../../../../../RM-Trucking/frontend/src/redux/store';
+
+// Replace these with your actual shipment redux slice imports
+import { setCurrentCarrierTab } from '../../../../../RM-Trucking/frontend/src/redux/slices/carrier';
+// import { getShipmentData } from '../../../../../RM-Trucking/frontend/src/redux/slices/shipment'; 
+
+import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
-import AirPickupEntryForm from './AirPickupEntryForm';
-import LCLPickupEntryForm from './LCLPickupEntryForm';
-import FCLPickupEntryForm from './FCLPickupEntryForm';
-import ProofofDelivery from './ProofofDelivery';
+
 // ----------------------------------------------------------------------
 
+const DUMMY_SHIPMENT_DATA_MAP = {
+    active: [
+        { rmNumber: 'AIR-001', customer: 'Ventana Serra LLC', station: 'MIA', billNumber: '00103252026' },
+        { rmNumber: 'AIR-002', customer: 'Atlantic Cargo', station: 'JFK', billNumber: '15745001982' },
+        { rmNumber: 'AIR-003', customer: 'Pacific Freight', station: 'LAX', billNumber: '93300124567' },
+        { rmNumber: 'AIR-004', customer: 'Northline Logistics', station: 'ORD', billNumber: '44092837165' },
+    ],
+    inactive: [
+        { rmNumber: 'LCL-001', customer: 'Ocean Lane', station: 'NYC', billNumber: 'LCL-8891001' },
+        { rmNumber: 'LCL-002', customer: 'Harbor Freight Group', station: 'SAV', billNumber: 'LCL-8891002' },
+        { rmNumber: 'LCL-003', customer: 'Bluewater Lines', station: 'HOU', billNumber: 'LCL-8891003' },
+        { rmNumber: 'LCL-004', customer: 'PortLink Logistics', station: 'LGB', billNumber: 'LCL-8891004' },
+    ],
+    incomplete: [
+        { rmNumber: 'FCL-001', customer: 'Pacific Containers', station: 'LAX', billNumber: 'FCL-7745001' },
+        { rmNumber: 'FCL-002', customer: 'Trans Atlantic Cargo', station: 'MIA', billNumber: 'FCL-7745002' },
+        { rmNumber: 'FCL-003', customer: 'Gateway Shipping', station: 'SEA', billNumber: 'FCL-7745003' },
+        { rmNumber: 'FCL-004', customer: 'Prime Marine Lines', station: 'OAK', billNumber: 'FCL-7745004' },
+    ],
+};
 
 ShipmentTabs.propTypes = {};
 
 export default function ShipmentTabs({ }) {
-    // const { currentCarrierTab } = useSelector(({ carrierdata }) => carrierdata);
-    const { shipmentData } = useSelector(({ shipmentdata }) => shipmentdata);
     const dispatch = useDispatch();
     const navigate = useNavigate();
+    
+    // Hypothetical Redux state for shipments (Adjust 'shipmentdata' to match your actual store)
+    // const { shipmentData, isLoading, pagination, searchStr } = useSelector((state) => state.shipmentdata);
+    
     const [currentTab, setCurrentTab] = useState('active');
     const [openForm, setOpenForm] = useState(null);
     const [selectedRowData, setSelectedRowData] = useState(null);
     const [openPOD, setOpenPOD] = useState(false);
     const [selectedPODRow, setSelectedPODRow] = useState(null);
 
-    // Dummy data for each shipment type
-    const airFormData = [        
-        {
-            "barcodeNumber": 155166,
-            "customer": "VENTANA SERRA LLC | Sweetwater | FL",
-            "customerAccountNumber": "276",
-            "consignee": "001 - AA - AMERICAN 609 S ACCESS RD, SELF, ORD",
-            "airbill": "00103252026",
-            "booking": 267482346,
-            "custRefNumber": "S26CHI015516",
-            "misc": null,
-            "instruction": null,
-            "pieces": 6,
-            "weight": 2010,
-            "timeInForwarder": null,
-            "timeOutForwarder": null,
-            "timeInAirline": null,
-            "timeOutAirline": null,
-            "receivedAt": null,
-            "receivedBy": null,
-            "receivedDate": null,
-            "receivedTime": null,
-            "warehouseIds": [
-                100006316,
-                100006315,
-                100006310,
-                100006314,
-                100006313,
-                100006312
-            ],
-            "containerNumbers": [],
-            "driverName": null,
-            "driverNumber": null,
-            "createdAt": "2026-03-25T18:32:02.965Z",
-            "createdBy": "KOTEST",
-            "createdOnSystem": "RMTDEVEL.RMTRUCKING.COM",
-            "weightUnit": "lb",
-            "date": "3/25/26",
-            "collect": "",
-            "prepaid": "",
-            "rmCharges": 0,
-            "pickupStatus": "N",
-            "pickupEntryNumber": null,
-            "isCancelled": "N",
-            "scanned": false,
-            "shipped": false
-        },
-        {
-            "barcodeNumber": 155165,
-            "customer": "VENTANA SERRA LLC | Sweetwater | FL",
-            "customerAccountNumber": "276",
-            "consignee": "001 - AA - AMERICAN 609 S ACCESS RD, SELF, ORD",
-            "airbill": "00103252026",
-            "booking": 267482346,
-            "custRefNumber": "S26CHI015516",
-            "misc": null,
-            "instruction": null,
-            "pieces": 14,
-            "weight": 1611,
-            "timeInForwarder": null,
-            "timeOutForwarder": null,
-            "timeInAirline": null,
-            "timeOutAirline": null,
-            "receivedAt": null,
-            "receivedBy": null,
-            "receivedDate": null,
-            "receivedTime": null,
-            "warehouseIds": [
-                100006110,
-                100006140,
-                100006352,
-                100006351,
-                100006349,
-                100006334,
-                100006356,
-                100006326,
-                100006325,
-                100006367,
-                100006368,
-                100006311,
-                100006332,
-                100006329
-            ],
-            "containerNumbers": [],
-            "driverName": null,
-            "driverNumber": null,
-            "createdAt": "2026-03-25T18:30:24.730Z",
-            "createdBy": "KOTEST",
-            "createdOnSystem": "RMTDEVEL.RMTRUCKING.COM",
-            "weightUnit": "lb",
-            "date": "3/25/26",
-            "collect": "",
-            "prepaid": "",
-            "rmCharges": 0,
-            "pickupStatus": "N",
-            "pickupEntryNumber": null,
-            "isCancelled": "N",
-            "scanned": true,
-            "shipped": false
-        },
-        
-        // { rmNumber: 'AIR-001', customer: 'Customer A', station: 'Station 1', billNumber: 'BILL-A001' },
-        // { rmNumber: 'AIR-002', customer: 'Customer B', station: 'Station 2', billNumber: 'BILL-A002' },
-        // { rmNumber: 'AIR-003', customer: 'Customer C', station: 'Station 3', billNumber: 'BILL-A003' },
-    ];
+    // --- TEMPORARY FALLBACKS ---
+    // Remove these once your Redux state is connected
+    const shipmentData = DUMMY_SHIPMENT_DATA_MAP[currentTab] || [];
+    const isLoading = false;
+    const pagination = { page: 1, pageSize: 10, totalRecords: shipmentData.length };
+    const searchStr = '';
+    // ---------------------------
 
-    const lclFormData = [
-        { rmNumber: 'LCL-001', customer: 'Customer D', station: 'Station 1', billNumber: 'BILL-L001' },
-        { rmNumber: 'LCL-002', customer: 'Customer E', station: 'Station 2', billNumber: 'BILL-L002' },
-        { rmNumber: 'LCL-003', customer: 'Customer F', station: 'Station 3', billNumber: 'BILL-L003' },
-    ];
-
-    const fclFormData = [
-        { rmNumber: 'FCL-001', customer: 'Customer G', station: 'Station 1', billNumber: 'BILL-F001' },
-        { rmNumber: 'FCL-002', customer: 'Customer H', station: 'Station 2', billNumber: 'BILL-F002' },
-        { rmNumber: 'FCL-003', customer: 'Customer I', station: 'Station 3', billNumber: 'BILL-F003' },
-    ];
-
-    const dataMap = {
-        'active': airFormData,
-        'inactive': lclFormData,
-        'incomplete': fclFormData,
-    };
+    // Local state for the DataGrid pagination model
+    const [paginationModel, setPaginationModel] = useState({
+        page: 0,
+        pageSize: 10,
+    });
 
     useEffect(() => {
         // Fetch shipment data using slice
@@ -167,68 +78,115 @@ export default function ShipmentTabs({ }) {
     }, [shipmentData]);
 
     const TABS = [
-        {
-            value: 'active',
-            label: 'Air Form',
-        },
-        {
-            value: 'inactive',
-            label: 'LCL Form',
-        },
-        {
-            value: 'incomplete',
-            label: 'FCL Form',
-        },
+        { value: 'active', label: 'Air Form' },
+        { value: 'inactive', label: 'LCL Form' },
+        { value: 'incomplete', label: 'FCL Form' },
     ];
 
-    // error boundary info
+    // Error boundary info
     const logError = (error, info) => {
-        // Use an error reporting service here
         console.error("Error caught:", info);
         console.log(error);
     };
 
     const OnTabChange = (newValue) => {
-        console.log('new tab value', newValue);
         setCurrentTab(newValue);
+        // If you are tracking the tab in Redux:
         dispatch(setCurrentCarrierTab(newValue));
-    }
+    };
 
-    const handleAction = (rowData) => {
-        setSelectedRowData(rowData);
-        if (currentTab === 'active') {
-            setOpenForm('air');
-        } else if (currentTab === 'inactive') {
-            setOpenForm('lcl');
-        } else if (currentTab === 'incomplete') {
-            setOpenForm('fcl');
+    const handleAction = (rmNumber) => {
+        console.log('Action clicked for:', rmNumber);
+        // Add action logic here (e.g., open a dialog or navigate to details)
+    };
+
+    // 1. Fetch data whenever the tab changes
+    useEffect(() => {
+        // Example Redux Dispatch:
+        // dispatch(getShipmentData({ 
+        //     pageNo: 1, 
+        //     pageSize: paginationModel.pageSize, 
+        //     searchStr: searchStr, 
+        //     status: currentTab 
+        // }));
+        
+        // Reset local pagination to page 0 when switching tabs
+        setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }, [currentTab, searchStr, dispatch]);
+
+    // 2. Sync DataGrid pagination model with Redux pagination state
+    useEffect(() => {
+        if (!pagination) return;
+
+        const nextPage = pagination.page ? parseInt(pagination.page, 10) - 1 : 0;
+        const nextPageSize = pagination.pageSize || 10;
+
+        setPaginationModel((prev) => {
+            if (prev.page === nextPage && prev.pageSize === nextPageSize) {
+                return prev;
+            }
+            return { page: nextPage, pageSize: nextPageSize };
+        });
+    }, [pagination?.page, pagination?.pageSize]);
+
+    // Define DataGrid columns
+    const columns = [
+        {
+            field: 'rmNumber',
+            headerName: 'RM Number',
+            flex: 1,
+            minWidth: 150,
+            headerAlign: 'left',
+        },
+        {
+            field: 'customer',
+            headerName: 'Customer',
+            flex: 1,
+            minWidth: 150,
+            headerAlign: 'left',
+        },
+        {
+            field: 'station',
+            headerName: 'Station',
+            flex: 1,
+            minWidth: 150,
+            headerAlign: 'left',
+        },
+        {
+            field: 'billNumber',
+            headerName: 'Bill Number',
+            flex: 1,
+            minWidth: 150,
+            headerAlign: 'left',
+        },
+        {
+            field: 'action',
+            headerName: 'Action',
+            width: 120,
+            headerAlign: 'center',
+            align: 'center',
+            sortable: false,
+            filterable: false,
+            renderCell: (params) => {
+                return (
+                    <IconButton
+                        size="small"
+                        onClick={() => handleAction(params.row.rmNumber)}
+                        sx={{ color: '#A22' }}
+                    >
+                        <Iconify icon="eva:eye-fill" width={20} />
+                    </IconButton>
+                );
+            },
         }
-    }
-
-    const handleCloseForm = () => {
-        setOpenForm(null);
-        setSelectedRowData(null);
-    }
-
-    const handleDocument = (row) => {
-        setSelectedPODRow(row);
-        setOpenPOD(true);
-    }
-
-    const handleClosePOD = () => {
-        setOpenPOD(false);
-        setSelectedPODRow(null);
-    }
+    ];
 
     return (
         <>
             <ErrorBoundary
                 FallbackComponent={ErrorFallback}
                 onError={logError}
-                onReset={() => {
-                    // Optional: reset app state here if necessary before retry
-                    console.log("Error boundary reset triggered");
-                }}
+                onReset={() => console.log("Error boundary reset triggered")}
             >
                 <Box
                     sx={{
@@ -239,9 +197,7 @@ export default function ShipmentTabs({ }) {
                     }}>
                     <Tabs
                         value={currentTab}
-                        onChange={(event, newValue) => {
-                            OnTabChange(newValue);
-                        }}
+                        onChange={(event, newValue) => OnTabChange(newValue)}
                         sx={{
                             '& .MuiTabs-flexContainer': {
                                 display: 'flex',
@@ -260,10 +216,10 @@ export default function ShipmentTabs({ }) {
                                 label={tab.label}
                                 sx={{
                                     '&.Mui-selected': {
-                                        color: '#A22', // Color for the selected tab text
+                                        color: '#A22',
                                         fontWeight: '600',
                                     },
-                                    color: 'black', // Default text color
+                                    color: 'black',
                                 }}
                             />
                         ))}
@@ -271,80 +227,42 @@ export default function ShipmentTabs({ }) {
                 </Box>
                 <Divider sx={{ borderColor: 'rgba(143, 143, 143, 1)', mb: 2 }} />
 
-                {/* Conditionally render form or table */}
-                {openForm === 'air' && selectedRowData ? (
-                    <AirPickupEntryForm rowData={selectedRowData} handleClose={handleCloseForm} />
-                ) : openForm === 'lcl' && selectedRowData ? (
-                    <LCLPickupEntryForm rowData={selectedRowData} handleClose={handleCloseForm} />
-                ) : openForm === 'fcl' && selectedRowData ? (
-                    <FCLPickupEntryForm rowData={selectedRowData} handleClose={handleCloseForm} />
-                ) : (
-                    /* Table Section */
-                    <TableContainer component={Paper} sx={{ mt: 2 }}>
-                        <Table>
-                            <TableHead sx={{ bgcolor: '#dbdbdb' }}>
-                                <TableRow>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>RM Pro No</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Customer</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Station</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Air Bill No</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Scan Status</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Shipment Status</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Pickup Status</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>OFD Status</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>POD Status</TableCell>
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px' }}>Pickup No</TableCell>
-                                     
-
-                                    <TableCell sx={{ fontWeight: 600, fontSize: '14px', textAlign: 'center' }}>Action</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {dataMap[currentTab].map((row, index) => (
-                                    <TableRow key={index} sx={{ '&:nth-of-type(odd)': { bgcolor: '#f9f9f9' } }}>
-                                        <TableCell>{row.barcodeNumber}</TableCell>
-                                        <TableCell>{row.customer}</TableCell>
-                                        <TableCell>{row.booking}</TableCell>
-                                        <TableCell>{row.airbill}</TableCell>
-                                        <TableCell>{row.scanned ? 'Scanned' : 'Not Scanned'}</TableCell>
-                                        <TableCell>{row.shipped ? 'Shipped' : 'Not Shipped'}</TableCell>
-                                        <TableCell>{row.pickupStatus === 'N' ? 'Not Picked Up' : 'Picked Up'}</TableCell>
-                                        <TableCell>{row.timeOutAirline ? 'OFD' : 'Not OFD'}</TableCell>
-                                        <TableCell>{row.receivedDate ? 'POD' : 'Not POD'}</TableCell>
-                                        <TableCell>{row.pickupEntryNumber || 'N/A'}</TableCell>
-
-                                        <TableCell sx={{ textAlign: 'center' }}>
-                                            <IconButton
-                                                size="small"
-                                                onClick={() => handleAction(row)}
-                                            >
-                                                <Iconify icon="eva:eye-fill" width={20} />
-                                            </IconButton>
-                                             <IconButton
-                                                size="small"
-                                                onClick={() => handleAction(row)}
-                                            >
-                                                <Iconify icon="eva:printer-fill" width={20} />
-                                            </IconButton>
-                                             <IconButton
-                                                size="small"
-                                                onClick={() => handleAction(row)}
-                                            >
-                                                <Iconify icon="mdi:hand-extended" width={20} />
-                                            </IconButton>
-                                             <IconButton
-                                                size="small"
-                                                onClick={() => handleDocument(row)}
-                                            >
-                                                <Iconify icon="mdi:file-document-box" width={20} />
-                                            </IconButton>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
-                )}
+                <Box sx={{ width: "100%", flex: 1, mt: 2 }}>
+                    <DataGrid
+                        rows={shipmentData}
+                        columns={columns}
+                        loading={isLoading}
+                        getRowId={(row) => row.rmNumber} // Ensure this maps to a unique ID from your API
+                        autoHeight
+                        disableRowSelectionOnClick
+                        
+                        // Server-side Pagination Configuration
+                        pagination
+                        paginationMode="server"
+                        paginationModel={paginationModel}
+                        rowCount={parseInt(pagination?.totalRecords || '0', 10)}
+                        pageSizeOptions={[5, 10, 25, 50]}
+                        
+                        // Handle user interactions with the pagination controls
+                        onPaginationModelChange={(newModel) => {
+                            setPaginationModel(newModel);
+                            
+                            // Dispatch API call for the new page
+                            // dispatch(getShipmentData({
+                            //     pageNo: newModel.page + 1,
+                            //     pageSize: newModel.pageSize,
+                            //     searchStr: searchStr,
+                            //     status: currentTab
+                            // }));
+                        }}
+                        
+                        sx={{
+                            '& .MuiDataGrid-columnHeaders': {
+                                backgroundColor: '#dbdbdb',
+                            },
+                        }}
+                    />
+                </Box>
             </ErrorBoundary>
 
             {/* Proof of Delivery Dialog */}
