@@ -1,0 +1,67 @@
+openapi: 3.0.0
+info:
+  title: Customer API
+  version: 1.0.0
+  description: API documentation for Customer dropdown endpoints
+
+tags:
+  - name: Customer
+    description: Operations related to customer data
+
+paths:
+  /api/maintenance/customer/dropdown:
+    get:
+      tags:
+        - Customer
+      summary: Get stations for active customers
+      description: Returns a list of stations belonging to active customers, filtered by search term.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          required: false
+          description: Search term to filter station names (case-insensitive, partial match).
+      responses:
+        "200":
+          description: Successful response with station dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stationId:
+                          type: integer
+                          example: 101
+                        stationName:
+                          type: string
+                          example: "Mumbai Station"
+                        customerId:
+                          type: integer
+                          example: 47
+                        customerName:
+                          type: string
+                          example: "Acme Logistics"
+        "400":
+          description: Failed to fetch station dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Failed to fetch station dropdown data"
+                  message:
+                    type: string
+                    example: "Database connection error"

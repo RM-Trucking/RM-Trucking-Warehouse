@@ -1,0 +1,68 @@
+openapi: 3.0.0
+info:
+  title: Carrier API
+  version: 1.0.0
+  description: API documentation for Carrier dropdown endpoints
+
+tags:
+  - name: Carrier
+    description: Operations related to customer data
+
+paths:
+  /api/maintenance/carrier/dropdown:
+    get:
+      tags:
+        - Carrier
+      summary: Get carriers for dropdown
+      description: Returns all carriers with status Active or Incomplete, filtered by search term.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          required: false
+          description: Search term to filter carrier names (case-insensitive).
+      responses:
+        "200":
+          description: Successful response with carrier dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        carrierId:
+                          type: integer
+                          example: 12
+                        carrierName:
+                          type: string
+                          example: "Blue Star Logistics"
+        "400":
+          description: Failed to fetch carrier dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Database connection error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
