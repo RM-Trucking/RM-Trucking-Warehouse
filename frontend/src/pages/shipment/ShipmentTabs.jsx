@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Box, Divider, Tabs, Tab, IconButton
+    Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -14,6 +14,7 @@ import { setCurrentCarrierTab } from '../../../../../RM-Trucking/frontend/src/re
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
+import ProofofDelivery from './ProofofDelivery';
 
 // ----------------------------------------------------------------------
 
@@ -67,10 +68,10 @@ export default function ShipmentTabs({ }) {
         pageSize: 10,
     });
 
-    useEffect(() => {
-        // Fetch shipment data using slice
-        dispatch(getShipmentData({ page: 1, size: 10 }));
-    }, [dispatch]);
+    // useEffect(() => {
+    //     // Fetch shipment data using slice
+    //     dispatch(getShipmentData({ page: 1, size: 10 }));
+    // }, [dispatch]);
 
     // Log shipment data for checking
     useEffect(() => {
@@ -95,9 +96,15 @@ export default function ShipmentTabs({ }) {
         dispatch(setCurrentCarrierTab(newValue));
     };
 
-    const handleAction = (rmNumber) => {
-        console.log('Action clicked for:', rmNumber);
-        // Add action logic here (e.g., open a dialog or navigate to details)
+    const handleAction = (rowData) => {
+        console.log('Action clicked for:', rowData.rmNumber);
+        setSelectedPODRow(rowData);
+        setOpenPOD(true);
+    };
+
+    const handleClosePOD = () => {
+        setOpenPOD(false);
+        setSelectedPODRow(null);
     };
 
     // 1. Fetch data whenever the tab changes
@@ -171,7 +178,7 @@ export default function ShipmentTabs({ }) {
                 return (
                     <IconButton
                         size="small"
-                        onClick={() => handleAction(params.row.rmNumber)}
+                        onClick={() => handleAction(params.row)}
                         sx={{ color: '#A22' }}
                     >
                         <Iconify icon="eva:eye-fill" width={20} />
