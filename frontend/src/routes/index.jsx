@@ -11,6 +11,7 @@ import {
   // Auth
   LoginPage,
   DashboardPage,
+  ShipmentFormPage,
   Page500,
   Page403,
   Page404,
@@ -58,6 +59,7 @@ export default function Router() {
       children: [
         { element: <Navigate to={PATH_AFTER_LOGIN} replace />, index: true },
         { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'shipment-form', element: <ShipmentFormPage /> },
       ],
     },
     {
