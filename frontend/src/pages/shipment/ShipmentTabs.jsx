@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Box, Divider, Tabs, Tab, IconButton
+    Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -14,6 +14,10 @@ import { setCurrentCarrierTab } from '../../../../../RM-Trucking/frontend/src/re
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
+import ProofofDelivery from './ProofofDelivery';
+import AirPickupEntryForm from './AirPickupEntryForm';
+import LCLPickupEntryForm from './LCLPickupEntryForm';
+import FCLPickupEntryForm from './FCLPickupEntryForm';
 
 // ----------------------------------------------------------------------
 
@@ -48,6 +52,12 @@ export default function ShipmentTabs({ }) {
     // const { shipmentData, isLoading, pagination, searchStr } = useSelector((state) => state.shipmentdata);
     
     const [currentTab, setCurrentTab] = useState('active');
+    const [openForm, setOpenForm] = useState(null);
+    // const [selectedRowData, setSelectedRowData] = useState(null);
+    const [openPOD, setOpenPOD] = useState(false);
+    const [selectedPODRow, setSelectedPODRow] = useState(null);
+    // const [openPickupFormType, setOpenPickupFormType] = useState(null);
+    const [activeForm, setActiveForm] = useState({ type: null, data: null });
 
     // --- TEMPORARY FALLBACKS ---
     // Remove these once your Redux state is connected
@@ -62,6 +72,16 @@ export default function ShipmentTabs({ }) {
         page: 0,
         pageSize: 10,
     });
+
+    // useEffect(() => {
+    //     // Fetch shipment data using slice
+    //     dispatch(getShipmentData({ page: 1, size: 10 }));
+    // }, [dispatch]);
+
+    // Log shipment data for checking
+    useEffect(() => {
+        console.log('Shipment Data:', shipmentData);
+    }, [shipmentData]);
 
     const TABS = [
         { value: 'active', label: 'Air Form' },
@@ -81,9 +101,53 @@ export default function ShipmentTabs({ }) {
         dispatch(setCurrentCarrierTab(newValue));
     };
 
-    const handleAction = (rmNumber) => {
-        console.log('Action clicked for:', rmNumber);
-        // Add action logic here (e.g., open a dialog or navigate to details)
+    const handleAction = (rowData) => {
+        console.log('Action clicked for:', rowData.rmNumber);
+        setSelectedPODRow(rowData);
+        setOpenPOD(true);
+    };
+
+    const handleClosePOD = () => {
+        setOpenPOD(false);
+        setSelectedPODRow(null);
+    };
+
+    const handlePrint = (rowData) => {
+        console.log('Print clicked for:', rowData.rmNumber);
+        // Add print logic here
+    };
+
+    const handleHandExtended = (rowData) => {
+    const typeMap = {
+        active: 'air',
+        inactive: 'lcl',
+        incomplete: 'fcl',
+    };
+
+    setActiveForm({
+        type: typeMap[currentTab] || null,
+        data: rowData
+    });
+};
+
+const handleClosePickupForm = () => {
+    setActiveForm({ type: null, data: null });
+};
+
+    const handleFileDocumentBox = (rowData) => {
+        console.log('File document clicked for:', rowData.rmNumber, 'on tab:', currentTab);
+        // Navigate based on current tab to the shipment form with the form type
+        const formTypeMap = {
+            active: 'air',
+            inactive: 'lcl',
+            incomplete: 'fcl',
+        };
+        navigate('/app/shipment-form', { 
+            state: { 
+                rowData,
+                openPickupForm: formTypeMap[currentTab]
+            } 
+        });
     };
 
     // 1. Fetch data whenever the tab changes
@@ -148,20 +212,52 @@ export default function ShipmentTabs({ }) {
         {
             field: 'action',
             headerName: 'Action',
-            width: 120,
+            width: 180,
             headerAlign: 'center',
             align: 'center',
             sortable: false,
             filterable: false,
             renderCell: (params) => {
                 return (
-                    <IconButton
+                    <><IconButton
                         size="small"
-                        onClick={() => handleAction(params.row.rmNumber)}
+                        onClick={() => handleAction(params.row)}
                         sx={{ color: '#A22' }}
                     >
                         <Iconify icon="eva:eye-fill" width={20} />
                     </IconButton>
+                    <IconButton
+                        size="small"
+                        onClick={() => handlePrint(params.row)}
+                        sx={{ color: '#A22' }}
+                    >
+                            <Iconify icon="mdi:printer" width={20} />
+                        </IconButton>
+                        {/* <IconButton
+                            size="small"
+                            onClick={() => handleHandExtended(params.row)}
+                            sx={{ color: '#A22' }}
+                        >
+                            <Iconify icon="mdi:hand-extended" width={20} />
+                        </IconButton> */}
+                        <IconButton
+    size="small"
+    onClick={(e) => {
+        e.stopPropagation(); // Prevents the row-click event from firing
+        handleHandExtended(params.row);
+    }}
+    sx={{ color: '#A22' }}
+>
+    <Iconify icon="mdi:hand-extended" width={20} />
+</IconButton>
+                        <IconButton
+                            size="small"
+                            onClick={() => handleFileDocumentBox(params.row)}
+                            sx={{ color: '#A22' }}
+                        >
+                            <Iconify icon="mdi:file-document-box" width={20} />
+                        </IconButton>
+                        </>
                 );
             },
         }
@@ -250,6 +346,45 @@ export default function ShipmentTabs({ }) {
                     />
                 </Box>
             </ErrorBoundary>
+
+            {/* Proof of Delivery Dialog */}
+            <Dialog open={openPOD} onClose={handleClosePOD} maxWidth="lg" fullWidth>  
+                {/* <DialogTitle>Proof of Delivery</DialogTitle> */}
+                <DialogContent sx={{ p: 0 }}>
+                    {selectedPODRow && <ProofofDelivery rowData={selectedPODRow} onClose={handleClosePOD} />}
+                </DialogContent>
+            </Dialog>
+
+         <Dialog
+    // Open only if we have a type
+    open={Boolean(activeForm.type)} 
+    onClose={handleClosePickupForm}
+    maxWidth="lg"
+    fullWidth
+    // Prevent the DataGrid from stealing focus back during the click
+    disableRestoreFocus 
+>
+    <DialogContent sx={{ p: 0 }}>
+        {activeForm.type === 'air' && (
+            <AirPickupEntryForm 
+                handleClose={handleClosePickupForm} 
+                rowData={activeForm.data} 
+            />
+        )}
+        {activeForm.type === 'lcl' && (
+            <LCLPickupEntryForm 
+                handleClose={handleClosePickupForm} 
+                rowData={activeForm.data} 
+            />
+        )}
+        {activeForm.type === 'fcl' && (
+            <FCLPickupEntryForm 
+                handleClose={handleClosePickupForm} 
+                rowData={activeForm.data} 
+            />
+        )}
+    </DialogContent>
+</Dialog>
         </>
     );
 }
