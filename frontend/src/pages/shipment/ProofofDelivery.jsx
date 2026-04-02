@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { useForm, Controller } from 'react-hook-form';
 import { 
@@ -20,20 +20,22 @@ import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 
 // --- Reusable File Item Component (Used in Upload Box and Table) ---
-const FileItem = ({ filename, onRemove }) => (
+const FileItem = ({ filename, onRemove, onView, hideRemove }) => (
     <Box sx={{ 
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
         bgcolor: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 1, p: '4px 8px', mb: 1, width: '100%' 
     }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-            <Box sx={{ bgcolor: '#dbdbdb', borderRadius: 0.5, p: '4px', display: 'flex' }}>
+            <IconButton size="small" onClick={onView} sx={{ bgcolor: '#dbdbdb', borderRadius: 0.5, p: '4px', color: '#000' }}>
                 <Iconify icon="mdi:eye" width={16} color="#000" />
-            </Box>
+            </IconButton>
             <Typography sx={{ fontSize: '12px' }}>{filename}</Typography>
         </Stack>
-        <IconButton size="small" onClick={onRemove} sx={{ p: '2px', color: '#000' }}>
-            <Iconify icon="carbon:close-filled" width={16} />
-        </IconButton>
+        {!hideRemove && (
+            <IconButton size="small" onClick={onRemove} sx={{ p: '2px', color: '#000' }}>
+                <Iconify icon="carbon:close-filled" width={16} />
+            </IconButton>
+        )}
     </Box>
 );
 
@@ -41,7 +43,21 @@ ProofOfDeliveryForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
 };
 
+FileItem.propTypes = {
+    filename: PropTypes.string.isRequired,
+    onRemove: PropTypes.func,
+    onView: PropTypes.func,
+    hideRemove: PropTypes.bool
+};
+
+FileItem.defaultProps = {
+    onRemove: undefined,
+    onView: undefined,
+    hideRemove: false
+};
+
 export default function ProofOfDeliveryForm({ handleClose }) {
+    const fileInputRef = useRef(null);
     const { control, handleSubmit, watch } = useForm({
         defaultValues: {
             name: 'William',
@@ -53,8 +69,9 @@ export default function ProofOfDeliveryForm({ handleClose }) {
 
     const selectedCategory = watch('fileCategory');
 
-    // Local state to simulate files being added to the upload staging area
+    // Local state for files selected from the user's device before upload
     const [stagedFiles, setStagedFiles] = useState([]);
+    const [isDragging, setIsDragging] = useState(false);
 
     // Mock data for the historical table at the bottom (Stage 4)
     const mockTableData = [
@@ -74,21 +91,68 @@ export default function ProofOfDeliveryForm({ handleClose }) {
         console.log('Proof of Delivery Data:', data, 'Staged Files:', stagedFiles);
     };
 
-    // Simulates picking files from the computer
     const handleBrowseFiles = () => {
-        setStagedFiles([
-            '6876878filename.png',
-            '6876878filename.png',
-            '6876878filename.png'
-        ]);
+        fileInputRef.current?.click();
+    };
+
+    const addFilesToStage = (files) => {
+        const selectedFiles = Array.from(files || []);
+
+        if (selectedFiles.length > 0) {
+            setStagedFiles((prev) => [...prev, ...selectedFiles]);
+        }
+    };
+
+    const handleFileSelection = (event) => {
+        addFilesToStage(event.target.files);
+
+        event.target.value = '';
+    };
+
+    const handleDragOver = (event) => {
+        event.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (event) => {
+        event.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleFileDrop = (event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        addFilesToStage(event.dataTransfer.files);
     };
 
     const handleRemoveStagedFile = (index) => {
         setStagedFiles(prev => prev.filter((_, i) => i !== index));
     };
 
+    const handleViewStagedFile = (file) => {
+        if (!file) {
+            return;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        window.open(previewUrl, '_blank', 'noopener,noreferrer');
+
+        setTimeout(() => {
+            URL.revokeObjectURL(previewUrl);
+        }, 1000);
+    };
+
     return (
         <Box sx={{ p: 3, bgcolor: '#fff', height: '100%' }}>
+            <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.jif"
+                style={{ display: 'none' }}
+                onChange={handleFileSelection}
+            />
+
             {/* Form Header */}
             <Typography sx={{ fontSize: '16px', fontWeight: 600, mb: 1 }}>Proof of Delivery Details</Typography>
             <Divider sx={{ mb: 3, borderColor: '#e0e0e0' }} />
@@ -131,8 +195,8 @@ export default function ProofOfDeliveryForm({ handleClose }) {
                         )} />
                     </Box>
 
-                    {/* Conditional Upload Area appears only if Bill of Lading is selected */}
-                    {selectedCategory === 'Bill of Lading' && (
+                    {/* Conditional Upload Area appears once any file category is selected */}
+                    {Boolean(selectedCategory) && (
                         <Box sx={{ width: '60%', position: 'relative' }}>
                             {/* Legend text floating on the border */}
                             <Typography sx={{ position: 'absolute', top: '-10px', left: '16px', bgcolor: '#fff', px: 1, fontSize: '13px', fontWeight: 600, color: '#000', zIndex: 1 }}>
@@ -141,7 +205,23 @@ export default function ProofOfDeliveryForm({ handleClose }) {
                             
                             <Stack direction="row" sx={{ border: '1px dashed #a0a0a0', borderRadius: 2, p: 2, pt: 3 }}>
                                 {/* Left Side: Drag & Drop */}
-                                <Stack sx={{ width: '50%', borderRight: '1px solid #e0e0e0', pr: 2 }} alignItems="center" justifyContent="center" spacing={1}>
+                                <Stack
+                                    sx={{
+                                        width: '50%',
+                                        borderRight: '1px solid #e0e0e0',
+                                        pr: 2,
+                                        bgcolor: isDragging ? '#fff3f3' : 'transparent',
+                                        borderRadius: 1,
+                                        transition: 'background-color 0.2s ease'
+                                    }}
+                                    alignItems="center"
+                                    justifyContent="center"
+                                    spacing={1}
+                                    onDragOver={handleDragOver}
+                                    onDragEnter={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleFileDrop}
+                                >
                                     <Iconify icon="mdi:tray-arrow-up" width={32} color="#A22" />
                                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>Drag & Drop File</Typography>
                                     <Typography sx={{ fontSize: '11px', color: '#777' }}>File Supported: Image, PDF, JIF</Typography>
@@ -174,8 +254,13 @@ export default function ProofOfDeliveryForm({ handleClose }) {
                                         </Stack>
                                     ) : (
                                         <Box sx={{ maxHeight: '120px', overflowY: 'auto', pr: 1 }}>
-                                            {stagedFiles.map((filename, idx) => (
-                                                <FileItem key={idx} filename={filename} onRemove={() => handleRemoveStagedFile(idx)} />
+                                            {stagedFiles.map((file, idx) => (
+                                                <FileItem
+                                                    key={`${file.name}-${idx}`}
+                                                    filename={file.name}
+                                                    onView={() => handleViewStagedFile(file)}
+                                                    onRemove={() => handleRemoveStagedFile(idx)}
+                                                />
                                             ))}
                                         </Box>
                                     )}
@@ -186,7 +271,7 @@ export default function ProofOfDeliveryForm({ handleClose }) {
                 </Stack>
 
                 {/* Conditional Final Stage Table (Displays uploaded history) */}
-                {selectedCategory === 'Bill of Lading' && (
+                {Boolean(selectedCategory) && (
                     <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden', mt: 4 }}>
                         {/* Table Header */}
                         <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: '10px 16px' }}>
@@ -216,7 +301,7 @@ export default function ProofOfDeliveryForm({ handleClose }) {
                                 </Box>
                                 <Box sx={{ width: '25%', pr: 2 }}>
                                     {row.files.map((file, i) => (
-                                        <FileItem key={i} filename={file} onRemove={() => {}} />
+                                        <FileItem key={i} filename={file} hideRemove />
                                     ))}
                                 </Box>
                                 <Box sx={{ width: '10%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
