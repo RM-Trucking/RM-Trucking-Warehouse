@@ -12,10 +12,12 @@ import {
   LoginPage,
   DashboardPage,
   ShipmentFormPage,
+  SignaturePadPage,
   Page500,
   Page403,
   Page404,
 } from './elements';
+import { PATH_PAGE } from './paths';
 
 
 // ----------------------------------------------------------------------
@@ -68,6 +70,7 @@ export default function Router() {
         { element: <Navigate to="/auth/login" replace />, index: true },
       ],
     },
+    { path: PATH_PAGE.signaturePad, element: <SignaturePadPage /> },
     { path: '500', element: <Page500 /> },
     { path: '404', element: <Page404 /> },
     { path: '403', element: <Page403 /> },

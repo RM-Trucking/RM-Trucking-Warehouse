@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
+      host: true,
       // Use the PORT from .env, or default to 5173
       port: parseInt(env.PORT) || 5173,
       strictPort: true, // Optional: forces Vite to fail if port 4000 is taken
