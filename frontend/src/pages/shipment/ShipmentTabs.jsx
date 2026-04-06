@@ -1,11 +1,13 @@
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
     Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../../../../RM-Trucking/frontend/src/redux/store';
 
 // Replace these with your actual shipment redux slice imports
@@ -18,6 +20,7 @@ import ProofofDelivery from './ProofofDelivery';
 import AirPickupEntryForm from './AirPickupEntryForm';
 import LCLPickupEntryForm from './LCLPickupEntryForm';
 import FCLPickupEntryForm from './FCLPickupEntryForm';
+import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 
 // ----------------------------------------------------------------------
 
@@ -58,7 +61,9 @@ export default function ShipmentTabs({ }) {
     const [selectedPODRow, setSelectedPODRow] = useState(null);
     // const [openPickupFormType, setOpenPickupFormType] = useState(null);
     const [activeForm, setActiveForm] = useState({ type: null, data: null });
-
+    const printRef = useRef();
+    const [printData, setPrintData] = useState(null);
+    
     // --- TEMPORARY FALLBACKS ---
     // Remove these once your Redux state is connected
     const shipmentData = DUMMY_SHIPMENT_DATA_MAP[currentTab] || [];
@@ -72,6 +77,18 @@ export default function ShipmentTabs({ }) {
         page: 0,
         pageSize: 10,
     });
+
+    const handlePrint = useReactToPrint({
+        contentRef: printRef,
+        onAfterPrint: () => setPrintData(null),
+    });
+
+    const onPrintClick = (rowData) => {
+        // flushSync forces React to synchronously commit the DOM update before
+        // handlePrint() reads the ref — fixes first-click issue after reload.
+        flushSync(() => setPrintData(rowData));
+        handlePrint();
+    };
 
     // useEffect(() => {
     //     // Fetch shipment data using slice
@@ -112,12 +129,7 @@ export default function ShipmentTabs({ }) {
         setSelectedPODRow(null);
     };
 
-    const handlePrint = (rowData) => {
-        console.log('Print clicked for:', rowData.rmNumber);
-        // Add print logic here
-    };
-
-    const handleHandExtended = (rowData) => {
+     const handleHandExtended = (rowData) => {
     const typeMap = {
         active: 'air',
         inactive: 'lcl',
@@ -219,45 +231,36 @@ const handleClosePickupForm = () => {
             filterable: false,
             renderCell: (params) => {
                 return (
-                    <><IconButton
-                        size="small"
-                        onClick={() => handleAction(params.row)}
-                        sx={{ color: '#A22' }}
-                    >
-                        <Iconify icon="eva:eye-fill" width={20} />
-                    </IconButton>
-                    <IconButton
-                        size="small"
-                        onClick={() => handlePrint(params.row)}
-                        sx={{ color: '#A22' }}
-                    >
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); handleAction(params.row); }}
+                            sx={{ color: '#A22' }}
+                        >
+                            <Iconify icon="eva:eye-fill" width={20} />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            onClick={(e) => { e.stopPropagation(); onPrintClick(params.row); }}
+                            sx={{ color: '#A22' }}
+                        >
                             <Iconify icon="mdi:printer" width={20} />
                         </IconButton>
-                        {/* <IconButton
+                        <IconButton
                             size="small"
-                            onClick={() => handleHandExtended(params.row)}
+                            onClick={(e) => { e.stopPropagation(); handleHandExtended(params.row); }}
                             sx={{ color: '#A22' }}
                         >
                             <Iconify icon="mdi:hand-extended" width={20} />
-                        </IconButton> */}
-                        <IconButton
-    size="small"
-    onClick={(e) => {
-        e.stopPropagation(); // Prevents the row-click event from firing
-        handleHandExtended(params.row);
-    }}
-    sx={{ color: '#A22' }}
->
-    <Iconify icon="mdi:hand-extended" width={20} />
-</IconButton>
+                        </IconButton>
                         <IconButton
                             size="small"
-                            onClick={() => handleFileDocumentBox(params.row)}
+                            onClick={(e) => { e.stopPropagation(); handleFileDocumentBox(params.row); }}
                             sx={{ color: '#A22' }}
                         >
                             <Iconify icon="mdi:file-document-box" width={20} />
                         </IconButton>
-                        </>
+                    </Box>
                 );
             },
         }
@@ -348,10 +351,16 @@ const handleClosePickupForm = () => {
             </ErrorBoundary>
 
             {/* Proof of Delivery Dialog */}
-            <Dialog open={openPOD} onClose={handleClosePOD} maxWidth="lg" fullWidth>  
-                {/* <DialogTitle>Proof of Delivery</DialogTitle> */}
+            <Dialog
+                open={openPOD}
+                onClose={handleClosePOD}
+                maxWidth="lg"
+                fullWidth
+                disableRestoreFocus
+                TransitionProps={{ onExited: () => setSelectedPODRow(null) }}
+            >
                 <DialogContent sx={{ p: 0 }}>
-                    {selectedPODRow && <ProofofDelivery rowData={selectedPODRow} onClose={handleClosePOD} />}
+                    {selectedPODRow && <ProofofDelivery rowData={selectedPODRow} handleClose={handleClosePOD} />}
                 </DialogContent>
             </Dialog>
 
@@ -385,6 +394,14 @@ const handleClosePickupForm = () => {
         )}
     </DialogContent>
 </Dialog>
+<div style={{ display: 'none' }}>
+    <ShipmentPrintTemplate 
+        ref={printRef} 
+        data={printData} 
+        type={currentTab} 
+    />
+</div>
         </>
+        
     );
 }
