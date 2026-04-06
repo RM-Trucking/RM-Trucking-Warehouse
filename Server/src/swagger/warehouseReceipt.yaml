@@ -1,0 +1,439 @@
+openapi: 3.0.0
+info:
+  title: Warehouse Receipt API
+  version: 1.0.0
+  description: API documentation for Warehouse Receipt module - Receipt management and status change tracking. Audit logs are automatically created when warehouse receipt status changes (INITIATE → IN_PROGRESS → COMPLETED/HOLD). Receipts are created automatically when ID verifications are processed.
+
+tags:
+  - name: Receipts
+    description: Warehouse receipt CRUD operations
+
+paths:
+  /api/warehouse-receipt:
+    get:
+      tags:
+        - Receipts
+      summary: List warehouse receipts with pagination and filters
+      description: Retrieve all warehouse receipts with optional filtering by status and carrier
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 10
+          description: Number of records per page
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+          description: Filter by receipt status
+        - in: query
+          name: carrierId
+          schema:
+            type: integer
+          description: Filter by carrier ID
+      responses:
+        "200":
+          description: Receipts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WarehouseReceipt"
+                  pagination:
+                    $ref: "#/components/schemas/PaginationInfo"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/{receiptId}:
+    get:
+      tags:
+        - Receipts
+      summary: Get warehouse receipt with all details
+      description: Retrieve receipt with freight info, rates, and audit logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: receiptId
+          schema:
+            type: string
+          required: true
+          description: Unique receipt identifier (bigint)
+      responses:
+        "200":
+          description: Receipt found successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceiptWithDetails"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      tags:
+        - Receipts
+      summary: Update warehouse receipt
+      description: Update receipt details (location, status, weights, etc). When status changes, an audit log is automatically created to track the change.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: receiptId
+          schema:
+            type: string
+          required: true
+          description: Unique receipt identifier (bigint)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReceiptRequest"
+      responses:
+        "200":
+          description: Receipt updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Receipt updated successfully"
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceipt"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/{receiptId}/summary:
+    get:
+      tags:
+        - Receipts
+      summary: Get receipt summary (status, totals, counts)
+      description: Retrieve quick summary with total pieces, weight, and freight count
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: receiptId
+          schema:
+            type: string
+          required: true
+          description: Unique receipt identifier (bigint)
+      responses:
+        "200":
+          description: Receipt summary retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/ReceiptSummary"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/verification/{verificationId}:
+    get:
+      tags:
+        - Receipts
+      summary: Get receipts by verification ID
+      description: Retrieve all receipts associated with an ID verification form
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: verificationId
+          schema:
+            type: string
+          required: true
+          description: Verification ID (bigint)
+      responses:
+        "200":
+          description: Receipts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WarehouseReceipt"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/customer-station:
+    get:
+      tags:
+        - Receipts
+      summary: Get receipts by customer and station
+      description: Retrieve all receipts for a specific customer/station combination
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: customerId
+          schema:
+            type: integer
+          required: true
+          description: Customer ID
+        - in: query
+          name: stationId
+          schema:
+            type: integer
+          required: true
+          description: Station ID
+      responses:
+        "200":
+          description: Receipts retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WarehouseReceipt"
+        "400":
+          description: customerId and stationId are required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    WarehouseReceipt:
+      type: object
+      properties:
+        receiptId:
+          type: string
+          example: "100000001"
+        receiptNumber:
+          type: string
+          example: "100000001"
+        receiptDate:
+          type: string
+          format: date
+          example: "2026-03-31"
+        receivedBy:
+          type: string
+          example: "John Warehouse"
+        location:
+          type: string
+          example: "Warehouse A, Zone 1"
+        shipper:
+          type: string
+          nullable: true
+          example: "ABC Logistics"
+        customerId:
+          type: integer
+          example: 5
+        stationId:
+          type: integer
+          example: 10
+        verificationId:
+          type: string
+          example: "100000001"
+        carrierId:
+          type: integer
+          example: 1
+        proNumber:
+          type: string
+          nullable: true
+          example: "PRO-2026-001"
+        piecesInland:
+          type: integer
+          nullable: true
+          example: 50
+        weightInland:
+          type: integer
+          nullable: true
+          example: 5000
+        status:
+          type: string
+          enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+          example: "INITIATE"
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedBy:
+          type: integer
+          nullable: true
+
+    WarehouseReceiptWithDetails:
+      allOf:
+        - $ref: "#/components/schemas/WarehouseReceipt"
+
+    ReceiptSummary:
+      type: object
+      properties:
+        receiptNumber:
+          type: string
+          example: "100000001"
+        proNumber:
+          type: string
+          nullable: true
+        status:
+          type: string
+          example: "INITIATE"
+        customerId:
+          type: integer
+        stationId:
+          type: integer
+        carrierId:
+          type: integer
+        totalPieces:
+          type: integer
+          example: 50
+        totalWeight:
+          type: integer
+          example: 5000
+        freightCount:
+          type: integer
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: integer
+
+    UpdateReceiptRequest:
+      type: object
+      properties:
+        location:
+          type: string
+          example: "Warehouse B, Zone 2"
+        labelCount:
+          type: integer
+          example: 5
+        piecesInland:
+          type: integer
+          example: 50
+        weightInland:
+          type: integer
+          example: 5000
+        reWeight:
+          type: integer
+          nullable: true
+          example: 5050
+        status:
+          type: string
+          enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+          example: "IN_PROGRESS"
+        updatedBy:
+          type: integer
+          example: 1
+
+    PaginationInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 10
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Error message details"
