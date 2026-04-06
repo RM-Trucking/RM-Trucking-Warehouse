@@ -29,6 +29,11 @@ export default function NavVertical({ }) {
       "path": "/app/dashboard",
       "icon": null
     },
+    {
+      "title": "Shipment Form",
+      "path": "/app/shipment-form",
+      "icon": null
+    },
   ];
 
   const renderContent = (
