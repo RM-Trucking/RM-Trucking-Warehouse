@@ -4,7 +4,7 @@
 export default function DashboardPage() {
   return (
     <>
-      Dashboard section
+      Home section
     </>
   );
 }

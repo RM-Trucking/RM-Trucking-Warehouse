@@ -35,8 +35,13 @@ export const PATH_PAGE = {
 export const PATH_DASHBOARD = {
   root: ROOTS_DASHBOARD,
   general: {
-    dashboard: path(ROOTS_DASHBOARD, '/dashboard'),
+    home: path(ROOTS_DASHBOARD, '/home'),
   },
-    shipmentBuilding: path(ROOTS_DASHBOARD, '/shipment-form'),
+  driverCheckIn: path(ROOTS_DASHBOARD, '/driver-check-in'),
+  warehouseCheckIn: path(ROOTS_DASHBOARD, '/warehouse-check-in'),
+  enRoute: path(ROOTS_DASHBOARD, '/en-route'),
+  idVerificationForm: path(ROOTS_DASHBOARD, '/id-verification-form'),
+  warehouseReceiptForm: path(ROOTS_DASHBOARD, '/warehouse-receipt-form'),
+  shipmentBuilding: path(ROOTS_DASHBOARD, '/shipment-form'),
 };
 
