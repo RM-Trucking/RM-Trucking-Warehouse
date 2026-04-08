@@ -11,11 +11,17 @@ import {
   // Auth
   LoginPage,
   DashboardPage,
+  DriverCheckInPage,
+  WarehouseCheckInPage,
+  EnRoutePage,
+  IdVerificationFormPage,
+  WarehouseReceiptFormPage,
   ShipmentFormPage,
   Page500,
   Page403,
   Page404,
 } from './elements';
+import { PATH_DASHBOARD } from './paths';
 
 
 // ----------------------------------------------------------------------
@@ -58,7 +64,12 @@ export default function Router() {
       ),
       children: [
         { element: <Navigate to={PATH_AFTER_LOGIN} replace />, index: true },
-        { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'home', element: <DashboardPage /> },
+        { path: 'driver-check-in', element: <DriverCheckInPage /> },
+        { path: 'warehouse-check-in', element: <WarehouseCheckInPage /> },
+        { path: 'en-route', element: <EnRoutePage /> },
+        { path: 'id-verification-form', element: <IdVerificationFormPage /> },
+        { path: 'warehouse-receipt-form', element: <WarehouseReceiptFormPage /> },
         { path: 'shipment-form', element: <ShipmentFormPage /> },
       ],
     },

@@ -16,7 +16,7 @@ if (stage === 'dev') {
 }
 
 // ROOT PATH AFTER LOGIN SUCCESSFUL
-export const PATH_AFTER_LOGIN = PATH_DASHBOARD.general.dashboard; // as '/dashboard'
+export const PATH_AFTER_LOGIN = PATH_DASHBOARD.general.home; // as '/home'
 
 export const HOST_API_KEY = hostkeys?.hostApiKey || ''; // base axios url
 
