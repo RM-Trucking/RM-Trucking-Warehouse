@@ -62,24 +62,15 @@ export async function createVerificationService(
 
         // Step 4: create one ID_Verification per group
         for (const [key, details] of grouped.entries()) {
-
-            console.log(`Creating ID Verification for group ${key} with ${details.length} freight details`);
-
             const verificationId = await idVerificationDB.createIDVerification(conn, { ...header, driverId, createdBy: userId });
-
-            console.log(`Created ID Verification with ID: ${verificationId}`);
-
-
             verificationIds.push(verificationId);
 
             // Step 5: create ProDetails + Warehouse Receipts
             for (const detail of details) {
                 const proDetailId = await idVerificationDB.createProDetail(conn, { ...detail, verificationId });
 
-                console.log(`Created Pro Detail with ID: ${proDetailId} for Verification ID: ${verificationId}`);
-
                 // Step 6: create WarehouseReceiptTemp
-                const temp: Omit<WarehouseReceiptTemp, "receiptNumber" | "createdAt" | "receivedBy" | "location"> = {
+                const temp: Omit<WarehouseReceiptTemp, "receiptNumber" | "createdAt"> = {
                     verificationId,
                     receiptDate: new Date(),
                     shipper: detail.shipper,
@@ -87,14 +78,16 @@ export async function createVerificationService(
                     stationId: detail.stationId,
                     carrierId: header.carrierId,
                     createdBy: userId,
-                    status: "INITIATE"
+                    status: "INITIATE",
+                    destination: null,
+                    proNumber: detail.proNumber,
+                    packageId: null,
+                    receivedBy: null,
+                    location: null
                 };
                 const receiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn, temp);
                 const entityId = await entityDB.createEntity(conn, 'WAREHOUSE_RECEIPT', receiptNumber.toString());
                 const noteThreadId = await noteDB.createNoteThread(conn, entityId, userId);
-                console.log(`Created Warehouse Receipt Temp with number: ${receiptNumber} for Pro Detail ID: ${proDetailId}`);
-                console.log(`Created Entity with ID: ${entityId} for Receipt Number: ${receiptNumber}`);
-                console.log(`Created Note Thread with ID: ${noteThreadId} for Entity ID: ${entityId}`);
 
                 // Step 7: create WarehouseReceipt (without documentId initially)
                 const receipt: Omit<WarehouseReceipt, "receiptId" | "receivedBy" | "location"> = {
@@ -114,17 +107,12 @@ export async function createVerificationService(
                     entityId: entityId,
                     noteThreadId: noteThreadId
                 };
+
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, receipt);
-                console.log(`Created Warehouse Receipt with ID: ${receiptId} for Verification ID: ${verificationId}`);
-
                 // Step 8: create WarehouseReceiptDocument with receiptId
-                const documentId = await warehouseReceiptDB.createWarehouseReceiptDocument(conn, receiptId);
-                console.log(`Created Document with ID: ${documentId} for Receipt ID: ${receiptId}`);
-
+                // const documentId = await warehouseReceiptDB.createWarehouseReceiptDocument(conn, receiptId);
                 // Step 9: update WarehouseReceipt with documentId
-                await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { documentId });
-                console.log(`Updated Warehouse Receipt with Document ID: ${documentId}`);
-
+                // await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { documentId });
                 // Step 10: create initial audit log for INITIATE status
                 await warehouseReceiptDB.createAuditLog(conn, {
                     receiptNumber,

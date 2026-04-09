@@ -9,7 +9,296 @@ tags:
     description: Warehouse receipt CRUD operations
 
 paths:
+  /api/warehouse-receipt/temp:
+    post:
+      tags:
+        - Receipts
+      summary: Create temporary warehouse receipt
+      description: "Create a temporary warehouse receipt that will be used as a base for the actual receipt. Returns all temporary receipt data.\n\nAuto-generated fields:\n- receiptNumber (from sequence)\n- receiptDate (current timestamp)\n- createdBy (from authenticated user)\n- createdAt (current timestamp)"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTemporaryWarehouseReceipt"
+            example:
+              verificationId: 100000033
+              shipper: "ABC Logistics Inc"
+              customerId: 51
+              stationId: 93
+              carrierId: 52
+              status: "INITIATE"
+              receivedBy: "John Warehouse"
+              location: "Warehouse A, Zone 1"
+              destination: "Customer Final Destination"
+              proNumber: "PRO1234511"
+              packageId: "PKG-001"
+      responses:
+        "201":
+          description: Temporary warehouse receipt created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Temporary warehouse receipt created successfully"
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceiptTemp"
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/batch:
+    post:
+      tags:
+        - Receipts
+      summary: Batch process warehouse receipts (update and/or create with optional image uploads)
+      description: "Process multiple warehouse receipts in a single batch transaction. Supports both JSON and multipart/form-data with images.\n\n**Send as JSON** for batch operations without images.\n\n**Send as multipart/form-data** for batch operations with image uploads:\n- Field: `batchData` (JSON string without images)\n- Files: Image files with field names: `freight-{receiptIndex}-{freightIndex}-{imageIndex}`\n  - Example: `freight-0-0-0` → receipts[0].freightDetails[0].images[0]\n  - Example: `freight-0-1-0` → receipts[0].freightDetails[1].images[0]\n\nArray structure: Each item must have `receipt` (object) and `freightDetails` (array).\n\n**System-managed fields** (auto-handled, do NOT provide in request):\n- createdAt, createdBy: auto-set on creation\n- updatedAt, updatedBy: auto-set on update\n- documentId: auto-generated on creation\n- entityId, noteThreadId: auto-created on creation\n\n**Required fields in payload:**\n- receiptId: required for UPDATE operations\n- receiptNumber: required for all operations (for reference/audit)\n- All updateable receipt fields and freightDetails array\n\n**UPDATE Operation** (receipt has receiptId):\n- Only updateable fields are applied to the receipt\n- All freight items are deleted and replaced with new ones from freightDetails\n- Automatically sets updatedBy to authenticated user\n- Automatically sets updatedAt to current timestamp\n\n**CREATE Operation** (receipt has no receiptId):\n- Creates new receipt with provided receipt data (including receiptNumber)\n- Creates freight items from freightDetails array\n- System fields are auto-generated and managed by backend\n\n**Image Upload**:\n- Optional: send images via multipart/form-data\n- Images stored in `uploads/freight-images/`\n- Supported formats: JPEG, PNG, GIF, WebP (Max 10MB per file)\n- Images linked to freight via freightId in Warehouse_Receipt_Freight_Images table\n- Response includes image paths and metadata for each freight item\n\nAll operations are atomic - either all succeed or all rollback."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchProcessWarehouseReceipts"
+            example:
+              receipts:
+                - receipt:
+                    receiptId: 25
+                    receiptNumber: 100000031
+                    receivedBy: null
+                    location: null
+                    shipper: "ABC Logistics Inc"
+                    customerId: 51
+                    stationId: 93
+                    verificationId: 100000033
+                    carrierId: 52
+                    piecesInland: 50
+                    weightInland: 5000
+                    reWeight: null
+                    proNumber: "PRO1234511"
+                    invoiceNumber: null
+                    poNumber: null
+                    customerRefNumber: null
+                    freightCondition: null
+                    handlingDescription: null
+                    destination: null
+                    originalDgd: null
+                    unNumber: null
+                    class: null
+                    packageId: null
+                    properShippingName: null
+                    hazardousDescription: null
+                    status: "INITIATE"
+                    withSkid: "Y"
+                    bandedSkid: "Y"
+                    shrinkWrappedSkid: "Y"
+                    shtIppcSkid: "Y"
+                    plasticSkid: "Y"
+                    hazMat: "Y"
+                    labelCount: 0
+                  freightDetails:
+                    - pieces: 20
+                      type: "Box"
+                      weight: 2000
+                      length: 10
+                      width: 10
+                      height: 10
+                    - pieces: 30
+                      type: "Pallet"
+                      weight: 3000
+                      length: 48
+                      width: 40
+                      height: 60
+                - receipt:
+                    receiptNumber: 100000033
+                    receivedBy: null
+                    location: null
+                    shipper: "Global Freight Ltd"
+                    customerId: 51
+                    stationId: 93
+                    verificationId: 100000033
+                    carrierId: 52
+                    piecesInland: 40
+                    weightInland: 4200
+                    reWeight: null
+                    proNumber: "PRO1234511"
+                    invoiceNumber: null
+                    poNumber: null
+                    customerRefNumber: null
+                    freightCondition: null
+                    handlingDescription: null
+                    destination: null
+                    originalDgd: null
+                    unNumber: null
+                    class: null
+                    packageId: null
+                    properShippingName: null
+                    hazardousDescription: null
+                    status: "INITIATE"
+                    withSkid: "Y"
+                    bandedSkid: "Y"
+                    shrinkWrappedSkid: "Y"
+                    shtIppcSkid: "Y"
+                    plasticSkid: "Y"
+                    hazMat: "Y"
+                    labelCount: 0
+                  freightDetails:
+                    - pieces: 10
+                      type: "Crate"
+                      weight: 1200
+                      length: 20
+                      width: 15
+                      height: 12
+                    - pieces: 30
+                      type: "Pallet"
+                      weight: 3000
+                      length: 48
+                      width: 40
+                      height: 55
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - batchData
+              properties:
+                batchData:
+                  type: string
+                  format: binary
+                  description: "JSON string containing batch receipts array (without images). Images are sent as separate files."
+                  example: '{"receipts":[{"receipt":{"receiptId":10,"receiptNumber":100000015,...},"freightDetails":[{"pieces":20,"type":"Box",...}]}]}'
+                freight-0-0-0:
+                  type: string
+                  format: binary
+                  description: "Image file for receipts[0].freightDetails[0].images[0]"
+                freight-0-0-1:
+                  type: string
+                  format: binary
+                  description: "Image file for receipts[0].freightDetails[0].images[1]"
+                freight-0-1-0:
+                  type: string
+                  format: binary
+                  description: "Image file for receipts[0].freightDetails[1].images[0]"
+      responses:
+        "201":
+          description: Batch process completed successfully (with or without images)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Batch process completed successfully"
+                  filesProcessed:
+                    type: integer
+                    example: 5
+                    description: "Number of image files processed (only present when images uploaded)"
+                  data:
+                    $ref: "#/components/schemas/BatchProcessResponse"
+        "400":
+          description: Missing required fields or invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt:
+    post:
+      tags:
+        - Receipts
+      summary: Create warehouse receipt with freight info
+      description: "Create a warehouse receipt with multiple freight details. Automatically creates associated document record and returns the receipt with all freight items.\n\nAuto-generated fields:\n- receiptNumber (from sequence)\n- documentId (from Warehouse_Receipt_Documents)\n- createdBy (from authenticated user)\n- createdAt (current timestamp)"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWarehouseReceiptWithFreight"
+            example:
+              receipt:
+                receiptDate: "2026-04-06T10:00:00Z"
+                shipper: "ABC Logistics Inc"
+                customerId: 51
+                stationId: 93
+                verificationId: 100000021
+                carrierId: 52
+                proNumber: "PRO-2026-001"
+                piecesInland: 50
+                weightInland: 5000
+                status: "INITIATE"
+                entityId: 1
+                noteThreadId: 1
+              freightDetails:
+                - pieces: 20
+                  type: "Box"
+                  weight: 2000
+                  length: 10
+                  width: 10
+                  height: 10
+                - pieces: 30
+                  type: "Pallet"
+                  weight: 3000
+                  length: 48
+                  width: 40
+                  height: 60
+      responses:
+        "201":
+          description: Warehouse receipt created successfully with freight info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Warehouse receipt created successfully with freight info"
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceiptWithFreightResponse"
+        "400":
+          description: Missing required fields or invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     get:
       tags:
         - Receipts
@@ -290,6 +579,332 @@ components:
       bearerFormat: JWT
 
   schemas:
+    CreateTemporaryWarehouseReceipt:
+      type: object
+      required:
+        - verificationId
+        - customerId
+        - stationId
+        - carrierId
+        - status
+        - shipper
+        - receivedBy
+        - location
+        - destination
+        - proNumber
+        - packageId
+      properties:
+        verificationId:
+          type: integer
+          example: 100000033
+          description: ID verification record ID
+        shipper:
+          type: string
+          example: "ABC Logistics Inc"
+          description: Shipper name
+        customerId:
+          type: integer
+          example: 51
+        stationId:
+          type: integer
+          example: 93
+        carrierId:
+          type: integer
+          example: 52
+        status:
+          type: string
+          enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+          example: "INITIATE"
+          description: Initial receipt status
+        receivedBy:
+          type: string
+          example: "John Warehouse"
+          description: Person who received the shipment
+        location:
+          type: string
+          example: "Warehouse A, Zone 1"
+          description: Storage location
+        destination:
+          type: string
+          example: "Final Destination"
+          description: Destination address
+        proNumber:
+          type: string
+          example: "PRO1234511"
+          description: PRO number
+        packageId:
+          type: string
+          example: "PKG-001"
+          description: Package ID
+
+    WarehouseReceiptTemp:
+      type: object
+      properties:
+        receiptNumber:
+          type: integer
+          example: 1001
+          description: Auto-generated receipt number
+        verificationId:
+          type: integer
+          example: 100000021
+        receiptDate:
+          type: string
+          format: date-time
+          example: "2026-04-06T10:00:00Z"
+          description: Auto-generated timestamp
+        shipper:
+          type: string
+          example: "ABC Logistics Inc"
+        customerId:
+          type: integer
+          example: 51
+        stationId:
+          type: integer
+          example: 93
+        carrierId:
+          type: integer
+          example: 52
+        receivedBy:
+          type: string
+          example: "John Warehouse"
+        location:
+          type: string
+          example: "Warehouse A, Zone 1"
+        destination:
+          type: string
+          example: "Final Destination"
+        proNumber:
+          type: string
+          example: "PRO-2026-001"
+        packageId:
+          type: string
+          example: "PKG-001"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when record was created
+        createdBy:
+          type: integer
+          example: 1
+          description: User ID from authenticated request
+        status:
+          type: string
+          example: "INITIATE"
+
+    FreightImage:
+      type: object
+      properties:
+        imageId:
+          type: integer
+          example: 456
+          description: Unique image identifier
+        freightId:
+          type: integer
+          example: 101
+          description: Reference to freight item
+        imagePath:
+          type: string
+          example: "uploads/freight-images/image-1649000000000.jpg"
+          description: Server path to stored image
+        uploadedAt:
+          type: string
+          format: date-time
+          example: "2026-04-07T10:30:00Z"
+          description: Timestamp when image was uploaded
+
+    FreightInfo:
+      type: object
+      properties:
+        freightId:
+          type: integer
+          example: 101
+        receiptId:
+          type: integer
+          example: 1
+        pieces:
+          type: integer
+          example: 20
+        type:
+          type: string
+          example: "Box"
+        weight:
+          type: number
+          example: 2000
+        length:
+          type: number
+          nullable: true
+          example: 10
+        width:
+          type: number
+          nullable: true
+          example: 10
+        height:
+          type: number
+          nullable: true
+          example: 10
+        imageId:
+          type: integer
+          nullable: true
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreightImage"
+          description: "Array of images associated with this freight item"
+
+    CreateFreightDetail:
+      type: object
+      required:
+        - pieces
+        - type
+      properties:
+        pieces:
+          type: integer
+          example: 20
+          description: Number of pieces for this freight item
+        type:
+          type: string
+          example: "Box"
+          description: Type of freight (Box, Pallet, Skid, etc.)
+        weight:
+          type: number
+          nullable: true
+          example: 2000
+          description: Total weight in kg
+        length:
+          type: number
+          nullable: true
+          example: 10
+          description: Length in inches
+        width:
+          type: number
+          nullable: true
+          example: 10
+          description: Width in inches
+        height:
+          type: number
+          nullable: true
+          example: 10
+          description: Height in inches
+        imageId:
+          type: integer
+          nullable: true
+          description: Reference to image ID if available
+        images:
+          type: array
+          items:
+            type: string
+          example: []
+          nullable: true
+          description: "Optional: Array of image file paths (for JSON response) or array of image files (when using multipart/form-data upload)"
+
+    CreateWarehouseReceiptWithFreight:
+      type: object
+      required:
+        - receipt
+        - freightDetails
+      properties:
+        receipt:
+          type: object
+          required:
+            - customerId
+            - stationId
+            - verificationId
+            - carrierId
+            - status
+            - entityId
+            - noteThreadId
+          properties:
+            receiptDate:
+              type: string
+              format: date-time
+              example: "2026-04-06T10:00:00Z"
+              description: Auto-generated if not provided
+            shipper:
+              type: string
+              nullable: true
+              example: "ABC Logistics Inc"
+            customerId:
+              type: integer
+              example: 51
+            stationId:
+              type: integer
+              example: 93
+            verificationId:
+              type: integer
+              example: 100000021
+            carrierId:
+              type: integer
+              example: 52
+            proNumber:
+              type: string
+              nullable: true
+              example: "PRO-2026-001"
+            piecesInland:
+              type: integer
+              nullable: true
+              example: 50
+            weightInland:
+              type: number
+              nullable: true
+              example: 5000
+            status:
+              type: string
+              enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+              example: "INITIATE"
+            entityId:
+              type: integer
+              example: 1
+              description: Entity ID created for this receipt
+            noteThreadId:
+              type: integer
+              example: 1
+              description: Note thread ID created for this receipt
+        freightDetails:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateFreightDetail"
+          example:
+            - pieces: 20
+              type: "Box"
+              weight: 2000
+              length: 10
+              width: 10
+              height: 10
+            - pieces: 30
+              type: "Pallet"
+              weight: 3000
+              length: 48
+              width: 40
+              height: 60
+
+    WarehouseReceiptWithFreightResponse:
+      allOf:
+        - $ref: "#/components/schemas/WarehouseReceipt"
+        - type: object
+          properties:
+            freightInfos:
+              type: array
+              items:
+                $ref: "#/components/schemas/FreightInfo"
+              example:
+                - freightId: 101
+                  receiptId: 1
+                  pieces: 20
+                  type: "Box"
+                  weight: 2000
+                  length: 10
+                  width: 10
+                  height: 10
+                  imageId: null
+                - freightId: 102
+                  receiptId: 1
+                  pieces: 30
+                  type: "Pallet"
+                  weight: 3000
+                  length: 48
+                  width: 40
+                  height: 60
+                  imageId: null
     WarehouseReceipt:
       type: object
       properties:
@@ -437,3 +1052,179 @@ components:
         message:
           type: string
           example: "Error message details"
+
+    BatchProcessWarehouseReceipts:
+      type: object
+      required:
+        - receipts
+      properties:
+        receipts:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - receipt
+              - freightDetails
+            properties:
+              receipt:
+                type: object
+                description: "Receipt data: if receiptId present = UPDATE, if absent = CREATE"
+                properties:
+                  receiptId:
+                    type: integer
+                    example: 10
+                    description: "Optional: If present, receipt will be updated; if absent, new receipt will be created"
+                  receiptNumber:
+                    type: integer
+                    example: 100000015
+                    description: "Receipt number for reference"
+                  receivedBy:
+                    type: string
+                    nullable: true
+                    example: "John Warehouse"
+                  location:
+                    type: string
+                    nullable: true
+                    example: "Warehouse A, Zone 1"
+                  shipper:
+                    type: string
+                    example: "ABC Logistics Inc"
+                  customerId:
+                    type: integer
+                    example: 51
+                  stationId:
+                    type: integer
+                    example: 93
+                  verificationId:
+                    type: integer
+                    example: 100000021
+                  carrierId:
+                    type: integer
+                    example: 52
+                  piecesInland:
+                    type: integer
+                    nullable: true
+                    example: 50
+                  weightInland:
+                    type: number
+                    nullable: true
+                    example: 5000
+                  reWeight:
+                    type: number
+                    nullable: true
+                    example: 5050
+                  proNumber:
+                    type: string
+                    nullable: true
+                    example: "PRO-2026-001"
+                  invoiceNumber:
+                    type: string
+                    nullable: true
+                  poNumber:
+                    type: string
+                    nullable: true
+                  customerRefNumber:
+                    type: string
+                    nullable: true
+                  freightCondition:
+                    type: string
+                    nullable: true
+                  handlingDescription:
+                    type: string
+                    nullable: true
+                  destination:
+                    type: string
+                    nullable: true
+                  originalDgd:
+                    type: string
+                    nullable: true
+                  unNumber:
+                    type: string
+                    nullable: true
+                  class:
+                    type: string
+                    nullable: true
+                  packageId:
+                    type: string
+                    nullable: true
+                  properShippingName:
+                    type: string
+                    nullable: true
+                  hazardousDescription:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+                    example: "INITIATE"
+                  withSkid:
+                    type: string
+                    enum: ["Y", "N"]
+                    example: "Y"
+                  bandedSkid:
+                    type: string
+                    enum: ["Y", "N"]
+                    example: "Y"
+                  shrinkWrappedSkid:
+                    type: string
+                    enum: ["Y", "N"]
+                    example: "Y"
+                  shtIppcSkid:
+                    type: string
+                    enum: ["Y", "N"]
+                    example: "Y"
+                  plasticSkid:
+                    type: string
+                    enum: ["Y", "N"]
+                    example: "Y"
+                  hazMat:
+                    type: string
+                    enum: ["Y", "N"]
+                    example: "Y"
+                  labelCount:
+                    type: integer
+                    nullable: true
+                    example: 0
+              freightDetails:
+                type: array
+                minItems: 1
+                items:
+                  $ref: "#/components/schemas/CreateFreightDetail"
+                description: "Array of freight items. For UPDATE, existing items are deleted and replaced with these"
+          description: "Array of receipt objects to process. Each has receipt (with receiptNumber and optional receiptId) and freightDetails. Presence of receiptId determines UPDATE vs CREATE. receiptNumber is required for reference/audit in both operations."
+
+    BatchReceiptUpdate:
+      description: "DEPRECATED - See BatchProcessWarehouseReceipts for current structure"
+      type: object
+
+    BatchReceiptCreate:
+      description: "DEPRECATED - See BatchProcessWarehouseReceipts for current structure"
+      type: object
+
+    BatchProcessResponse:
+      type: object
+      properties:
+        updated:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseReceiptWithFreightResponse"
+          description: Array of receipts that were updated - includes all receipt data and freightInfos array with images
+        created:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseReceiptWithFreightResponse"
+          description: Array of receipts that were created - includes all receipt data and freightInfos array with images
+        totalUpdated:
+          type: integer
+          example: 1
+          description: Total number of receipts updated in batch
+        totalCreated:
+          type: integer
+          example: 1
+          description: Total number of receipts created in batch
+        filesProcessed:
+          type: integer
+          example: 5
+          nullable: true
+          description: Number of image files processed (only included when multipart/form-data with images is used)

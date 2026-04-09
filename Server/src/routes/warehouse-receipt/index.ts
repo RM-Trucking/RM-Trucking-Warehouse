@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authenticateJWT } from "../../middleware/auth";
 import * as warehouseReceiptController from "../../controllers/warehouse-receipt";
+import { upload } from "../../config/multer";
 import { db } from "../../config/db2";
 
 const router = Router();
@@ -8,6 +9,47 @@ const router = Router();
 /**
  * WAREHOUSE RECEIPT ENDPOINTS
  */
+
+// Create temporary warehouse receipt
+router.post("/temp", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.createTemporaryWarehouseReceipt(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+// Batch process: Update reference receipt and create multiple new receipts
+// Supports both JSON and multipart/form-data with images
+router.post("/batch", authenticateJWT, upload.any(), async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        // Check if images are present in request
+        const hasImages = (req as any).files && (req as any).files.length > 0;
+
+        console.log(hasImages);
+        
+
+        if (hasImages) {
+            await warehouseReceiptController.batchProcessWarehouseReceiptsWithImages(req, res, conn);
+        } else {
+            await warehouseReceiptController.batchProcessWarehouseReceipts(req, res, conn);
+        }
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+// Create warehouse receipt with freight info
+router.post("/", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.createWarehouseReceiptWithFreight(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
 
 // Get receipt with all details (freight, rate, audit logs)
 router.get("/:receiptId", authenticateJWT, async (req: Request, res: Response) => {

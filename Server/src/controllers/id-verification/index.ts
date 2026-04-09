@@ -118,8 +118,8 @@ export async function createVerification(req: Request, res: Response, conn: Conn
             conn,
             {
                 ...header,
-                firstIdPhotoMatch: header.firstIdPhotoMatch ? 'Y' : 'N',
-                secondIdPhotoMatch: header.secondIdPhotoMatch ? 'Y' : 'N',
+                firstIdPhotoMatch: header.firstIdPhotoMatch == 'Y' ? 'Y' : 'N',
+                secondIdPhotoMatch: header.secondIdPhotoMatch == 'Y' ? 'Y' : 'N',
             },
             freightDetails,
             userId

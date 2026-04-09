@@ -2,8 +2,8 @@ export interface WarehouseReceiptTemp {
     receiptNumber: number;
     verificationId: number;
     receiptDate: Date;
-    receivedBy: string;
-    location: string;
+    receivedBy: string | null;
+    location: string | null;
     shipper?: string;
     customerId: number;
     stationId: number;
@@ -11,6 +11,9 @@ export interface WarehouseReceiptTemp {
     createdAt: Date;
     createdBy: number;
     status: string;
+    destination?: string | null;
+    proNumber?: string | null;
+    packageId?: string | null;
 }
 
 /**
@@ -52,17 +55,16 @@ export interface WarehouseReceipt {
     invoiceNumber?: string;
     poNumber?: string;
     customerRefNumber?: string;
-    withSkid?: boolean;
-    bandedSkid?: boolean;
-    shrinkWrappedSkid?: boolean;
-    shtIppcSkid?: boolean;
-    plasticSkid?: boolean;
-    documentId?: number;
-    freightCondition?: string;
+    withSkid?: 'Y' | 'N';
+    bandedSkid?: 'Y' | 'N';
+    shrinkWrappedSkid?: 'Y' | 'N';
+    shtIppcSkid?: 'Y' | 'N';
+    plasticSkid?: 'Y' | 'N';
+    freightCondition?: 'Y' | 'N';
     handlingDescription?: string;
     destination?: string;
-    hazMat?: boolean;
-    originalDgd?: string;
+    hazMat?: 'Y' | 'N';
+    originalDgd?: 'Y' | 'N';
     unNumber?: string;
     class?: string;
     packageId?: string;
@@ -95,17 +97,17 @@ export interface CreateWarehouseReceipt {
     invoiceNumber?: string;
     poNumber?: string;
     customerRefNumber?: string;
-    withSkid?: boolean;
-    bandedSkid?: boolean;
-    shrinkWrappedSkid?: boolean;
-    shtIppcSkid?: boolean;
-    plasticSkid?: boolean;
+    withSkid?: 'Y' | 'N';
+    bandedSkid?: 'Y' | 'N';
+    shrinkWrappedSkid?: 'Y' | 'N';
+    shtIppcSkid?: 'Y' | 'N';
+    plasticSkid?: 'Y' | 'N';
     documentId?: number;
-    freightCondition?: string;
+    freightCondition?: 'Y' | 'N';
     handlingDescription?: string;
     destination?: string;
-    hazMat?: boolean;
-    originalDgd?: string;
+    hazMat?: 'Y' | 'N';
+    originalDgd?: 'Y' | 'N';
     unNumber?: string;
     class?: string;
     packageId?: string;
@@ -143,7 +145,6 @@ export interface FreightInfo {
     width?: number;
     height?: number;
     weight?: number;
-    imageId?: number;
 }
 
 export interface CreateFreightInfo {
@@ -154,7 +155,6 @@ export interface CreateFreightInfo {
     width?: number;
     height?: number;
     weight?: number;
-    imageId?: number;
 }
 
 /**

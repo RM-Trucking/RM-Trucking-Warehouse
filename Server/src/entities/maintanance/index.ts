@@ -1,2 +1,2 @@
 export * from './auth';
-export * from "./Note"
+export * from "./note"

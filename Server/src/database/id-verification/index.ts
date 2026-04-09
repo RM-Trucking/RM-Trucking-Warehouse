@@ -116,8 +116,6 @@ export async function getProDetailsByVerification(conn: Connection, verification
  */
 export async function checkDuplicateCarrierProInVerification(conn: Connection, carrierId: number, proNumber: string): Promise<boolean> {
 
-    console.log(`Checking for duplicate carrierId ${carrierId} and proNumber ${proNumber} in ID Verifications`);
-
     const query = `
         SELECT COUNT(*) as "count" FROM ${SCHEMA}."ID_Verification" iv
         INNER JOIN ${SCHEMA}."ID_Verification_Pro_Detail" ivpd ON iv."verificationId" = ivpd."verificationId"
@@ -125,6 +123,5 @@ export async function checkDuplicateCarrierProInVerification(conn: Connection, c
     `;
     const result = await conn.query(query, [carrierId, proNumber]) as any[];
 
-    console.log(`Duplicate check result for carrierId ${carrierId} and proNumber ${proNumber}:`, result);
     return result[0].count > 0;
 }

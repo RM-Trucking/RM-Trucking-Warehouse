@@ -11,22 +11,17 @@ export async function createNoteThread(
     createdBy: number
 ): Promise<number> {
     const query = `
-        INSERT INTO ${SCHEMA}."Warehouse_Note_Thread"
+    SELECT "noteThreadId"
+    FROM FINAL TABLE (
+      INSERT INTO ${SCHEMA}."Warehouse_Note_Thread"
         ("entityId", "createdBy", "createdAt")
-        VALUES (?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
-    `;
-    await conn.query(query, [entityId, createdBy]);
-
-    const resultQuery = `
-        SELECT "noteThreadId"
-        FROM ${SCHEMA}."Warehouse_Note_Thread"
-        WHERE "entityId" = ?
-        ORDER BY "noteThreadId" DESC
-        FETCH FIRST 1 ROWS ONLY
-    `;
-    const result = (await conn.query(resultQuery, [entityId])) as any[];
+      VALUES (?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+    )
+  `;
+    const result = (await conn.query(query, [parseInt(entityId.toString()), createdBy])) as any[];
     return result[0]?.noteThreadId || 0;
 }
+
 
 /**
  * Create a new note message
