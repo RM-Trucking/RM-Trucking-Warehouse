@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -8,7 +8,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import Iconify from '../../components/iconify';
 // Redux
 import { useSelector, useDispatch } from '../../redux/store';
-import { getEnrouteData, clearEnrouteError, createEnroute } from '../../redux/slices/enroute';
+import { getEnrouteData, clearEnrouteError, createEnroute, searchCarriers, searchCustomers } from '../../redux/slices/enroute';
 
 const standardInputStyles = {
   '& .MuiInputLabel-asterisk': { color: '#d32f2f' },
@@ -16,21 +16,28 @@ const standardInputStyles = {
 
 export default function EnRoutePage() {
   const dispatch = useDispatch();
-  const { enrouteData, isLoading, error, pagination } = useSelector((state) => state.enroutedata);
+  const { enrouteData, isLoading, error, pagination, carrierOptions, carrierLoading, customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
 
   const [paginationModel, setPaginationModel] = useState({ pageSize: 20, page: 0 });
   const [searchValue, setSearchValue] = useState('');
   const [openModal, setOpenModal] = useState(false);
+
+  // Local state for carrier search debounce
+  const [carrierSearchValue, setCarrierSearchValue] = useState('');
+  const isSelectingRef = useRef(false);
+
+  // Local state for customer search debounce
+  const [customerSearchValue, setCustomerSearchValue] = useState('');
+  const isSelectingCustomerRef = useRef(false);
+
   const [formData, setFormData] = useState({
-    deliveryCarrier: '',
-    freightForwarder: '',
-    estimateDate: '2026-02-26',
-    shippedDate: '2026-02-26',
+    deliveryCarrier: null, // Changed to null for autocomplete
+    freightForwarder: null, // Changed to null for autocomplete
+    stationId: '',
+    estimateDate: '',
+    shippedDate: '',
     items: [
-      { id: 1, pieces: '50', height: '50', weight: '50', shipper: 'NEW DIREX | Northpoint | NY' },
-      { id: 2, pieces: '50', height: '50', weight: '50', shipper: 'NEW DIREX | Northpoint | NY' },
-      { id: 3, pieces: '', height: '', weight: '', shipper: '' },
-      { id: 4, pieces: '3', height: '', weight: '', shipper: '' },
+      { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '' }
     ],
   });
 
@@ -43,6 +50,34 @@ export default function EnRoutePage() {
   const handlePaginationModelChange = (newPaginationModel) => {
     setPaginationModel(newPaginationModel);
   };
+
+  // Debounce the carrier search using Redux action
+  useEffect(() => {
+    if (isSelectingRef.current) {
+      isSelectingRef.current = false;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      dispatch(searchCarriers(carrierSearchValue));
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [dispatch, carrierSearchValue]);
+
+  // Debounce the customer search using Redux action
+  useEffect(() => {
+    if (isSelectingCustomerRef.current) {
+      isSelectingCustomerRef.current = false;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      dispatch(searchCustomers(customerSearchValue));
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [dispatch, customerSearchValue]);
 
   const columns = [
     { field: 'carrier', headerName: 'Carrier ⇅', flex: 1, minWidth: 120 },
@@ -64,7 +99,25 @@ export default function EnRoutePage() {
   ];
 
   const handleOpenModal = () => setOpenModal(true);
-  const handleCloseModal = () => setOpenModal(false);
+  const handleCloseModal = () => {
+    setOpenModal(false);
+    // Clear form data when closing modal
+    setFormData({
+      deliveryCarrier: null,
+      freightForwarder: null,
+      stationId: '',
+      estimateDate: '',
+      shippedDate: '',
+      items: [
+        { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '' },
+      ],
+    });
+    // Clear search values and options
+    setCarrierSearchValue('');
+    setCustomerSearchValue('');
+    dispatch(searchCarriers(''));
+    dispatch(searchCustomers(''));
+  };
 
   const handleFormChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -220,25 +273,105 @@ export default function EnRoutePage() {
                 En Route Details
               </legend>
               <Stack direction="row" spacing={4} sx={{ width: '100%' }}>
-                <TextField
-                  variant="standard"
-                  label="Delivery Carrier"
+                <Autocomplete
                   fullWidth
+                  options={carrierOptions}
+                  getOptionLabel={(option) => option.carrierName || option.name || option.toString()}
                   value={formData.deliveryCarrier}
-                  onChange={(e) => handleFormChange('deliveryCarrier', e.target.value)}
-                  required
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ ...standardInputStyles, flex: 1 }}
+                  onChange={(event, newValue) => {
+                    isSelectingRef.current = true;
+                    handleFormChange('deliveryCarrier', newValue);
+                    // Clear search results when field is cleared
+                    if (!newValue) {
+                      setCarrierSearchValue('');
+                      dispatch(searchCarriers(''));
+                    }
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    // Only update search value for manual input, not selection
+                    if (reason !== 'reset') {
+                      setCarrierSearchValue(newInputValue);
+                      // If field is cleared, clear the options immediately
+                      if (!newInputValue || newInputValue.trim() === '') {
+                        dispatch(searchCarriers(''));
+                      }
+                    }
+                  }}
+                  loading={carrierLoading}
+                  loadingText="Searching carriers..."
+                  noOptionsText="No carriers found"
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      variant="standard"
+                      label="Delivery Carrier"
+                      required
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ ...standardInputStyles, flex: 1 }}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {carrierLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                  sx={{ flex: 1 }}
                 />
-                <TextField
-                  variant="standard"
-                  label="Freight Forwarder"
+                <Autocomplete
                   fullWidth
+                  options={customerOptions}
+                  getOptionLabel={(option) =>
+                    option.customerName && option.stationName
+                      ? `${option.customerName} | ${option.stationName}`
+                      : option.toString()
+                  }
                   value={formData.freightForwarder}
-                  onChange={(e) => handleFormChange('freightForwarder', e.target.value)}
-                  required
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ ...standardInputStyles, flex: 1 }}
+                  onChange={(event, newValue) => {
+                    isSelectingCustomerRef.current = true;
+                    handleFormChange('freightForwarder', newValue);
+                    // Clear search results when field is cleared
+                    if (!newValue) {
+                      setCustomerSearchValue('');
+                      dispatch(searchCustomers(''));
+                    }
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    // Only update search value for manual input, not selection
+                    if (reason !== 'reset') {
+                      setCustomerSearchValue(newInputValue);
+                      // If field is cleared, clear the options immediately
+                      if (!newInputValue || newInputValue.trim() === '') {
+                        dispatch(searchCustomers(''));
+                      }
+                    }
+                  }}
+                  loading={customerLoading}
+                  loadingText="Searching customers..."
+                  noOptionsText="No customers found"
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      variant="standard"
+                      label="Freight Forwarder"
+                      required
+                      InputLabelProps={{ shrink: true }}
+                      sx={{ ...standardInputStyles, flex: 1 }}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {customerLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                  sx={{ flex: 1 }}
                 />
                 <TextField
                   variant="standard"
@@ -248,7 +381,6 @@ export default function EnRoutePage() {
                   value={formData.estimateDate}
                   onChange={(e) => handleFormChange('estimateDate', e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  required
                   sx={{ ...standardInputStyles, flex: 1 }}
                 />
                 <TextField
@@ -259,7 +391,6 @@ export default function EnRoutePage() {
                   value={formData.shippedDate}
                   onChange={(e) => handleFormChange('shippedDate', e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  required
                   sx={{ ...standardInputStyles, flex: 1 }}
                 />
               </Stack>
@@ -279,22 +410,22 @@ export default function EnRoutePage() {
                   {/* Standard Inputs - Flex rules enforce perfect distribution */}
                   <TextField
                     variant="standard"
-                    label="Pieces"
+                    label="Pro Number"
                     type="number"
                     fullWidth
-                    value={item.pieces}
-                    onChange={(e) => handleItemChange(item.id, 'pieces', e.target.value)}
+                    value={item.proNumber}
+                    onChange={(e) => handleItemChange(item.id, 'proNumber', e.target.value)}
                     required
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 1 }}
                   />
                   <TextField
                     variant="standard"
-                    label="Height"
+                    label="Pieces"
                     type="number"
                     fullWidth
-                    value={item.height}
-                    onChange={(e) => handleItemChange(item.id, 'height', e.target.value)}
+                    value={item.pieces}
+                    onChange={(e) => handleItemChange(item.id, 'pieces', e.target.value)}
                     required
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 1 }}

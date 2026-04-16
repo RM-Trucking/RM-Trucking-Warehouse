@@ -12,6 +12,12 @@ const initialState = {
     enrouteSuccess: false,
     enrouteData: [],
     pagination: { page: 1, pageSize: 20, totalRecords: 0 },
+    // Carrier search states
+    carrierOptions: [],
+    carrierLoading: false,
+    // Customer search states
+    customerOptions: [],
+    customerLoading: false,
 };
 
 const slice = createSlice({
@@ -50,6 +56,32 @@ const slice = createSlice({
         // clear error
         clearError(state) {
             state.error = null;
+        },
+        // Carrier search actions
+        startCarrierLoading(state) {
+            state.carrierLoading = true;
+            state.carrierOptions = []; // Clear previous options when starting new search
+        },
+        getCarrierOptionsSuccess(state, action) {
+            state.carrierLoading = false;
+            state.carrierOptions = action.payload || [];
+        },
+        carrierSearchError(state) {
+            state.carrierLoading = false;
+            state.carrierOptions = [];
+        },
+        // Customer search actions
+        startCustomerLoading(state) {
+            state.customerLoading = true;
+            state.customerOptions = []; // Clear previous options when starting new search
+        },
+        getCustomerOptionsSuccess(state, action) {
+            state.customerLoading = false;
+            state.customerOptions = action.payload || [];
+        },
+        customerSearchError(state) {
+            state.customerLoading = false;
+            state.customerOptions = [];
         },
     },
 });
@@ -97,12 +129,72 @@ export function clearEnrouteError() {
     };
 }
 
-// Create new enroute
+// Search carriers action
+export function searchCarriers(searchTerm) {
+    return async () => {
+        if (!searchTerm || searchTerm.length < 1) {
+            dispatch(slice.actions.getCarrierOptionsSuccess([]));
+            return;
+        }
+
+        dispatch(slice.actions.startCarrierLoading());
+        try {
+            const response = await axios.get(`/maintenance/carrier/dropdown?search=${searchTerm}`);
+
+            // Extract data from the response format: {success: true, data: [...]}
+            const carriers = response.data?.data || [];
+            dispatch(slice.actions.getCarrierOptionsSuccess(carriers));
+        } catch (error) {
+            console.error('Error searching carriers:', error);
+            dispatch(slice.actions.carrierSearchError());
+        }
+    };
+}
+
+// Search customers action
+export function searchCustomers(searchTerm) {
+    return async () => {
+        if (!searchTerm || searchTerm.length < 1) {
+            dispatch(slice.actions.getCustomerOptionsSuccess([]));
+            return;
+        }
+
+        dispatch(slice.actions.startCustomerLoading());
+        try {
+            const response = await axios.get(`/maintenance/customer/dropdown?search=${searchTerm}`);
+
+            // Extract data from the response format: {success: true, data: [...]}
+            const customers = response.data?.data || [];
+            dispatch(slice.actions.getCustomerOptionsSuccess(customers));
+        } catch (error) {
+            console.error('Error searching customers:', error);
+            dispatch(slice.actions.customerSearchError());
+        }
+    };
+}
 export function createEnroute(formData) {
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
-            const response = await axios.post('/api/enroute', formData);
+            // Transform form data to API payload format
+            const payload = {
+                carrierId: formData.deliveryCarrier?.carrierId || parseInt(formData.deliveryCarrier) || 12, // Default fallback
+                customerId: formData.freightForwarder?.customerId || parseInt(formData.freightForwarder) || 47, // Default fallback
+                stationId: formData.freightForwarder?.stationId || parseInt(formData.stationId) || 5, // Get from freight forwarder selection or fallback
+                estimatedDate: formData.estimateDate,
+                shippedDate: formData.shippedDate,
+                pros: formData.items.filter(item => item.pieces || item.weight || item.shipper).map(item => ({
+                    proNumber: item.proNumber || `PRO${Date.now()}${Math.floor(Math.random() * 1000)}`, // Generate if not provided
+                    pieces: parseInt(item.pieces) || 0,
+                    weight: parseFloat(item.weight) || 0,
+                    shipper: item.shipper || "",
+                    activeStatus: "Y" // Default as requested
+                }))
+            };
+
+            console.log('Sending payload:', payload);
+
+            const response = await axios.post('/enroute', payload);
             // Refresh data after successful creation
             dispatch(getEnrouteData());
             return response.data;
