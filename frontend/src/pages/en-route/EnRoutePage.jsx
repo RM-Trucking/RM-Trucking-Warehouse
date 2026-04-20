@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete } from '@mui/material';
+import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete, Collapse, Snackbar } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -21,6 +21,17 @@ export default function EnRoutePage() {
   const [paginationModel, setPaginationModel] = useState({ pageSize: 20, page: 0 });
   const [searchValue, setSearchValue] = useState('');
   const [openModal, setOpenModal] = useState(false);
+  const [viewMode, setViewMode] = useState(false); // Track if modal is in view mode
+  const [showFilters, setShowFilters] = useState(false); // Track filter panel visibility
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'error' });
+
+  // Filter state
+  const [filters, setFilters] = useState({
+    carrier: '',
+    freightForwarder: '',
+    fromDate: '',
+    toDate: ''
+  });
 
   // Local state for carrier search debounce
   const [carrierSearchValue, setCarrierSearchValue] = useState('');
@@ -41,14 +52,77 @@ export default function EnRoutePage() {
     ],
   });
 
-  // Fetch data on component mount
+  // Fetch data on component mount and when pagination/search changes
   useEffect(() => {
-    dispatch(getEnrouteData({ page: paginationModel.page + 1, size: paginationModel.pageSize }));
+    dispatch(getEnrouteData({
+      page: paginationModel.page + 1,
+      size: paginationModel.pageSize,
+      searchTerm: searchValue,
+      filters: filters
+    }));
   }, [dispatch, paginationModel.page, paginationModel.pageSize]);
+
+  // Debounced search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      dispatch(getEnrouteData({
+        page: 1,
+        size: paginationModel.pageSize,
+        searchTerm: searchValue,
+        filters: filters
+      }));
+      // Reset to first page when searching
+      if (paginationModel.page !== 0) {
+        setPaginationModel(prev => ({ ...prev, page: 0 }));
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, searchValue, paginationModel.pageSize, filters]);
 
   // Handle pagination change
   const handlePaginationModelChange = (newPaginationModel) => {
     setPaginationModel(newPaginationModel);
+  };
+
+  // Handle filter changes
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Apply filters
+  const handleApplyFilters = () => {
+    dispatch(getEnrouteData({
+      page: 1,
+      size: paginationModel.pageSize,
+      searchTerm: searchValue,
+      filters: filters
+    }));
+    // Reset to first page when applying filters
+    if (paginationModel.page !== 0) {
+      setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }
+  };
+
+  // Clear filters
+  const handleClearFilters = () => {
+    const clearedFilters = {
+      carrier: '',
+      freightForwarder: '',
+      fromDate: '',
+      toDate: ''
+    };
+    setFilters(clearedFilters);
+    dispatch(getEnrouteData({
+      page: 1,
+      size: paginationModel.pageSize,
+      searchTerm: searchValue,
+      filters: clearedFilters
+    }));
+    // Reset to first page when clearing filters
+    if (paginationModel.page !== 0) {
+      setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }
   };
 
   // Debounce the carrier search using Redux action
@@ -80,27 +154,88 @@ export default function EnRoutePage() {
   }, [dispatch, customerSearchValue]);
 
   const columns = [
-    { field: 'carrier', headerName: 'Carrier ⇅', flex: 1, minWidth: 120 },
-    { field: 'freightForwarder', headerName: 'Freight Forwarder ⇅', flex: 1.2, minWidth: 160 },
-    { field: 'estimatedDate', headerName: 'Estimated Date ⇅', flex: 0.9, minWidth: 130 },
-    { field: 'scanShippedDate', headerName: 'Scan Shipped Date ⇅', flex: 1, minWidth: 150 },
-    { field: 'createdDate', headerName: 'Created Date ⇅', flex: 0.9, minWidth: 130 },
+    { field: 'carrier', headerName: 'Carrier', flex: 1, minWidth: 120 },
+    { field: 'freightForwarder', headerName: 'Freight Forwarder', flex: 1.2, minWidth: 160 },
+    { 
+      field: 'estimatedDate', 
+      headerName: 'Estimated Date', 
+      flex: 0.9, 
+      minWidth: 130,
+      renderCell: (params) => {
+        const val = params.value || '';
+        return val.includes('1970') ? '' : val;
+      }
+    },
+    { 
+      field: 'scanShippedDate', 
+      headerName: 'Scan Shipped Date', 
+      flex: 1, 
+      minWidth: 150,
+      renderCell: (params) => {
+        const val = params.value || '';
+        return val.includes('1970') ? '' : val;
+      }
+    },
+    { 
+      field: 'createdDate', 
+      headerName: 'Created Date', 
+      flex: 0.9, 
+      minWidth: 130,
+      renderCell: (params) => {
+        const val = params.value || '';
+        return val.includes('1970') ? '' : val;
+      }
+    },
     {
       field: 'action',
       headerName: 'Action',
       width: 80,
       sortable: false,
-      renderCell: () => (
-        <IconButton size="small" >
+      renderCell: (params) => (
+        <IconButton size="small" onClick={() => handleViewModal(params.row)}>
           <Iconify icon="mdi:eye" width={16} color="#000" />
         </IconButton>
       ),
     },
   ];
 
-  const handleOpenModal = () => setOpenModal(true);
+  const handleOpenModal = () => {
+    setViewMode(false);
+    setOpenModal(true);
+  };
+
+  const handleViewModal = (rowData) => {
+    setViewMode(true);
+
+    // Populate form with row data
+    const rawData = rowData.rawData || {};
+    const cleanDate = (date) => (date && date.includes('1970') ? '' : date);
+    setFormData({
+      deliveryCarrier: { carrierId: rawData.carrierId, carrierName: rawData.carrierName || rowData.carrier },
+      freightForwarder: { customerId: rawData.customerId, customerName: rawData.customerName || rowData.freightForwarder, stationId: rawData.stationId, stationName: rawData.stationName },
+      stationId: rawData.stationId || '',
+      estimateDate: cleanDate(rawData.estimatedDate) || cleanDate(rowData.estimatedDate)?.split('/').reverse().join('-') || '', 
+      shippedDate: cleanDate(rawData.shippedDate) || cleanDate(rowData.scanShippedDate)?.split('/').reverse().join('-') || '',
+      items: rawData.pros?.map((pro, index) => ({
+        id: index + 1,
+        proNumber: pro.proNumber || '',
+        pieces: pro.pieces?.toString() || '',
+        height: '', // Not available in API response
+        weight: pro.weight?.toString() || '',
+        shipper: pro.shipper || ''
+      })) || [
+        { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '' },
+      ],
+    });
+
+    setOpenModal(true);
+  };
   const handleCloseModal = () => {
     setOpenModal(false);
+    // Reset viewMode after a small delay to prevent button flash
+    setTimeout(() => {
+      setViewMode(false);
+    }, 150);
     // Clear form data when closing modal
     setFormData({
       deliveryCarrier: null,
@@ -147,7 +282,59 @@ export default function EnRoutePage() {
     }));
   };
 
+  const validateForm = () => {
+    const errors = [];
+
+    // Check delivery carrier
+    if (!formData.deliveryCarrier) {
+      errors.push('Delivery Carrier is required');
+    }
+
+    // Check freight forwarder
+    if (!formData.freightForwarder) {
+      errors.push('Freight Forwarder is required');
+    }
+
+    // Check items array is not empty
+    if (!formData.items || formData.items.length === 0) {
+      errors.push('At least one item is required');
+    } else {
+      // Check each item for required fields
+      formData.items.forEach((item, index) => {
+        if (!item.proNumber || item.proNumber.trim() === '') {
+          errors.push(`Item ${index + 1}: Pro Number is required`);
+        }
+        if (!item.pieces || item.pieces.toString().trim() === '') {
+          errors.push(`Item ${index + 1}: Pieces is required`);
+        }
+        if (!item.weight || item.weight.toString().trim() === '') {
+          errors.push(`Item ${index + 1}: Weight is required`);
+        }
+        if (!item.shipper || item.shipper.trim() === '') {
+          errors.push(`Item ${index + 1}: Shipper is required`);
+        }
+      });
+    }
+
+    return errors;
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
   const handleSubmit = async () => {
+    const errors = validateForm();
+
+    if (errors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: `Please fill the mandatory fields:\n${errors.join('\n')}`,
+        severity: 'error'
+      });
+      return;
+    }
+
     try {
       await dispatch(createEnroute(formData));
       handleCloseModal();
@@ -188,10 +375,81 @@ export default function EnRoutePage() {
             ),
           }}
         />
-        <IconButton size="small" sx={{ color: '#999' }}>
+        <IconButton size="small" onClick={() => setShowFilters(!showFilters)} sx={{ color: showFilters ? '#1976d2' : '#999' }}>
           <FilterListIcon />
         </IconButton>
       </Box>
+
+      {/* Filter Panel */}
+      <Collapse in={showFilters}>
+        <Paper sx={{ p: 2, mb: 2, border: '1px solid #e0e0e0' }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={3}>
+              <TextField
+                label="Filter by Carrier"
+                size="small"
+                fullWidth
+                value={filters.carrier}
+                onChange={(e) => handleFilterChange('carrier', e.target.value)}
+                placeholder="Enter carrier name..."
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={3}>
+              <TextField
+                label="Filter by Freight Forwarder"
+                size="small"
+                fullWidth
+                value={filters.freightForwarder}
+                onChange={(e) => handleFilterChange('freightForwarder', e.target.value)}
+                placeholder="Enter freight forwarder..."
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={2}>
+              <TextField
+                label="From Date"
+                type="date"
+                size="small"
+                fullWidth
+                value={filters.fromDate}
+                onChange={(e) => handleFilterChange('fromDate', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={2}>
+              <TextField
+                label="To Date"
+                type="date"
+                size="small"
+                fullWidth
+                value={filters.toDate}
+                onChange={(e) => handleFilterChange('toDate', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={2}>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleApplyFilters}
+                  sx={{ bgcolor: '#1976d2' }}
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleClearFilters}
+                >
+                  Clear
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+        </Paper>
+      </Collapse>
 
       {/* Error Alert */}
       {error && (
@@ -241,15 +499,17 @@ export default function EnRoutePage() {
             <IconButton size="small" onClick={handleCloseModal}>
               <ArrowBackIcon />
             </IconButton>
-            <h3 style={{ margin: 0 }}>New En Route</h3>
+            <h3 style={{ margin: 0 }}>{viewMode ? 'View En Route' : 'New En Route'}</h3>
           </Stack>
           <Stack direction="row" gap={1}>
             <Button variant="outlined" onClick={handleCloseModal} sx={{ bgcolor: 'white', color: 'black', borderColor: '#ccc' }}>
-              Cancel
+              {viewMode ? 'Close' : 'Cancel'}
             </Button>
-            <Button variant="contained" onClick={handleSubmit} sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' } }}>
-              Submit
-            </Button>
+            {!viewMode && (
+              <Button variant="contained" onClick={handleSubmit} sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' } }}>
+                Submit
+              </Button>
+            )}
           </Stack>
         </Box>
 
@@ -275,6 +535,7 @@ export default function EnRoutePage() {
               <Stack direction="row" spacing={4} sx={{ width: '100%' }}>
                 <Autocomplete
                   fullWidth
+                  disabled={viewMode}
                   options={carrierOptions}
                   getOptionLabel={(option) => option.carrierName || option.name || option.toString()}
                   value={formData.deliveryCarrier}
@@ -323,6 +584,7 @@ export default function EnRoutePage() {
                 />
                 <Autocomplete
                   fullWidth
+                  disabled={viewMode}
                   options={customerOptions}
                   getOptionLabel={(option) =>
                     option.customerName && option.stationName
@@ -378,6 +640,7 @@ export default function EnRoutePage() {
                   label="Estimate Date"
                   type="date"
                   fullWidth
+                  disabled={viewMode}
                   value={formData.estimateDate}
                   onChange={(e) => handleFormChange('estimateDate', e.target.value)}
                   InputLabelProps={{ shrink: true }}
@@ -388,6 +651,7 @@ export default function EnRoutePage() {
                   label="Shipped Date"
                   type="date"
                   fullWidth
+                  disabled={viewMode}
                   value={formData.shippedDate}
                   onChange={(e) => handleFormChange('shippedDate', e.target.value)}
                   InputLabelProps={{ shrink: true }}
@@ -411,8 +675,8 @@ export default function EnRoutePage() {
                   <TextField
                     variant="standard"
                     label="Pro Number"
-                    type="number"
                     fullWidth
+                    disabled={viewMode}
                     value={item.proNumber}
                     onChange={(e) => handleItemChange(item.id, 'proNumber', e.target.value)}
                     required
@@ -424,6 +688,7 @@ export default function EnRoutePage() {
                     label="Pieces"
                     type="number"
                     fullWidth
+                    disabled={viewMode}
                     value={item.pieces}
                     onChange={(e) => handleItemChange(item.id, 'pieces', e.target.value)}
                     required
@@ -435,6 +700,7 @@ export default function EnRoutePage() {
                     label="Weight(lbs)"
                     type="number"
                     fullWidth
+                    disabled={viewMode}
                     value={item.weight}
                     onChange={(e) => handleItemChange(item.id, 'weight', e.target.value)}
                     required
@@ -445,6 +711,7 @@ export default function EnRoutePage() {
                     variant="standard"
                     label="Shipper"
                     fullWidth
+                    disabled={viewMode}
                     value={item.shipper}
                     onChange={(e) => handleItemChange(item.id, 'shipper', e.target.value)}
                     required
@@ -454,30 +721,50 @@ export default function EnRoutePage() {
 
                   {/* Delete Action */}
                   <Box sx={{ width: 40, pb: 0.5, textAlign: 'right' }}>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDeleteItem(item.id)}
-                      sx={{ color: '#000' }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {!viewMode && (
+                      <IconButton
+                        size="small"
+                        onClick={() => handleDeleteItem(item.id)}
+                        sx={{ color: '#000' }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </Box>
 
                 </Stack>
               ))}
-              
-              <Button
-                variant="contained"
-                onClick={handleAddItem}
-                sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' }, mt: 1 }}
-              >
-                Add Item
-              </Button>
+
+              {!viewMode && (
+                <Button
+                  variant="contained"
+                  onClick={handleAddItem}
+                  sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' }, mt: 1 }}
+                >
+                  Add Item
+                </Button>
+              )}
             </Box>
 
           </Paper>
         </DialogContent>
       </Dialog>
+
+      {/* Snackbar for validation errors */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ whiteSpace: 'pre-line' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -92,12 +92,34 @@ export default slice.reducer;
 
 // ----------------------------------------------------------------------
 // enroute api calls
-export function getEnrouteData({ page = 1, size = 20 } = {}) {
+export function getEnrouteData({ page = 1, size = 20, searchTerm = '', filters = {} } = {}) {
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
-            // const response = await axios.get(`/api/enroute?page=${page}&size=${size}`);
-            const response = await axios.get(`/enroute`);
+            // let url = `/enroute?page=${page}&size=${size}`;
+
+             let url = `/enroute`;
+
+            // Add search term if provided
+            if (searchTerm && searchTerm.trim()) {
+                url += `&searchTerm=${encodeURIComponent(searchTerm.trim())}`;
+            }
+
+            // Add filter parameters if provided
+            if (filters.carrier && filters.carrier.trim()) {
+                url += `&carrier=${encodeURIComponent(filters.carrier.trim())}`;
+            }
+            if (filters.freightForwarder && filters.freightForwarder.trim()) {
+                url += `&freightForwarder=${encodeURIComponent(filters.freightForwarder.trim())}`;
+            }
+            if (filters.fromDate) {
+                url += `&fromDate=${encodeURIComponent(filters.fromDate)}`;
+            }
+            if (filters.toDate) {
+                url += `&toDate=${encodeURIComponent(filters.toDate)}`;
+            }
+
+            const response = await axios.get(url);
             // Transform API data to match DataGrid format
             const transformedData = response.data.data.map((item) => ({
                 id: item.enrouteId,
@@ -105,7 +127,7 @@ export function getEnrouteData({ page = 1, size = 20 } = {}) {
                 freightForwarder: item.customerName,
                 estimatedDate: new Date(item.estimatedDate).toLocaleDateString('en-US'),
                 scanShippedDate: new Date(item.shippedDate).toLocaleDateString('en-US'),
-                createdDate: new Date(item.shippedDate).toLocaleDateString('en-US'), // Using shippedDate as createdDate since not provided
+                createdDate: new Date(item.createdAt).toLocaleDateString('en-US'), // Using createdAt
                 stationName: item.stationName,
                 prosCount: item.pros?.length || 0,
                 rawData: item // Keep original data for reference
@@ -183,6 +205,7 @@ export function createEnroute(formData) {
                 stationId: formData.freightForwarder?.stationId || parseInt(formData.stationId) || 5, // Get from freight forwarder selection or fallback
                 estimatedDate: formData.estimateDate,
                 shippedDate: formData.shippedDate,
+                toEmails: [],
                 pros: formData.items.filter(item => item.pieces || item.weight || item.shipper).map(item => ({
                     proNumber: item.proNumber || `PRO${Date.now()}${Math.floor(Math.random() * 1000)}`, // Generate if not provided
                     pieces: parseInt(item.pieces) || 0,
