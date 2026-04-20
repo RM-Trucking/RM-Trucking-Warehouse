@@ -11,7 +11,7 @@ const initialState = {
     error: null,
     enrouteSuccess: false,
     enrouteData: [],
-    pagination: { page: 1, pageSize: 20, totalRecords: 0 },
+    pagination: { page: 1, pageSize: 10, totalRecords: 0 },
     // Carrier search states
     carrierOptions: [],
     carrierLoading: false,
@@ -96,9 +96,9 @@ export function getEnrouteData({ page = 1, size = 20, searchTerm = '', filters =
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
-            // let url = `/enroute?page=${page}&size=${size}`;
+            let url = `/enroute?page=${page}&size=${size}`;
 
-             let url = `/enroute`;
+            //  let url = `/enroute`;
 
             // Add search term if provided
             if (searchTerm && searchTerm.trim()) {
@@ -200,12 +200,12 @@ export function createEnroute(formData) {
         try {
             // Transform form data to API payload format
             const payload = {
-                carrierId: formData.deliveryCarrier?.carrierId || parseInt(formData.deliveryCarrier) || 12, // Default fallback
-                customerId: formData.freightForwarder?.customerId || parseInt(formData.freightForwarder) || 47, // Default fallback
-                stationId: formData.freightForwarder?.stationId || parseInt(formData.stationId) || 5, // Get from freight forwarder selection or fallback
+                carrierId: formData.deliveryCarrier?.carrierId || parseInt(formData.deliveryCarrier), // Default fallback
+                customerId: formData.freightForwarder?.customerId || parseInt(formData.freightForwarder), // Default fallback
+                stationId: formData.freightForwarder?.stationId || parseInt(formData.stationId), // Get from freight forwarder selection or fallback
                 estimatedDate: formData.estimateDate,
                 shippedDate: formData.shippedDate,
-                toEmails: [],
+                toEmails: formData.toEmails || [],
                 pros: formData.items.filter(item => item.pieces || item.weight || item.shipper).map(item => ({
                     proNumber: item.proNumber || `PRO${Date.now()}${Math.floor(Math.random() * 1000)}`, // Generate if not provided
                     pieces: parseInt(item.pieces) || 0,

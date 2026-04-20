@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete, Collapse, Snackbar } from '@mui/material';
+import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete, Collapse, Snackbar, Badge } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ClearIcon from '@mui/icons-material/Clear';
 import Iconify from '../../components/iconify';
 // Redux
 import { useSelector, useDispatch } from '../../redux/store';
@@ -18,12 +19,16 @@ export default function EnRoutePage() {
   const dispatch = useDispatch();
   const { enrouteData, isLoading, error, pagination, carrierOptions, carrierLoading, customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
 
-  const [paginationModel, setPaginationModel] = useState({ pageSize: 20, page: 0 });
+  const [paginationModel, setPaginationModel] = useState({ pageSize: 10, page: 0 });
   const [searchValue, setSearchValue] = useState('');
   const [openModal, setOpenModal] = useState(false);
   const [viewMode, setViewMode] = useState(false); // Track if modal is in view mode
   const [showFilters, setShowFilters] = useState(false); // Track filter panel visibility
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'error' });
+  const [openMailList, setOpenMailList] = useState(false);
+  const [selectedEmails, setSelectedEmails] = useState({});
+  const [currentFormEmails, setCurrentFormEmails] = useState([]);
+  const [confirmedEmailCount, setConfirmedEmailCount] = useState(0);
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -41,6 +46,35 @@ export default function EnRoutePage() {
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const isSelectingCustomerRef = useRef(false);
 
+  const handleOpenMailList = () => {
+    // Don't reset selections - keep the persisted ones
+    setOpenMailList(true);
+  };
+
+  const handleCloseMailList = () => {
+    setOpenMailList(false);
+    // Don't clear selectedEmails here to persist selections
+  };
+
+  const handleEmailCheckboxChange = (emailId) => {
+    setSelectedEmails((prev) => ({
+      ...prev,
+      [emailId]: !prev[emailId]
+    }));
+  };
+
+  const handleMailSubmit = () => {
+    const selectedEmailAddresses = currentFormEmails
+      .filter((email) => selectedEmails[email.entryId])
+      .map((email) => email.entryEmail);
+
+    console.log('Sending enroute details to:', selectedEmailAddresses);
+    // Update the count of confirmed emails
+    setConfirmedEmailCount(selectedEmailAddresses.length);
+    // TODO: Make API call to send emails
+    handleCloseMailList();
+  };
+
   const [formData, setFormData] = useState({
     deliveryCarrier: null, // Changed to null for autocomplete
     freightForwarder: null, // Changed to null for autocomplete
@@ -48,7 +82,7 @@ export default function EnRoutePage() {
     estimateDate: '',
     shippedDate: '',
     items: [
-      { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '' }
+      { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '', activeStatus: 'Y' }
     ],
   });
 
@@ -155,7 +189,17 @@ export default function EnRoutePage() {
 
   const columns = [
     { field: 'carrier', headerName: 'Carrier', flex: 1, minWidth: 120 },
-    { field: 'freightForwarder', headerName: 'Freight Forwarder', flex: 1.2, minWidth: 160 },
+    {
+      field: 'freightForwarder',
+      headerName: 'Freight Forwarder',
+      flex: 1.2,
+      minWidth: 160,
+      renderCell: (params) => {
+        const customerName = params.row.freightForwarder || '';
+        const stationName = params.row.stationName || '';
+        return stationName ? `${customerName} | ${stationName}` : '';
+      }
+    },
     { 
       field: 'estimatedDate', 
       headerName: 'Estimated Date', 
@@ -214,7 +258,7 @@ export default function EnRoutePage() {
       deliveryCarrier: { carrierId: rawData.carrierId, carrierName: rawData.carrierName || rowData.carrier },
       freightForwarder: { customerId: rawData.customerId, customerName: rawData.customerName || rowData.freightForwarder, stationId: rawData.stationId, stationName: rawData.stationName },
       stationId: rawData.stationId || '',
-      estimateDate: cleanDate(rawData.estimatedDate) || cleanDate(rowData.estimatedDate)?.split('/').reverse().join('-') || '', 
+      estimateDate: cleanDate(rawData.estimatedDate) || cleanDate(rowData.estimatedDate)?.split('/').reverse().join('-') || '',
       shippedDate: cleanDate(rawData.shippedDate) || cleanDate(rowData.scanShippedDate)?.split('/').reverse().join('-') || '',
       items: rawData.pros?.map((pro, index) => ({
         id: index + 1,
@@ -222,11 +266,34 @@ export default function EnRoutePage() {
         pieces: pro.pieces?.toString() || '',
         height: '', // Not available in API response
         weight: pro.weight?.toString() || '',
-        shipper: pro.shipper || ''
+        shipper: pro.shipper || '',
+        activeStatus: pro.activeStatus || 'N'
       })) || [
-        { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '' },
+        { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '', activeStatus: 'N' },
       ],
     });
+
+    // Handle toEmails data if present
+    if (rawData.toEmails && rawData.toEmails.length > 0) {
+      // Convert toEmails array to currentFormEmails format
+      const emailsList = rawData.toEmails.map((email, index) => ({
+        entryId: index,
+        entryEmail: email
+      }));
+      setCurrentFormEmails(emailsList);
+
+      // Pre-select all emails in readonly mode
+      const preSelectedEmails = {};
+      emailsList.forEach((email) => {
+        preSelectedEmails[email.entryId] = true;
+      });
+      setSelectedEmails(preSelectedEmails);
+      setConfirmedEmailCount(rawData.toEmails.length);
+    } else {
+      setCurrentFormEmails([]);
+      setSelectedEmails({});
+      setConfirmedEmailCount(0);
+    }
 
     setOpenModal(true);
   };
@@ -244,12 +311,15 @@ export default function EnRoutePage() {
       estimateDate: '',
       shippedDate: '',
       items: [
-        { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '' },
+        { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '', activeStatus: 'Y' },
       ],
     });
     // Clear search values and options
     setCarrierSearchValue('');
     setCustomerSearchValue('');
+    setCurrentFormEmails([]);
+    setConfirmedEmailCount(0);
+    setSelectedEmails({});
     dispatch(searchCarriers(''));
     dispatch(searchCustomers(''));
   };
@@ -271,7 +341,7 @@ export default function EnRoutePage() {
     const newId = Math.max(...formData.items.map((i) => i.id), 0) + 1;
     setFormData((prev) => ({
       ...prev,
-      items: [...prev.items, { id: newId, pieces: '', height: '', weight: '', shipper: '' }],
+      items: [...prev.items, { id: newId, proNumber: '', pieces: '', height: '', weight: '', shipper: '', activeStatus: 'Y' }],
     }));
   };
 
@@ -336,7 +406,18 @@ export default function EnRoutePage() {
     }
 
     try {
-      await dispatch(createEnroute(formData));
+      // Convert selectedEmails object to array of actual email addresses
+      const toEmailsList = currentFormEmails
+        .filter((email) => selectedEmails[email.entryId])
+        .map((email) => email.entryEmail);
+
+      // Add toEmails to formData
+      const submitData = {
+        ...formData,
+        toEmails: toEmailsList
+      };
+
+      await dispatch(createEnroute(submitData));
       handleCloseModal();
     } catch (error) {
       // Error is handled by Redux slice
@@ -373,11 +454,23 @@ export default function EnRoutePage() {
                 <SearchIcon sx={{ color: '#999', fontSize: 20 }} />
               </InputAdornment>
             ),
+            endAdornment: searchValue && (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={() => setSearchValue('')}
+                  edge="end"
+                  sx={{ color: '#999', padding: '4px' }}
+                >
+                  <ClearIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </InputAdornment>
+            ),
           }}
         />
-        <IconButton size="small" onClick={() => setShowFilters(!showFilters)} sx={{ color: showFilters ? '#1976d2' : '#999' }}>
+        {/* <IconButton size="small" onClick={() => setShowFilters(!showFilters)} sx={{ color: showFilters ? '#1976d2' : '#999' }}>
           <FilterListIcon />
-        </IconButton>
+        </IconButton> */}
       </Box>
 
       {/* Filter Panel */}
@@ -469,7 +562,7 @@ export default function EnRoutePage() {
           columns={columns}
           paginationModel={paginationModel}
           onPaginationModelChange={handlePaginationModelChange}
-          pageSizeOptions={[20, 50, 100]}
+          pageSizeOptions={[10, 20, 50, 100]}
           rowCount={pagination.totalRecords}
           paginationMode="server"
           loading={isLoading}
@@ -515,7 +608,29 @@ export default function EnRoutePage() {
 
         <DialogContent sx={{ p: 3, pt: 0 }}>
           <Paper sx={{ p: 4, borderRadius: 2 }}>
-            
+
+            {/* Mail Button Section */}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              {currentFormEmails.length > 0 && (
+                <Badge badgeContent={confirmedEmailCount} color="error">
+                  <Button
+                    variant="contained"
+                    onClick={handleOpenMailList}
+                    sx={{
+                      bgcolor: '#b71c1c',
+                      '&:hover': { bgcolor: '#8b1c1c' },
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1
+                    }}
+                  >
+                    <Iconify icon="mdi:email" width={18} />
+                    Mail
+                  </Button>
+                </Badge>
+              )}
+            </Box>
+
             {/* UPDATED: Grey border and Flex Stack layout to force full width */}
             <Box 
               component="fieldset" 
@@ -595,6 +710,12 @@ export default function EnRoutePage() {
                   onChange={(event, newValue) => {
                     isSelectingCustomerRef.current = true;
                     handleFormChange('freightForwarder', newValue);
+                    // Set emails from the selected freight forwarder
+                    if (newValue && newValue.emails) {
+                      setCurrentFormEmails(newValue.emails);
+                    } else {
+                      setCurrentFormEmails([]);
+                    }
                     // Clear search results when field is cleared
                     if (!newValue) {
                       setCustomerSearchValue('');
@@ -719,9 +840,25 @@ export default function EnRoutePage() {
                     sx={{ ...standardInputStyles, flex: 2 }} // Double width for Shipper
                   />
 
-                  {/* Delete Action */}
-                  <Box sx={{ width: 40, pb: 0.5, textAlign: 'right' }}>
-                    {!viewMode && (
+                  {/* Status/Delete Action */}
+                  <Box sx={{ minWidth: 100, pb: 0.5, textAlign: 'right' }}>
+                    {viewMode ? (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        sx={{
+                          bgcolor: item.activeStatus === 'Y' ? '#4caf50' : '#9e9e9e',
+                          color: 'white',
+                          textTransform: 'none',
+                          fontSize: '12px',
+                          '&:hover': {
+                            bgcolor: item.activeStatus === 'Y' ? '#45a049' : '#858585'
+                          }
+                        }}
+                      >
+                        {item.activeStatus === 'Y' ? 'Active' : 'Inactive'}
+                      </Button>
+                    ) : (
                       <IconButton
                         size="small"
                         onClick={() => handleDeleteItem(item.id)}
@@ -748,6 +885,92 @@ export default function EnRoutePage() {
 
           </Paper>
         </DialogContent>
+      </Dialog>
+
+      {/* Mail List Dialog */}
+      <Dialog
+        open={openMailList}
+        onClose={handleCloseMailList}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '3px solid #b71c1c'
+          }
+        }}
+      >
+        <Box sx={{ p: 2, bgcolor: '#b71c1c', color: 'white', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Mail List</span>
+          {viewMode && <span style={{ fontSize: '12px', fontStyle: 'italic' }}>(Read Only)</span>}
+        </Box>
+        <DialogContent sx={{ p: 2, height: '400px' }}>
+          <DataGrid
+            rows={currentFormEmails.map((email, index) => ({
+              id: email.entryId,
+              sno: String(index + 1).padStart(2, '0'),
+              emailid: email.entryEmail,
+              selected: selectedEmails[email.entryId] || false
+            }))}
+            columns={[
+              {
+                field: 'selected',
+                headerName: '',
+                width: 50,
+                sortable: false,
+                renderCell: (params) => (
+                  <input
+                    type="checkbox"
+                    checked={params.row.selected}
+                    onChange={() => !viewMode && handleEmailCheckboxChange(params.row.id)}
+                    disabled={viewMode}
+                    style={{ cursor: viewMode ? 'not-allowed' : 'pointer' }}
+                  />
+                )
+              },
+              {
+                field: 'sno',
+                headerName: 'SNO',
+                width: 80,
+                sortable: false
+              },
+              {
+                field: 'emailid',
+                headerName: 'EmailID',
+                flex: 1,
+                sortable: false
+              }
+            ]}
+            hideFooter
+            sx={{
+              '& .MuiDataGrid-columnHeaders': {
+                bgcolor: '#f5f5f5',
+                borderBottom: '2px solid #e0e0e0'
+              },
+              '& .MuiDataGrid-cell': {
+                borderBottom: '1px solid #e0e0e0'
+              }
+            }}
+          />
+        </DialogContent>
+        <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, borderTop: '1px solid #e0e0e0' }}>
+          <Button
+            variant="outlined"
+            onClick={handleCloseMailList}
+            sx={{ color: 'black', borderColor: '#ccc' }}
+          >
+            {viewMode ? 'Close' : 'Cancel'}
+          </Button>
+          {!viewMode && (
+            <Button
+              variant="contained"
+              onClick={handleMailSubmit}
+              sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' } }}
+            >
+              Confirm
+            </Button>
+          )}
+        </Box>
       </Dialog>
 
       {/* Snackbar for validation errors */}
