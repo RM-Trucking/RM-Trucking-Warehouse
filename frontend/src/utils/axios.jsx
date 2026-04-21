@@ -5,6 +5,21 @@ import { setSession } from '../auth/utils';
 import { PATH_AUTH } from '../routes/paths';
  
 // ----------------------------------------------------------------------
+
+// A navigate function reference that React Router sets on app boot.
+// Using this avoids window.location.href (which causes a full page reload).
+let navigateFn = null;
+export const setNavigator = (fn) => { navigateFn = fn; };
+const softRedirect = (path) => {
+  if (navigateFn) {
+    navigateFn(path, { replace: true });
+  } else {
+    // Fallback: only used if React hasn't mounted yet
+    window.location.replace(path);
+  }
+};
+
+// ----------------------------------------------------------------------
  
 const axiosInstance = axios.create({ baseURL: HOST_API_KEY });
  
@@ -50,18 +65,18 @@ axiosInstance.interceptors.response.use(
     //   } catch (refreshError) {
     //     // 6. HARD FAIL: Clear everything and force login
     //     setSession(null);
-    //     window.location.href = '/auth/login';
+    //     softRedirect(PATH_AUTH.login);
     //     return Promise.reject(refreshError);
     //   }
     // }
  
     // for invalid token
-    if (error.response.data.error === 'Invalid or expired token' || error.status === 403 || error.status === 401) {
-      // 2. Clear tokens from localStorage via your utility
+    if (error.response?.data?.error === 'Invalid or expired token' || error.response?.status === 403 || error.response?.status === 401) {
+      // Clear tokens from localStorage via your utility
       setSession(null);
-      // have to logout
+      // Soft navigation — no full page reload
       if (!window.location.pathname.includes(PATH_AUTH.login)) {
-        window.location.href = PATH_AUTH.login;
+        softRedirect(PATH_AUTH.login);
       }
     }
     return Promise.reject((error.response && error.response.data) || 'Something went wrong');
