@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback  } from 'react';
 import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete, Collapse, Snackbar, Badge } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
@@ -90,7 +90,7 @@ export default function EnRoutePage() {
   useEffect(() => {
     dispatch(getEnrouteData({
       page: paginationModel.page + 1,
-      size: paginationModel.pageSize,
+      pageSize: paginationModel.pageSize,
       searchTerm: searchValue,
       filters: filters
     }));
@@ -101,7 +101,7 @@ export default function EnRoutePage() {
     const timer = setTimeout(() => {
       dispatch(getEnrouteData({
         page: 1,
-        size: paginationModel.pageSize,
+        pageSize: paginationModel.pageSize,
         searchTerm: searchValue,
         filters: filters
       }));
@@ -128,7 +128,7 @@ export default function EnRoutePage() {
   const handleApplyFilters = () => {
     dispatch(getEnrouteData({
       page: 1,
-      size: paginationModel.pageSize,
+      pageSize: paginationModel.pageSize,
       searchTerm: searchValue,
       filters: filters
     }));
@@ -149,7 +149,7 @@ export default function EnRoutePage() {
     setFilters(clearedFilters);
     dispatch(getEnrouteData({
       page: 1,
-      size: paginationModel.pageSize,
+      pageSize: paginationModel.pageSize,
       searchTerm: searchValue,
       filters: clearedFilters
     }));
@@ -187,69 +187,9 @@ export default function EnRoutePage() {
     return () => clearTimeout(timer);
   }, [dispatch, customerSearchValue]);
 
-  const columns = [
-    { field: 'carrier', headerName: 'Carrier', flex: 1, minWidth: 120 },
-    {
-      field: 'freightForwarder',
-      headerName: 'Freight Forwarder',
-      flex: 1.2,
-      minWidth: 160,
-      renderCell: (params) => {
-        const customerName = params.row.freightForwarder || '';
-        const stationName = params.row.stationName || '';
-        return stationName ? `${customerName} | ${stationName}` : '';
-      }
-    },
-    { 
-      field: 'estimatedDate', 
-      headerName: 'Estimated Date', 
-      flex: 0.9, 
-      minWidth: 130,
-      renderCell: (params) => {
-        const val = params.value || '';
-        return val.includes('1970') ? '' : val;
-      }
-    },
-    { 
-      field: 'scanShippedDate', 
-      headerName: 'Scan Shipped Date', 
-      flex: 1, 
-      minWidth: 150,
-      renderCell: (params) => {
-        const val = params.value || '';
-        return val.includes('1970') ? '' : val;
-      }
-    },
-    { 
-      field: 'createdDate', 
-      headerName: 'Created Date', 
-      flex: 0.9, 
-      minWidth: 130,
-      renderCell: (params) => {
-        const val = params.value || '';
-        return val.includes('1970') ? '' : val;
-      }
-    },
-    {
-      field: 'action',
-      headerName: 'Action',
-      width: 80,
-      sortable: false,
-      renderCell: (params) => (
-        <IconButton size="small" onClick={() => handleViewModal(params.row)}>
-          <Iconify icon="mdi:eye" width={16} color="#000" />
-        </IconButton>
-      ),
-    },
-  ];
-
-  const handleOpenModal = () => {
-    setViewMode(false);
-    setOpenModal(true);
-  };
-
-  const handleViewModal = (rowData) => {
-    setViewMode(true);
+const handleViewModal = useCallback((rowData) => {
+  setOpenModal(true);
+  setViewMode(true);
 
     // Populate form with row data
     const rawData = rowData.rawData || {};
@@ -294,9 +234,85 @@ export default function EnRoutePage() {
       setSelectedEmails({});
       setConfirmedEmailCount(0);
     }
+  }, []);
 
+  const columns = useMemo(() => [
+    { field: 'carrier', headerName: 'Carrier', flex: 1, minWidth: 120 },
+    {
+      field: 'freightForwarder',
+      headerName: 'Freight Forwarder',
+      flex: 1.2,
+      minWidth: 160,
+      renderCell: (params) => {
+        const customerName = params.row.freightForwarder || '';
+        const stationName = params.row.stationName || '';
+        return stationName ? `${customerName} | ${stationName}` : '';
+      }
+    },
+    { 
+      field: 'estimatedDate', 
+      headerName: 'Estimated Date', 
+      flex: 0.9, 
+      minWidth: 130,
+      renderCell: (params) => {
+        const val = params.value || '';
+        return val.includes('1970') ? '' : val;
+      }
+    },
+    { 
+      field: 'scanShippedDate', 
+      headerName: 'Scan Shipped Date', 
+      flex: 1, 
+      minWidth: 150,
+      renderCell: (params) => {
+        const val = params.value || '';
+        return val.includes('1970') ? '' : val;
+      }
+    },
+    { 
+      field: 'createdDate', 
+      headerName: 'Created Date', 
+      flex: 0.9, 
+      minWidth: 130,
+      renderCell: (params) => {
+        const val = params.value || '';
+        return val.includes('1970') ? '' : val;
+      }
+    },
+ {
+  field: 'action',
+  headerName: 'Action',
+  width: 80,
+  sortable: false,
+  renderCell: (params) => {
+    const onActionClick = (e) => {
+      e.stopPropagation(); 
+      handleViewModal(params.row);
+    };
+
+    // Intercept the event BEFORE the click fully registers
+    const onMouseDown = (e) => {
+      e.stopPropagation();
+    };
+
+    return (
+      <IconButton 
+        size="small" 
+        onClick={onActionClick}
+        onMouseDown={onMouseDown} // <-- Add this line
+      >
+        <Iconify icon="mdi:eye" width={16} color="#000" />
+      </IconButton>
+    );
+  }
+},], [handleViewModal]);
+
+  const handleOpenModal = () => {
+    setViewMode(false);
     setOpenModal(true);
   };
+
+
   const handleCloseModal = () => {
     setOpenModal(false);
     // Reset viewMode after a small delay to prevent button flash
@@ -566,6 +582,7 @@ export default function EnRoutePage() {
           rowCount={pagination.totalRecords}
           paginationMode="server"
           loading={isLoading}
+          disableRowSelectionOnClick
           sx={{
             '& .MuiDataGrid-root': { border: 'none' },
             '& .MuiDataGrid-cell': { borderBottom: '1px solid #e0e0e0' },
@@ -909,6 +926,7 @@ export default function EnRoutePage() {
             rows={currentFormEmails.map((email, index) => ({
               id: email.entryId,
               sno: String(index + 1).padStart(2, '0'),
+              entryType: email.entryType,
               emailid: email.entryEmail,
               selected: selectedEmails[email.entryId] || false
             }))}
@@ -932,6 +950,11 @@ export default function EnRoutePage() {
                 field: 'sno',
                 headerName: 'SNO',
                 width: 80,
+                sortable: false
+              },
+               {
+                field: 'entryType',
+                headerName: 'Type',
                 sortable: false
               },
               {

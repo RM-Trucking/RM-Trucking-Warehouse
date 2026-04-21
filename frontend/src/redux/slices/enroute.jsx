@@ -92,11 +92,11 @@ export default slice.reducer;
 
 // ----------------------------------------------------------------------
 // enroute api calls
-export function getEnrouteData({ page = 1, size = 20, searchTerm = '', filters = {} } = {}) {
+export function getEnrouteData({ page = 1, pageSize = 10, searchTerm = '', filters = {} } = {}) {
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
-            let url = `/enroute?page=${page}&size=${size}`;
+            let url = `/enroute?page=${page}&pageSize=${pageSize}`;
 
             //  let url = `/enroute`;
 
