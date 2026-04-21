@@ -1,7 +1,7 @@
 export interface Driver {
     driverId: number;
     driverName: string;
-    signaturePath?: string;
+    driverSignature?: string;
 }
 
 /**
@@ -9,7 +9,7 @@ export interface Driver {
  */
 export interface CreateDriver {
     driverName: string;
-    signaturePath?: string;
+    driverSignature?: string;
 }
 
 /**
@@ -18,22 +18,24 @@ export interface CreateDriver {
 export interface UpdateDriver {
     driverId: number;
     driverName?: string;
-    signaturePath?: string;
+    driverSignature?: string;
 }
 
 export interface IDVerification {
     verificationId: number;
     carrierId: number;
+    customerId: number;
+    stationId: number;
     doorNo?: string;
     firstIdType: string;
     firstIdPhotoMatch: 'Y' | 'N';
     secondIdType?: string;
     secondIdPhotoMatch: 'Y' | 'N';
     driverId: number;
-    shipperCompanyName?: string;
     verifiedByEmployee: string;
     createdAt: Date;
     createdBy: number;
+    toEmails: string[];
 }
 
 /**
@@ -41,14 +43,20 @@ export interface IDVerification {
  */
 export interface CreateIDVerification {
     carrierId: number;
+    customerId: number;
+    stationId: number;
     doorNo?: string;
     firstIdType: string;
     firstIdPhotoMatch: boolean;
     secondIdType?: string;
     secondIdPhotoMatch: boolean;
     driverId: number;
+    driverName: string;
+    driverSignature: string;
     shipperCompanyName?: string;
     verifiedByEmployee: string;
+    createdBy: number;
+    toEmails?: string[] | string;
 }
 
 /**
@@ -71,8 +79,6 @@ export interface UpdateIDVerification {
 export interface IDVerificationProDetail {
     proDetailId: number;
     verificationId: number;
-    customerId: number;
-    stationId: number;
     pieces: number;
     weight: number;
     shipper: string;
@@ -84,12 +90,19 @@ export interface IDVerificationProDetail {
  */
 export interface CreateProDetail {
     verificationId: number;
-    customerId: number;
-    stationId: number;
     pieces: number;
     weight: number;
     shipper: string;
     proNumber: string;
+}
+
+/**
+ * Freight detail input with grouping information (for service layer)
+ */
+export interface FreightDetailInput extends Omit<CreateProDetail, "verificationId"> {
+    customerId: number;
+    stationId: number;
+    toEmails?: string[];
 }
 
 /**

@@ -27,4 +27,3 @@ export async function createEntity(
     const result = (await conn.query(query, [entityType, entityName])) as any[];
     return result[0]?.entityId || 0;
 }
-

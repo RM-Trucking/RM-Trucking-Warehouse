@@ -12,21 +12,17 @@ const router = Router();
 // Create driver check-in
 router.post("/drivers", async (req: Request, res: Response) => {
     const conn = await db();
-    try {
-        await idVerificationController.createDriver(req, res, conn);
-    } finally {
-        if (conn) conn.close();
-    }
+    await idVerificationController.createDriver(req, res, conn);
+    if (conn) conn.close();
+
 });
 
 // Get driver details
 router.get("/drivers/:driverId", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    try {
-        await idVerificationController.getDriver(req, res, conn);
-    } finally {
-        if (conn) conn.close();
-    }
+    await idVerificationController.getDriver(req, res, conn);
+    if (conn) conn.close();
+
 });
 
 /**
@@ -34,33 +30,24 @@ router.get("/drivers/:driverId", authenticateJWT, async (req: Request, res: Resp
  */
 
 // Create verification (stepper form)
-router.post("/verify", authenticateJWT, async (req: Request, res: Response) => {
+router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    try {
-        await idVerificationController.createVerification(req, res, conn);
-    } finally {
-        if (conn) conn.close();
-    }
+    await idVerificationController.createVerification(req, res, conn);
+    if (conn) conn.close();
 });
 
 // List verifications with pagination
-router.get("/verify", authenticateJWT, async (req: Request, res: Response) => {
+router.get("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    try {
-        await idVerificationController.listVerifications(req, res, conn);
-    } finally {
-        if (conn) conn.close();
-    }
+    await idVerificationController.listVerifications(req, res, conn);
+    if (conn) conn.close();
 });
 
 // Get verification details with all related data
-router.get("/verify/:verificationId", authenticateJWT, async (req: Request, res: Response) => {
+router.get("/:verificationId", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    try {
-        await idVerificationController.getVerification(req, res, conn);
-    } finally {
-        if (conn) conn.close();
-    }
+    await idVerificationController.getVerification(req, res, conn);
+    if (conn) conn.close();
 });
 
 export default router;

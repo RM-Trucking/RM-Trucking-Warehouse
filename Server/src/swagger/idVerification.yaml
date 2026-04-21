@@ -101,7 +101,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/id-verification/verify:
+  /api/id-verification:
     post:
       tags:
         - Verification
@@ -201,7 +201,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/id-verification/verify/{verificationId}:
+  /api/id-verification/{verificationId}:
     get:
       tags:
         - Verification
@@ -312,7 +312,8 @@ components:
       required:
         - carrierId
         - firstIdType
-        - driverId
+        - driverName
+        - driverSignature
         - verifiedByEmployee
       properties:
         carrierId:
@@ -343,14 +344,18 @@ components:
           enum: [Y, N]
           example: "N"
           description: Whether photo matches on second ID (typically false/0)
-        driverId:
-          type: number
-          example: 2
-          description: REQUIRED - Existing driver ID from driver check-in. Driver name and signature will be fetched from Driver table
+        driverName:
+          type: string
+          example: "John Doe"
+          description: Name of the driver
+        driverSignature:
+          type: string
+          example: "base64-encoded-signature-value"
+          description: Base64-encoded signature of the driver
         verifiedByEmployee:
           type: string
-          example: "Admin User"
-          description: Name of verifying employee
+          example: "Jane Smith"
+          description: Name of the employee who verified the ID
 
     FreightDetail:
       type: object
@@ -386,6 +391,12 @@ components:
           type: string
           example: "ABC Logistics"
           description: Shipper name (also used as PRO identifier for validation)
+        toEmails:
+          type: array
+          items:
+            type: string
+          example: ["demo1@gmail.com", "demo2@gmail.com"]
+          description: Optional list of email addresses to send freight details to
 
     VerificationDetail:
       type: object

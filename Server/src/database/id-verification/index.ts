@@ -1,5 +1,5 @@
 import { Connection } from "odbc";
-import { Driver, IDVerification, IDVerificationProDetail } from "../../entities/id-verification";
+import { CreateIDVerification, Driver, IDVerification, IDVerificationProDetail } from "../../entities/id-verification";
 import { SCHEMA } from "../../config/db2";
 
 
@@ -14,7 +14,7 @@ export async function createDriver(conn: Connection, driver: Omit<Driver, "drive
             ("driverName","signaturePath")
             VALUES (?, ?)
         )`;
-    const result = await conn.query(query, [driver.driverName, driver.signaturePath ?? ""]) as any[];
+    const result = await conn.query(query, [driver.driverName, driver.driverSignature ?? ""]) as any[];
     return parseInt(result[0].driverId);
 }
 
@@ -38,30 +38,32 @@ export async function getDriverById(
  */
 export async function createIDVerification(
     conn: Connection,
-    data: Omit<IDVerification, "verificationId" | "createdAt">,
+    data: CreateIDVerification,
 ): Promise<number> {
 
     const query = `
     SELECT "verificationId"
     FROM FINAL TABLE (
       INSERT INTO ${SCHEMA}."ID_Verification"
-        ("carrierId","doorNo","firstIdType","firstIdPhotoMatch",
+        ("carrierId","customerId","stationId","doorNo","firstIdType","firstIdPhotoMatch",
          "secondIdType","secondIdPhotoMatch","driverId",
-         "shipperCompanyName","verifiedByEmployee","createdAt","createdBy")
-      VALUES (?,?,?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?)
+         "verifiedByEmployee","toEmails","createdAt","createdBy")
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?)
     )
   `;
 
     const params = [
         Number(data.carrierId),
+        Number(data.customerId),
+        Number(data.stationId),
         data.doorNo ?? null,
         data.firstIdType ?? null,
         data.firstIdPhotoMatch ?? 'N',
         data.secondIdType ?? null,
         data.secondIdPhotoMatch ?? 'N',
         Number(data.driverId),
-        data.shipperCompanyName ?? null,
         data.verifiedByEmployee ?? null,
+        data.toEmails ? JSON.stringify(data.toEmails) : null,
         Number(data.createdBy)
     ];
 
@@ -69,15 +71,36 @@ export async function createIDVerification(
     return parseInt(result[0].verificationId);
 }
 
-export async function getIDVerificationById(conn: Connection, id: number): Promise<IDVerification | null> {
-    const query = `SELECT * FROM ${SCHEMA}."ID_Verification" WHERE "verificationId" = ?`;
+export async function getIDVerificationById(
+    conn: Connection,
+    id: number
+): Promise<IDVerification | null> {
+    const query = `
+    SELECT v.*,
+           c."carrierName",
+           cu."customerName",
+           s."stationName"
+    FROM ${SCHEMA}."ID_Verification" v
+    LEFT JOIN ${SCHEMA}."Carrier" c ON v."carrierId" = c."carrierId"
+    LEFT JOIN ${SCHEMA}."Customer" cu ON v."customerId" = cu."customerId"
+    LEFT JOIN ${SCHEMA}."Station" s ON v."stationId" = s."stationId"
+    WHERE v."verificationId" = ?
+  `;
+
     const result = await conn.query(query, [Number(id)]) as any[];
+    if (!result.length) return null;
+
     return {
         ...result[0],
         driverId: parseInt(result[0].driverId),
-        verificationId: parseInt(result[0].verificationId)
+        verificationId: parseInt(result[0].verificationId),
+        toEmails: result[0].toEmails ? JSON.parse(result[0].toEmails) : [],
+        carrierName: result[0].carrierName,
+        customerName: result[0].customerName,
+        stationName: result[0].stationName
     };
 }
+
 
 export async function listIDVerifications(conn: Connection, limit: number, offset: number): Promise<IDVerification[]> {
     const query = `SELECT * FROM ${SCHEMA}."ID_Verification" ORDER BY "verificationId" DESC LIMIT ? OFFSET ?`;
@@ -92,11 +115,11 @@ export async function createProDetail(conn: Connection, detail: Omit<IDVerificat
         SELECT "proDetailId"
         FROM FINAL TABLE (
             INSERT INTO ${SCHEMA}."ID_Verification_Pro_Detail"
-            ("verificationId","customerId","stationId","pieces","weight","shipper","proNumber")
-            VALUES (?,?,?,?,?,?,?)
+            ("verificationId","pieces","weight","shipper","proNumber")
+            VALUES (?,?,?,?,?)
         )`;
 
-    const params = [Number(detail.verificationId), Number(detail.customerId), Number(detail.stationId), detail.pieces, detail.weight, detail.shipper, detail.proNumber];
+    const params = [Number(detail.verificationId), detail.pieces, detail.weight, detail.shipper, detail.proNumber];
     const result = await conn.query(query, params) as any[];
     return result[0].proDetailId;
 }

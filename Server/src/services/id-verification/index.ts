@@ -2,9 +2,14 @@ import { Connection } from "odbc";
 import * as idVerificationDB from "../../database/id-verification";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
+import * as userDB from "../../database/maintanance/auth";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
-import { Driver, IDVerification, IDVerificationProDetail } from "../../entities/id-verification";
+import { CreateIDVerification, CreateProDetail, Driver, IDVerification, IDVerificationProDetail, FreightDetailInput } from "../../entities/id-verification";
 import { WarehouseReceiptTemp, WarehouseReceipt } from "../../entities/warehouse-receipt";
+import { create } from "node:domain";
+import { toUtcDate } from "../../utils/dateFormater";
+
+
 
 /**
  * DRIVER SERVICES
@@ -20,29 +25,24 @@ export async function getDriverService(conn: Connection, driverId: number): Prom
 
 /**
  * VERIFICATION CREATION FLOW
- * - Accepts carrier, doorNo, ID info, driverId, verifier
- * - Groups freight details by customer/station
+ * - Accepts carrier, customer, station, ID info, driverId, verifier
+ * - Validates duplicate carrier+proNumber upfront
  * - Creates one ID_Verification per customer/station
- * - Creates multiple ProDetails under each verification
+ * - Creates multiple ProDetails under the verification
  * - For each ProDetail, creates WarehouseReceiptTemp + WarehouseReceipt
- * - Validates duplicate carrier+proNumber before creating receipt
  */
 export async function createVerificationService(
     conn: Connection,
-    header: Omit<IDVerification, "verificationId" | "createdAt">,
-    freightDetails: Omit<IDVerificationProDetail, "proDetailId" | "verificationId">[],
+    header: CreateIDVerification,
+    freightDetails: FreightDetailInput[],
     userId: number
 ): Promise<{ verificationIds: number[] }> {
     await conn.beginTransaction();
     try {
-        // Step 1: validate driver exists (must be created via driver check-in first)
-        const driver = await idVerificationDB.getDriverById(conn, (header.driverId));
-        if (!driver) {
-            throw new Error(`Driver with ID ${header.driverId} not found. Please create driver via check-in first`);
-        }
-        const driverId = header.driverId;
+        // Step 1: Create driver from header info
+        const driverId = await idVerificationDB.createDriver(conn, { driverName: header.driverName, driverSignature: header.driverSignature });
 
-        // Step 2: validate all freight details for duplicate carrier+proNumber upfront
+        // Step 2: Validate all freight details for duplicate carrier+proNumber upfront
         for (const detail of freightDetails) {
             const duplicate = await idVerificationDB.checkDuplicateCarrierProInVerification(conn, header.carrierId, detail.proNumber);
             if (duplicate) {
@@ -50,8 +50,8 @@ export async function createVerificationService(
             }
         }
 
-        // Step 3: group freight details by customer+station
-        const grouped = new Map<string, Omit<IDVerificationProDetail, "proDetailId" | "verificationId">[]>();
+        // Step 3: Group freight details by customer+station to identify number of verifications needed
+        const grouped = new Map<string, FreightDetailInput[]>();
         for (const detail of freightDetails) {
             const key = `${detail.customerId}-${detail.stationId}`;
             if (!grouped.has(key)) grouped.set(key, []);
@@ -60,22 +60,49 @@ export async function createVerificationService(
 
         const verificationIds: number[] = [];
 
-        // Step 4: create one ID_Verification per group
-        for (const [key, details] of grouped.entries()) {
-            const verificationId = await idVerificationDB.createIDVerification(conn, { ...header, driverId, createdBy: userId });
+        // Step 4: Create one ID_Verification per customer+station group
+        for (const [key, details] of grouped) {
+            const [customerId, stationId] = key.split('-').map(Number);
+            // Extract toEmails from first detail in group (all same for this station)
+            const toEmails = details[0]?.toEmails;
+
+            // Create verification with customer/station info
+            const verificationId = await idVerificationDB.createIDVerification(conn, {
+                carrierId: header.carrierId,
+                customerId,
+                stationId,
+                doorNo: header.doorNo,
+                firstIdType: header.firstIdType,
+                firstIdPhotoMatch: header.firstIdPhotoMatch,
+                secondIdType: header.secondIdType,
+                secondIdPhotoMatch: header.secondIdPhotoMatch,
+                driverId,
+                verifiedByEmployee: header.verifiedByEmployee,
+                createdBy: userId,
+                driverName: header.driverName,
+                driverSignature: header.driverSignature,
+                toEmails,
+            });
             verificationIds.push(verificationId);
 
-            // Step 5: create ProDetails + Warehouse Receipts
+            // Step 5: Create ProDetails + Warehouse Receipts for each detail in this group
             for (const detail of details) {
-                const proDetailId = await idVerificationDB.createProDetail(conn, { ...detail, verificationId });
+                // Create ProDetail (no customerId/stationId needed - they're in ID_Verification)
+                const proDetailId = await idVerificationDB.createProDetail(conn, {
+                    verificationId,
+                    pieces: detail.pieces,
+                    weight: detail.weight,
+                    shipper: detail.shipper,
+                    proNumber: detail.proNumber,
+                });
 
-                // Step 6: create WarehouseReceiptTemp
+                // Step 6: Create WarehouseReceiptTemp
                 const temp: Omit<WarehouseReceiptTemp, "receiptNumber" | "createdAt"> = {
                     verificationId,
                     receiptDate: new Date(),
                     shipper: detail.shipper,
-                    customerId: detail.customerId,
-                    stationId: detail.stationId,
+                    customerId,
+                    stationId,
                     carrierId: header.carrierId,
                     createdBy: userId,
                     status: "INITIATE",
@@ -89,13 +116,13 @@ export async function createVerificationService(
                 const entityId = await entityDB.createEntity(conn, 'WAREHOUSE_RECEIPT', receiptNumber.toString());
                 const noteThreadId = await noteDB.createNoteThread(conn, entityId, userId);
 
-                // Step 7: create WarehouseReceipt (without documentId initially)
+                // Step 7: Create WarehouseReceipt
                 const receipt: Omit<WarehouseReceipt, "receiptId" | "receivedBy" | "location"> = {
                     receiptNumber,
                     receiptDate: new Date(),
                     shipper: detail.shipper,
-                    customerId: detail.customerId,
-                    stationId: detail.stationId,
+                    customerId,
+                    stationId,
                     verificationId,
                     createdAt: new Date(),
                     createdBy: userId,
@@ -109,11 +136,11 @@ export async function createVerificationService(
                 };
 
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, receipt);
-                // Step 8: create WarehouseReceiptDocument with receiptId
-                // const documentId = await warehouseReceiptDB.createWarehouseReceiptDocument(conn, receiptId);
-                // Step 9: update WarehouseReceipt with documentId
-                // await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { documentId });
-                // Step 10: create initial audit log for INITIATE status
+
+                console.log("Receipt ID:", receiptId);
+
+
+                // Step 8: Create initial audit log for INITIATE status
                 await warehouseReceiptDB.createAuditLog(conn, {
                     receiptNumber,
                     receiptId,
@@ -154,5 +181,11 @@ export async function getVerificationService(conn: Connection, id: number) {
     const proDetails = await idVerificationDB.getProDetailsByVerification(conn, id);
     // const receipts = await warehouseReceiptDB.getWarehouseReceiptsByVerification(conn, id);
 
-    return { ...verification, driver, proDetails };
+    return {
+        ...verification,
+        createdAt: verification.createdAt ? toUtcDate(verification.createdAt) : null,
+        createdByName: await userDB.getUserName(conn, verification.createdBy),
+        driver,
+        proDetails
+    };
 }

@@ -7,6 +7,9 @@ import * as customerService from '../../services/maintanance';
 export async function getCustomerDropdown(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const search = (req.query.search as string) || ""; // user types into autocomplete
+
+        console.log(`Fetching customer dropdown with search: "${search}"`);
+
         const dropdownData = await customerService.getCustomerDropdownService(conn, search);
         res.status(200).json({ success: true, data: dropdownData });
     } catch (error) {

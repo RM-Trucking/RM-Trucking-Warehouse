@@ -29,6 +29,7 @@ export interface CreateEnroutePayload {
     estimatedDate?: string | null;
     shippedDate?: string | null;
     createdBy: string;
+    toEmails?: string[];
     pros: CreateProPayload[];
 }
 
@@ -49,6 +50,9 @@ export interface EnrouteWithPros {
     carrierName: string;
     customerName: string;
     stationName: string;
+    createdAt: Date | null;
+    createdByName: string;
+    toEmails?: string;
     pros: EnrouteProDetail[];
 }
 
@@ -67,4 +71,5 @@ export interface VerifyProResponse {
     customerName: string;
     stationId: number;
     stationName: string;
+    toEmails?: string[];
 }

@@ -45,8 +45,40 @@ paths:
       tags:
         - Enroute
       summary: List all enroutes with PROs
+      description: >
+        Returns a list of enroutes with associated PRO details.  
+        Supports optional search by carrier name, customer name, or station name
+        using a single `searchTerm` query parameter.  
+        Supports pagination using `page` and `pageSize` query parameters.  
+        If `searchTerm` is provided, results will include enroutes where any of
+        these fields match the term (case-insensitive).
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: searchTerm
+          schema:
+            type: string
+          required: false
+          description: >
+            A search term to filter enroutes by carrier name, customer name, or
+            station name. Example: `searchTerm=Chicago`
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          required: false
+          description: The page number to retrieve (default is 1).
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+          required: false
+          description: Number of records per page (default is 10).
       responses:
         "200":
           description: Successful response with enroutes and PROs
@@ -62,6 +94,21 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/EnrouteWithPros"
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Total number of enroutes matching the filter
+                        example: 125
+                      page:
+                        type: integer
+                        description: Current page number
+                        example: 2
+                      pageSize:
+                        type: integer
+                        description: Number of records per page
+                        example: 10
         "500":
           description: Server error
 
@@ -129,10 +176,6 @@ components:
         shipper:
           type: string
           example: "ABC Shippers"
-        activeStatus:
-          type: string
-          enum: [Y, N]
-          example: "Y"
 
     CreateEnroutePayload:
       type: object
@@ -140,7 +183,7 @@ components:
         - carrierId
         - customerId
         - stationId
-        - createdBy
+        - toEmails
         - pros
       properties:
         carrierId:
@@ -160,9 +203,12 @@ components:
           type: string
           format: date
           example: "2026-03-28"
-        createdBy:
-          type: string
-          example: "systemUser"
+        toEmails:
+          type: array
+          items:
+            type: string
+            format: email
+          example: ["demo@gmail.com", "demo1@gmail.com"]
         pros:
           type: array
           items:

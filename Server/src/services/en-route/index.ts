@@ -1,16 +1,19 @@
 import { Connection } from "odbc"; // adjust to your DB library
 import * as enrouteDB from "../../database/en-route";
+import * as userDB from "../../database/maintanance/auth";
 import {
     CreateEnroutePayload,
     EnrouteWithPros,
     VerifyProResponse,
     EnrouteProDetail
 } from "../../entities/en-route";
+import { toUtcDate } from "../../utils/dateFormater";
 
 // 1. Create Enroute with multiple PROs (transactional)
 export async function createEnrouteWithPros(
     conn: Connection,
-    payload: CreateEnroutePayload
+    payload: CreateEnroutePayload,
+    userId: number
 ): Promise<number> {
     try {
         await conn.beginTransaction();
@@ -23,7 +26,8 @@ export async function createEnrouteWithPros(
             payload.stationId,
             payload.estimatedDate || null,
             payload.shippedDate || null,
-            payload.createdBy
+            payload.toEmails ? JSON.stringify(payload.toEmails) : null,
+            userId
         );
 
         // Insert PRO details
@@ -38,42 +42,41 @@ export async function createEnrouteWithPros(
 }
 
 // 2. List all Enroutes with PROs grouped
-export async function listEnroutes(conn: Connection): Promise<EnrouteWithPros[]> {
-    try {
-        const result = await enrouteDB.listEnroutes(conn);
+export async function listEnroutes(
+    conn: Connection,
+    filters: { searchTerm?: string; page?: number; pageSize?: number }
+): Promise<{ data: EnrouteWithPros[]; total: number; page: number; pageSize: number }> {
+    const { searchTerm, page = 1, pageSize = 10 } = filters;
 
-        const grouped: Record<number, EnrouteWithPros> = {};
-        for (const row of result) {
-            if (!grouped[row.enrouteId]) {
-                grouped[row.enrouteId] = {
-                    enrouteId: row.enrouteId,
-                    estimatedDate: row.estimatedDate,
-                    shippedDate: row.shippedDate,
-                    carrierName: row.carrierName,
-                    customerName: row.customerName,
-                    stationName: row.stationName,
-                    pros: []
-                };
-            }
-            if (row.proDetailId) {
-                const pro: EnrouteProDetail = {
-                    proDetailId: row.proDetailId,
-                    enrouteId: row.enrouteId,
-                    proNumber: row.proNumber,
-                    pieces: row.pieces,
-                    weight: row.weight,
-                    shipper: row.shipper,
-                    activeStatus: row.activeStatus
-                };
-                grouped[row.enrouteId].pros.push(pro);
-            }
-        }
+    // Step 1: get paginated enroute headers (no pros)
+    const enroutes = await enrouteDB.listEnroutes(conn, { searchTerm, page, pageSize });
+    const total = await enrouteDB.countEnroutes(conn, { searchTerm });
 
-        return Object.values(grouped);
-    } catch (error) {
-        throw error;
+    const data: EnrouteWithPros[] = [];
+
+    // Step 2: for each enroute, fetch its pros separately
+    for (const e of enroutes) {
+        const pros = await enrouteDB.getProsByEnrouteId(conn, e.enrouteId);
+
+        data.push({
+            enrouteId: e.enrouteId,
+            estimatedDate: e.estimatedDate,
+            shippedDate: e.shippedDate,
+            carrierName: e.carrierName,
+            customerName: e.customerName,
+            stationName: e.stationName,
+            createdAt: e.createdAt ? toUtcDate(e.createdAt) : null,
+            createdByName: await userDB.getUserName(conn, e.createdBy),
+            toEmails: e.toEmails ? JSON.parse(e.toEmails) : [],
+            pros
+        });
     }
+
+    return { data, total, page, pageSize };
 }
+
+
+
 
 // 3. Verify PRO by carrier + proNumber
 export async function verifyPro(
@@ -97,7 +100,8 @@ export async function verifyPro(
         customerId: result.customerId,
         customerName: result.customerName,
         stationId: result.stationId,
-        stationName: result.stationName
+        stationName: result.stationName,
+        toEmails: result.toEmails ? JSON.parse(result.toEmails) : []
     };
 
     return response;

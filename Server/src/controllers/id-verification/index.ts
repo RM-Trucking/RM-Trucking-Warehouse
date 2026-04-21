@@ -20,7 +20,7 @@ export async function createDriver(req: Request, res: Response, conn: Connection
 
         const result = await idVerificationService.createDriverService(conn, {
             driverName,
-            signaturePath: signaturePath || null
+            driverSignature: signaturePath || null
         });
 
         res.status(201).json({
@@ -89,13 +89,24 @@ export async function createVerification(req: Request, res: Response, conn: Conn
             return;
         }
 
-        if (!header.carrierId || !header.firstIdType || !header.driverId || !header.verifiedByEmployee) {
+        const requiredFields = [
+            "carrierId",
+            "firstIdType",
+            "verifiedByEmployee",
+            "driverName",
+            "driverSignature"
+        ];
+
+        const missing = requiredFields.filter(field => !header[field]);
+
+        if (missing.length > 0) {
             res.status(400).json({
                 success: false,
-                message: "Missing required fields: carrierId, firstIdType, driverId, verifiedByEmployee, createdBy"
+                message: `Missing required fields: ${missing.join(", ")}`
             });
             return;
         }
+
 
         if (!freightDetails || !Array.isArray(freightDetails) || freightDetails.length === 0) {
             res.status(400).json({ success: false, message: "Freight details are required" });
@@ -112,6 +123,9 @@ export async function createVerification(req: Request, res: Response, conn: Conn
                 return;
             }
         }
+
+
+
 
         // Create verification
         const result = await idVerificationService.createVerificationService(
