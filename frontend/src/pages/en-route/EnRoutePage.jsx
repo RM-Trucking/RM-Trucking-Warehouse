@@ -952,11 +952,11 @@ const handleViewModal = useCallback((rowData) => {
                 width: 80,
                 sortable: false
               },
-               {
+              ...(viewMode ? [] : [{
                 field: 'entryType',
                 headerName: 'Type',
                 sortable: false
-              },
+              }]),
               {
                 field: 'emailid',
                 headerName: 'EmailID',
