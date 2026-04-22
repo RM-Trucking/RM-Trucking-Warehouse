@@ -21,7 +21,8 @@ import StyledTextField from "../../sections/shared/StyledTextField";
 import StyledCheckbox from "../../sections/shared/StyledCheckBox";
 import ShipmentFormLayout from "../../sections/shared/ShipmentFormLayout";
 import Iconify from "../../components/iconify";
-import { searchCarriers } from "../../redux/slices/enroute";
+import { searchCarriers, addNewCarrier } from "../../redux/slices/enroute";
+import formatPhoneNumber from "../../utils/formatPhoneNumber";
 
 const actionBtnSx = {
   bgcolor: "#A22",
@@ -106,6 +107,8 @@ export default function DriverCheckInPage() {
     name: "",
     phone: "",
   });
+  const [addCarrierLoading, setAddCarrierLoading] = useState(false);
+  const [addCarrierError, setAddCarrierError] = useState(null);
   const [signature, setSignature] = useState(true);
   const [formValues, setFormValues] = useState({
     freightForwarder: "",
@@ -138,10 +141,25 @@ export default function DriverCheckInPage() {
 
   const handleCloseAddCarrierModal = () => {
     setOpenAddCarrierModal(false);
+    setAddCarrierError(null);
   };
 
   const handleResetAddCarrierForm = () => {
     setNewCarrierForm({ name: "", phone: "" });
+  };
+
+  const validatePhoneNumber = (phone) => {
+    if (!phone) {
+      return 'Phone number is required';
+    }
+    if (phone.length > 20) {
+      return 'Phone number cannot exceed 20 characters';
+    }
+    const phoneRegex = /^\(\d{3}\) \d{3}-\d{4}.*$/;
+    if (!phoneRegex.test(phone)) {
+      return 'Invalid phone format. Use format: (XXX) XXX-XXXX';
+    }
+    return null;
   };
 
   const handleGetSignature = () => {
@@ -172,10 +190,37 @@ export default function DriverCheckInPage() {
     setProGroups(INITIAL_GROUPS);
   };
 
-  const handleAddCarrierSubmit = () => {
-    // TODO: Add API call to submit new carrier
-    console.log("New Carrier:", newCarrierForm);
-    handleCloseAddCarrierModal();
+  const handleAddCarrierSubmit = async () => {
+    if (!newCarrierForm.name.trim()) {
+      setAddCarrierError('Delivering Carrier name is required');
+      return;
+    }
+
+    const phoneError = validatePhoneNumber(newCarrierForm.phone);
+    if (phoneError) {
+      setAddCarrierError(phoneError);
+      return;
+    }
+
+    setAddCarrierLoading(true);
+    setAddCarrierError(null);
+
+    try {
+      const result = await dispatch(addNewCarrier(newCarrierForm.name, newCarrierForm.phone));
+
+      // Set the newly created carrier as selected
+      if (result && result.carrierId && result.carrierName) {
+        setSelectedCarrier(result);
+      }
+
+      // Reset form and close modal on success
+      setNewCarrierForm({ name: "", phone: "" });
+      handleCloseAddCarrierModal();
+    } catch (error) {
+      setAddCarrierError(error.message || 'Failed to add carrier');
+    } finally {
+      setAddCarrierLoading(false);
+    }
   };
 
   const toggleCollapse = (groupId) =>
@@ -753,6 +798,12 @@ export default function DriverCheckInPage() {
             including other details in maintenance.
           </Typography>
 
+          {addCarrierError && (
+            <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2 }}>
+              {addCarrierError}
+            </Typography>
+          )}
+
           <Box sx={{ display: "flex", gap: 3 }}>
             <Box sx={{ flex: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
@@ -785,14 +836,15 @@ export default function DriverCheckInPage() {
               <TextField
                 fullWidth
                 variant="standard"
-                placeholder=""
+                placeholder="(XXX) XXX-XXXX"
                 value={newCarrierForm.phone}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const formatted = formatPhoneNumber(e.target.value);
                   setNewCarrierForm((prev) => ({
                     ...prev,
-                    phone: e.target.value,
-                  }))
-                }
+                    phone: formatted,
+                  }));
+                }}
               />
             </Box>
           </Box>
@@ -813,8 +865,9 @@ export default function DriverCheckInPage() {
               variant="contained"
               sx={{ bgcolor: "#a22", "&:hover": { bgcolor: "#811" }, px: 3 }}
               onClick={handleAddCarrierSubmit}
+              disabled={addCarrierLoading}
             >
-              Submit
+              {addCarrierLoading ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Submit'}
             </Button>
           </Stack>
         </DialogContent>
