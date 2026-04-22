@@ -90,6 +90,31 @@ const INITIAL_GROUPS = [
   },
 ];
 
+// Dummy PRO data for validation
+const DUMMY_PROS = {
+  'PRO7898710001': {
+    pro: 'PRO7898710001',
+    pieces: 20,
+    weight: 600,
+    shipper: 'Shipper052',
+    freightForwarder: 'KUEHNE & NAGEL'
+  },
+  'PRO7898710002': {
+    pro: 'PRO7898710002',
+    pieces: 15,
+    weight: 450,
+    shipper: 'Shipper053',
+    freightForwarder: 'SEACOAST'
+  },
+  'PRO7898710003': {
+    pro: 'PRO7898710003',
+    pieces: 25,
+    weight: 750,
+    shipper: 'Shipper054',
+    freightForwarder: 'KUEHNE & NAGEL'
+  }
+};
+
 export default function DriverCheckInPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -117,6 +142,12 @@ export default function DriverCheckInPage() {
     weight: "",
     shipper: "",
   });
+
+  // PRO validation states
+  const [proValidating, setProValidating] = useState(false);
+  const [showRemainingFields, setShowRemainingFields] = useState(false);
+  const [proValidationError, setProValidationError] = useState(null);
+  const [proValidated, setProValidated] = useState(false);
 
   // Debounced search effect for carriers
   useEffect(() => {
@@ -188,6 +219,47 @@ export default function DriverCheckInPage() {
     });
     setSignature(true);
     setProGroups(INITIAL_GROUPS);
+    setShowRemainingFields(false);
+    setProValidationError(null);
+    setProValidated(false);
+  };
+
+  const handleValidateProNumber = async () => {
+    if (!formValues.pro.trim()) {
+      setProValidationError('Please enter a PRO number');
+      return;
+    }
+
+    setProValidating(true);
+    setProValidationError(null);
+
+    try {
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const proData = DUMMY_PROS[formValues.pro.toUpperCase()];
+
+      if (proData) {
+        // PRO found - populate fields
+        setFormValues(prev => ({
+          ...prev,
+          freightForwarder: proData.freightForwarder,
+          pieces: proData.pieces.toString(),
+          weight: proData.weight.toString(),
+          shipper: proData.shipper
+        }));
+        setProValidated(true);
+        setShowRemainingFields(true);
+      } else {
+        // PRO not found - show fields for manual entry
+        setProValidated(false);
+        setShowRemainingFields(true);
+      }
+    } catch (error) {
+      setProValidationError('Error validating PRO number');
+    } finally {
+      setProValidating(false);
+    }
   };
 
   const handleAddCarrierSubmit = async () => {
@@ -268,6 +340,9 @@ export default function DriverCheckInPage() {
       weight: "",
       shipper: "",
     });
+    setShowRemainingFields(false);
+    setProValidationError(null);
+    setProValidated(false);
   };
 
   const handleDelete = (groupId, entryId) => {
@@ -626,11 +701,13 @@ export default function DriverCheckInPage() {
               Pro Details
             </Typography>
           </legend>
+
+          {/* Step 1: Pro Number and Validate Button */}
           <Stack
             direction={{ xs: "column", lg: "row" }}
             spacing={3}
             alignItems="flex-end"
-            sx={{ mb: 3 }}
+            sx={{ mb: showRemainingFields ? 3 : 0 }}
           >
             <StyledTextField
               variant="standard"
@@ -639,59 +716,93 @@ export default function DriverCheckInPage() {
               label="Pro"
               value={formValues.pro}
               onChange={handleFormChange("pro")}
-              sx={{ width: { xs: "100%", lg: "22%" } }}
-            />
-            <StyledTextField
-              variant="standard"
-              size="small"
-              required
-              label="Freight Forwarder"
-              value={formValues.freightForwarder}
-              onChange={handleFormChange("freightForwarder")}
-              sx={{ width: { xs: "100%", lg: "22%" } }}
-            />
-            <StyledTextField
-              variant="standard"
-              size="small"
-              required
-              label="Pieces"
-              value={formValues.pieces}
-              onChange={handleFormChange("pieces")}
-              sx={{ width: { xs: "100%", lg: "22%" } }}
-            />
-            <StyledTextField
-              variant="standard"
-              size="small"
-              required
-              label="Weight (lbs)"
-              value={formValues.weight}
-              onChange={handleFormChange("weight")}
-              sx={{ width: { xs: "100%", lg: "22%" } }}
-            />
-          </Stack>
-          <Stack
-            direction={{ xs: "column", lg: "row" }}
-            spacing={3}
-            alignItems="flex-end"
-          >
-            <StyledTextField
-              variant="standard"
-              size="small"
-              required
-              label="Shipper"
-              value={formValues.shipper}
-              onChange={handleFormChange("shipper")}
-              sx={{ width: { xs: "100%", lg: "22%" } }}
+              sx={{ width: { xs: "100%", lg: "30%" } }}
+              disabled={proValidated}
             />
             <Button
               variant="contained"
               size="small"
-              sx={actionBtnSx}
-              onClick={handleFormAdd}
+              sx={{ ...actionBtnSx, minWidth: 110, flexShrink: 0 }}
+              onClick={handleValidateProNumber}
+              disabled={proValidating || proValidated}
             >
-              Add
+              {proValidating ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Validate'}
             </Button>
           </Stack>
+
+          {/* Error message */}
+          {proValidationError && (
+            <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2 }}>
+              {proValidationError}
+            </Typography>
+          )}
+
+          {/* Step 2: Remaining fields (shown after validation) */}
+          {showRemainingFields && (
+            <>
+              <Stack
+                direction={{ xs: "column", lg: "row" }}
+                spacing={3}
+                alignItems="flex-end"
+                sx={{ mb: 3 }}
+              >
+                <StyledTextField
+                  variant="standard"
+                  size="small"
+                  required
+                  label="Freight Forwarder"
+                  value={formValues.freightForwarder}
+                  onChange={handleFormChange("freightForwarder")}
+                  sx={{ width: { xs: "100%", lg: "22%" } }}
+                  disabled={proValidated}
+                />
+                <StyledTextField
+                  variant="standard"
+                  size="small"
+                  required
+                  label="Pieces"
+                  value={formValues.pieces}
+                  onChange={handleFormChange("pieces")}
+                  sx={{ width: { xs: "100%", lg: "22%" } }}
+                  disabled={proValidated}
+                />
+                <StyledTextField
+                  variant="standard"
+                  size="small"
+                  required
+                  label="Weight (lbs)"
+                  value={formValues.weight}
+                  onChange={handleFormChange("weight")}
+                  sx={{ width: { xs: "100%", lg: "22%" } }}
+                  disabled={proValidated}
+                />
+              </Stack>
+              <Stack
+                direction={{ xs: "column", lg: "row" }}
+                spacing={3}
+                alignItems="flex-end"
+              >
+                <StyledTextField
+                  variant="standard"
+                  size="small"
+                  required
+                  label="Shipper"
+                  value={formValues.shipper}
+                  onChange={handleFormChange("shipper")}
+                  sx={{ width: { xs: "100%", lg: "22%" } }}
+                  disabled={proValidated}
+                />
+                <Button
+                  variant="contained"
+                  size="small"
+                  sx={actionBtnSx}
+                  onClick={handleFormAdd}
+                >
+                  Add
+                </Button>
+              </Stack>
+            </>
+          )}
         </fieldset>
 
         {/* Freight Forwarder grouped tables */}
