@@ -22,6 +22,7 @@ import StyledCheckbox from "../../sections/shared/StyledCheckBox";
 import ShipmentFormLayout from "../../sections/shared/ShipmentFormLayout";
 import Iconify from "../../components/iconify";
 import { searchCarriers, addNewCarrier } from "../../redux/slices/enroute";
+import { verifyProNumber, clearProVerification } from "../../redux/slices/driverCheckIn";
 import formatPhoneNumber from "../../utils/formatPhoneNumber";
 
 const actionBtnSx = {
@@ -35,60 +36,7 @@ const actionBtnSx = {
   "&:hover": { bgcolor: "#8b1c1c" },
 };
 
-const INITIAL_GROUPS = [
-  {
-    id: "KUEHNE_NAGEL",
-    label: "Freight Forwarder - KUEHNE & NAGEL | Elk Grove Village | IL",
-    entries: [
-      {
-        id: 1,
-        sno: "01",
-        pro: "PRO7898710001",
-        pieces: 20,
-        weight: 600,
-        shipper: "Shipper052",
-      },
-      {
-        id: 2,
-        sno: "02",
-        pro: "PRO7898710001",
-        pieces: 20,
-        weight: 600,
-        shipper: "Shipper052",
-      },
-      {
-        id: 3,
-        sno: "03",
-        pro: "PRO7898710001",
-        pieces: 20,
-        weight: 600,
-        shipper: "Shipper052",
-      },
-      {
-        id: 4,
-        sno: "04",
-        pro: "PRO7898710001",
-        pieces: 20,
-        weight: 600,
-        shipper: "Shipper052",
-      },
-    ],
-  },
-  {
-    id: "SEACOAST",
-    label: "Freight Forwarder - SEACOAST | Elk Grove Village | IL",
-    entries: [
-      {
-        id: 1,
-        sno: "01",
-        pro: "PRO7898710001",
-        pieces: 20,
-        weight: 600,
-        shipper: "Shipper052",
-      },
-    ],
-  },
-];
+const INITIAL_GROUPS = [];
 
 // Dummy PRO data for validation
 const DUMMY_PROS = {
@@ -148,6 +96,9 @@ export default function DriverCheckInPage() {
   const [showRemainingFields, setShowRemainingFields] = useState(false);
   const [proValidationError, setProValidationError] = useState(null);
   const [proValidated, setProValidated] = useState(false);
+  const [openProDialog, setOpenProDialog] = useState(false);
+  const [proDialogSuccess, setProDialogSuccess] = useState(false);
+  const [proFormError, setProFormError] = useState(null);
 
   // Debounced search effect for carriers
   useEffect(() => {
@@ -173,6 +124,7 @@ export default function DriverCheckInPage() {
   const handleCloseAddCarrierModal = () => {
     setOpenAddCarrierModal(false);
     setAddCarrierError(null);
+    setNewCarrierForm({ name: "", phone: "" });
   };
 
   const handleResetAddCarrierForm = () => {
@@ -222,9 +174,15 @@ export default function DriverCheckInPage() {
     setShowRemainingFields(false);
     setProValidationError(null);
     setProValidated(false);
+    dispatch(clearProVerification());
   };
 
   const handleValidateProNumber = async () => {
+    if (!selectedCarrier?.carrierId) {
+      setProValidationError('Please select a carrier first');
+      return;
+    }
+
     if (!formValues.pro.trim()) {
       setProValidationError('Please enter a PRO number');
       return;
@@ -234,32 +192,82 @@ export default function DriverCheckInPage() {
     setProValidationError(null);
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const proData = DUMMY_PROS[formValues.pro.toUpperCase()];
+      const proData = await dispatch(verifyProNumber(selectedCarrier.carrierId, formValues.pro));
 
       if (proData) {
-        // PRO found - populate fields
+        // PRO found - show success dialog
+        setProDialogSuccess(true);
+        setOpenProDialog(true);
+
+        // Auto-populate fields with API response
         setFormValues(prev => ({
           ...prev,
-          freightForwarder: proData.freightForwarder,
-          pieces: proData.pieces.toString(),
-          weight: proData.weight.toString(),
-          shipper: proData.shipper
+          freightForwarder: proData.customerName || proData.freightForwarder || '',
+          pieces: proData.pieces?.toString() || '',
+          weight: proData.weight?.toString() || '',
+          shipper: proData.shipper || ''
         }));
         setProValidated(true);
         setShowRemainingFields(true);
       } else {
-        // PRO not found - show fields for manual entry
+        // PRO not found - show not available dialog
+        setProDialogSuccess(false);
+        setOpenProDialog(true);
         setProValidated(false);
         setShowRemainingFields(true);
       }
     } catch (error) {
-      setProValidationError('Error validating PRO number');
+      setProValidationError(error.message || 'Error validating PRO number');
     } finally {
       setProValidating(false);
     }
+  };
+
+  const handleCloseProDialog = () => {
+    setOpenProDialog(false);
+    setProFormError(null);
+  };
+
+  const handleResetProValidation = () => {
+    setFormValues(prev => ({
+      ...prev,
+      pro: '',
+      freightForwarder: '',
+      pieces: '',
+      weight: '',
+      shipper: ''
+    }));
+    setShowRemainingFields(false);
+    setProValidationError(null);
+    setProValidated(false);
+    setProFormError(null);
+    dispatch(clearProVerification());
+  };
+
+  const validateProDetails = () => {
+    const errors = [];
+
+    if (!formValues.freightForwarder || !formValues.freightForwarder.trim()) {
+      errors.push('Freight Forwarder is required');
+    }
+
+    if (!formValues.pieces || !formValues.pieces.toString().trim()) {
+      errors.push('Pieces is required');
+    } else if (isNaN(formValues.pieces) || Number(formValues.pieces) <= 0) {
+      errors.push('Pieces must be a valid number greater than 0');
+    }
+
+    if (!formValues.weight || !formValues.weight.toString().trim()) {
+      errors.push('Weight is required');
+    } else if (isNaN(formValues.weight) || Number(formValues.weight) <= 0) {
+      errors.push('Weight must be a valid number greater than 0');
+    }
+
+    if (!formValues.shipper || !formValues.shipper.trim()) {
+      errors.push('Shipper is required');
+    }
+
+    return errors;
   };
 
   const handleAddCarrierSubmit = async () => {
@@ -304,16 +312,21 @@ export default function DriverCheckInPage() {
   const addEntry = (freightForwarder, pro, pieces, weight, shipper) => {
     if (!freightForwarder || !pro) return;
     const groupId = freightForwarder.toUpperCase().replace(/\s+/g, "_");
-    const newEntry = {
-      id: Date.now(),
-      sno: "01",
-      pro,
-      pieces: Number(pieces),
-      weight: Number(weight),
-      shipper,
-    };
+
     setProGroups((prev) => {
       const existing = prev.find((g) => g.id === groupId);
+      // Generate serial number based on existing entries
+      const sno = existing ? String(existing.entries.length + 1).padStart(2, "0") : "01";
+
+      const newEntry = {
+        id: Date.now(),
+        sno,
+        pro,
+        pieces: Number(pieces),
+        weight: Number(weight),
+        shipper,
+      };
+
       if (existing) {
         return prev.map((g) =>
           g.id === groupId ? { ...g, entries: [...g.entries, newEntry] } : g,
@@ -331,6 +344,14 @@ export default function DriverCheckInPage() {
   };
 
   const handleFormAdd = () => {
+    // Validate form fields
+    const errors = validateProDetails();
+
+    if (errors.length > 0) {
+      setProFormError(errors.join('\n'));
+      return;
+    }
+
     const { freightForwarder, pro, pieces, weight, shipper } = formValues;
     addEntry(freightForwarder, pro, pieces, weight, shipper);
     setFormValues({
@@ -343,6 +364,8 @@ export default function DriverCheckInPage() {
     setShowRemainingFields(false);
     setProValidationError(null);
     setProValidated(false);
+    setProFormError(null);
+    dispatch(clearProVerification());
   };
 
   const handleDelete = (groupId, entryId) => {
@@ -723,10 +746,16 @@ export default function DriverCheckInPage() {
               variant="contained"
               size="small"
               sx={{ ...actionBtnSx, minWidth: 110, flexShrink: 0 }}
-              onClick={handleValidateProNumber}
-              disabled={proValidating || proValidated}
+              onClick={proValidated ? handleResetProValidation : handleValidateProNumber}
+              disabled={proValidating}
             >
-              {proValidating ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Validate'}
+              {proValidating ? (
+                <CircularProgress size={20} sx={{ color: 'white' }} />
+              ) : proValidated ? (
+                'Reset'
+              ) : (
+                'Validate'
+              )}
             </Button>
           </Stack>
 
@@ -734,6 +763,13 @@ export default function DriverCheckInPage() {
           {proValidationError && (
             <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2 }}>
               {proValidationError}
+            </Typography>
+          )}
+
+          {/* Form validation errors */}
+          {proFormError && (
+            <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2, whiteSpace: 'pre-line' }}>
+              {proFormError}
             </Typography>
           )}
 
@@ -754,7 +790,6 @@ export default function DriverCheckInPage() {
                   value={formValues.freightForwarder}
                   onChange={handleFormChange("freightForwarder")}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
-                  disabled={proValidated}
                 />
                 <StyledTextField
                   variant="standard"
@@ -764,7 +799,6 @@ export default function DriverCheckInPage() {
                   value={formValues.pieces}
                   onChange={handleFormChange("pieces")}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
-                  disabled={proValidated}
                 />
                 <StyledTextField
                   variant="standard"
@@ -774,7 +808,6 @@ export default function DriverCheckInPage() {
                   value={formValues.weight}
                   onChange={handleFormChange("weight")}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
-                  disabled={proValidated}
                 />
               </Stack>
               <Stack
@@ -790,7 +823,6 @@ export default function DriverCheckInPage() {
                   value={formValues.shipper}
                   onChange={handleFormChange("shipper")}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
-                  disabled={proValidated}
                 />
                 <Button
                   variant="contained"
@@ -982,6 +1014,78 @@ export default function DriverCheckInPage() {
             </Button>
           </Stack>
         </DialogContent>
+      </Dialog>
+
+      {/* PRO Verification Dialog */}
+      <Dialog
+        open={openProDialog}
+        onClose={handleCloseProDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2
+          }
+        }}
+      >
+        <Box sx={{ p: 3, textAlign: 'center' }}>
+          {proDialogSuccess ? (
+            <>
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  sx={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: '50%',
+                    bgcolor: '#4caf50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Iconify icon="mdi:check" width={32} color="white" />
+                </Box>
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                Pro Number Available
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
+                The PRO number has been found in the database. Details have been auto-populated.
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  sx={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: '50%',
+                    bgcolor: '#f44336',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Iconify icon="mdi:alert" width={32} color="white" />
+                </Box>
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                Pro Number Not Available
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
+                The PRO number was not found in the database. Please proceed manually by entering the details.
+              </Typography>
+            </>
+          )}
+          <Button
+            variant="contained"
+            onClick={handleCloseProDialog}
+            sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' }, px: 4 }}
+          >
+            OK
+          </Button>
+        </Box>
       </Dialog>
     </ShipmentFormLayout>
   );
