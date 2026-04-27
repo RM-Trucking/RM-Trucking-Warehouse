@@ -8,6 +8,11 @@ const initialState = {
         data: null,
         error: null,
         found: false
+    },
+    checkInSubmission: {
+        loading: false,
+        success: false,
+        error: null
     }
 };
 
@@ -45,6 +50,22 @@ const slice = createSlice({
             state.proVerification.data = null;
             state.proVerification.error = null;
             state.proVerification.found = false;
+        },
+        // Check-In Submission actions
+        startCheckInSubmission(state) {
+            state.checkInSubmission.loading = true;
+            state.checkInSubmission.success = false;
+            state.checkInSubmission.error = null;
+        },
+        checkInSubmissionSuccess(state, action) {
+            state.checkInSubmission.loading = false;
+            state.checkInSubmission.success = true;
+            state.checkInSubmission.error = null;
+        },
+        checkInSubmissionError(state, action) {
+            state.checkInSubmission.loading = false;
+            state.checkInSubmission.success = false;
+            state.checkInSubmission.error = action.payload || 'Error submitting check-in';
         }
     }
 });
@@ -94,5 +115,53 @@ export function verifyProNumber(carrierId, proNumber) {
 export function clearProVerification() {
     return async () => {
         dispatch(slice.actions.clearProVerification());
+    };
+}
+
+// Submit Driver Check-In API
+export function submitDriverCheckIn(checkInData) {
+    return async () => {
+        dispatch(slice.actions.startCheckInSubmission());
+        try {
+            const payload = {
+                header: {
+                    carrierId: checkInData.carrierId,
+                    doorNo: checkInData.doorNo,
+                    firstIdType: checkInData.firstIdType,
+                    firstIdPhotoMatch: checkInData.firstIdPhotoMatch ? 'Y' : 'N',
+                    secondIdType: 'NA',
+                    secondIdPhotoMatch: 'N',
+                    driverName: checkInData.driverName,
+                    driverSignature: checkInData.driverSignature,
+                    verifiedByEmployee: checkInData.verifiedByEmployee
+                },
+                freightDetails: checkInData.freightDetails.map(detail => ({
+                    customerId: detail.customerId,
+                    stationId: detail.stationId,
+                    proNumber: detail.proNumber,
+                    pieces: detail.pieces,
+                    weight: detail.weight,
+                    shipper: detail.shipper,
+                    toEmails: detail.toEmails || ['demo1@gmail.com', 'demo2@gmail.com']
+                }))
+            };
+
+            console.log('Submitting check-in payload:', payload);
+
+            const response = await axios.post('/id-verification', payload);
+
+            if (response.data?.success) {
+                dispatch(slice.actions.checkInSubmissionSuccess(response.data.data));
+                return response.data.data;
+            } else {
+                dispatch(slice.actions.checkInSubmissionError('Failed to submit check-in'));
+                throw new Error('Failed to submit check-in');
+            }
+        } catch (error) {
+            console.error('Error submitting check-in:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'Error submitting check-in';
+            dispatch(slice.actions.checkInSubmissionError(errorMessage));
+            throw error;
+        }
     };
 }

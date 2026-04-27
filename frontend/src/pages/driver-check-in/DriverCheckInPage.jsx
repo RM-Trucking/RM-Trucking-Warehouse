@@ -22,7 +22,7 @@ import StyledCheckbox from "../../sections/shared/StyledCheckBox";
 import ShipmentFormLayout from "../../sections/shared/ShipmentFormLayout";
 import Iconify from "../../components/iconify";
 import { searchCarriers, addNewCarrier } from "../../redux/slices/enroute";
-import { verifyProNumber, clearProVerification } from "../../redux/slices/driverCheckIn";
+import { verifyProNumber, clearProVerification, submitDriverCheckIn } from "../../redux/slices/driverCheckIn";
 import formatPhoneNumber from "../../utils/formatPhoneNumber";
 
 const actionBtnSx = {
@@ -72,6 +72,8 @@ export default function DriverCheckInPage() {
 
   const [proGroups, setProGroups] = useState(INITIAL_GROUPS);
   const [collapsed, setCollapsed] = useState({});
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [editingValues, setEditingValues] = useState({});
   const [carrierSearchValue, setCarrierSearchValue] = useState("");
   const [selectedCarrier, setSelectedCarrier] = useState(null);
   const isSelectingRef = useRef(false);
@@ -83,6 +85,11 @@ export default function DriverCheckInPage() {
   const [addCarrierLoading, setAddCarrierLoading] = useState(false);
   const [addCarrierError, setAddCarrierError] = useState(null);
   const [signature, setSignature] = useState(true);
+  const [doorValue, setDoorValue] = useState("");
+  const [driverNameValue, setDriverNameValue] = useState("");
+  const [firstIdTypeValue, setFirstIdTypeValue] = useState("");
+  const [firstIdPhotoChecked, setFirstIdPhotoChecked] = useState(false);
+  const [employeeNameValue, setEmployeeNameValue] = useState("");
   const [formValues, setFormValues] = useState({
     freightForwarder: "",
     pro: "",
@@ -170,11 +177,87 @@ export default function DriverCheckInPage() {
       shipper: "",
     });
     setSignature(true);
-    setProGroups(INITIAL_GROUPS);
+    setProGroups([]);
     setShowRemainingFields(false);
     setProValidationError(null);
     setProValidated(false);
+    setDoorValue("");
+    setDriverNameValue("");
+    setFirstIdTypeValue("");
+    setFirstIdPhotoChecked(false);
+    setEmployeeNameValue("");
+    setSignatureData(null);
+    setIsSignatureVisible(false);
     dispatch(clearProVerification());
+  };
+
+  const handleSubmitCheckIn = async () => {
+    // Validate required fields
+    if (!selectedCarrier?.carrierId) {
+      alert('Please select a Carrier');
+      return;
+    }
+
+    if (!doorValue.trim()) {
+      alert('Please enter Door number');
+      return;
+    }
+
+    if (!driverNameValue.trim()) {
+      alert('Please enter Driver Name');
+      return;
+    }
+
+    if (!firstIdTypeValue.trim()) {
+      alert('Please enter Type of First ID Reviewed');
+      return;
+    }
+
+    if (!employeeNameValue.trim()) {
+      alert('Please enter Name of Employee');
+      return;
+    }
+
+    if (proGroups.length === 0) {
+      alert('Please add at least one Pro Detail');
+      return;
+    }
+
+    try {
+      // Build freight details from proGroups
+      const freightDetails = [];
+      proGroups.forEach(group => {
+        group.entries.forEach(entry => {
+          freightDetails.push({
+            customerId: selectedCarrier.customerId || selectedCarrier.carrierId,
+            stationId: selectedCarrier.stationId || 0,
+            proNumber: entry.pro,
+            pieces: entry.pieces,
+            weight: entry.weight,
+            shipper: entry.shipper,
+            toEmails: ['demo1@gmail.com', 'demo2@gmail.com']
+          });
+        });
+      });
+
+      const checkInData = {
+        carrierId: selectedCarrier.carrierId,
+        doorNo: doorValue,
+        firstIdType: firstIdTypeValue.toUpperCase().replace(/\s+/g, '_'),
+        firstIdPhotoMatch: firstIdPhotoChecked,
+        driverName: driverNameValue,
+        driverSignature: signatureData || '',
+        verifiedByEmployee: employeeNameValue,
+        freightDetails: freightDetails
+      };
+
+      await dispatch(submitDriverCheckIn(checkInData));
+      alert('Driver Check-In submitted successfully!');
+      handleResetForm();
+    } catch (error) {
+      alert('Error submitting check-in: ' + (error.message || 'Unknown error'));
+      console.error('Submit error:', error);
+    }
   };
 
   const handleValidateProNumber = async () => {
@@ -380,19 +463,68 @@ export default function DriverCheckInPage() {
     );
   };
 
+  const handleEditEntry = (entry) => {
+    setEditingEntry(entry.id);
+    setEditingValues({
+      pro: entry.pro,
+      pieces: entry.pieces,
+      weight: entry.weight,
+      shipper: entry.shipper
+    });
+  };
+
+  const handleSaveEdit = (groupId, entryId) => {
+    setProGroups((prev) =>
+      prev.map((g) =>
+        g.id === groupId
+          ? {
+              ...g,
+              entries: g.entries.map((e) =>
+                e.id === entryId
+                  ? {
+                      ...e,
+                      pro: editingValues.pro,
+                      pieces: Number(editingValues.pieces),
+                      weight: Number(editingValues.weight),
+                      shipper: editingValues.shipper
+                    }
+                  : e
+              )
+            }
+          : g
+      )
+    );
+    setEditingEntry(null);
+    setEditingValues({});
+  };
+
+  const handleCancelEdit = () => {
+    setEditingEntry(null);
+    setEditingValues({});
+  };
+
   const handleGroupAdd = (groupId) => {
     setProGroups((prev) =>
       prev.map((g) => {
         if (g.id !== groupId) return g;
         const nextSno = String(g.entries.length + 1).padStart(2, "0");
+        const entryId = Date.now();
         const newEntry = {
-          id: Date.now(),
+          id: entryId,
           sno: nextSno,
           pro: "",
           pieces: "",
           weight: "",
           shipper: "",
         };
+        // Set the new entry as editing immediately
+        setEditingEntry(entryId);
+        setEditingValues({
+          pro: "",
+          pieces: "",
+          weight: "",
+          shipper: "",
+        });
         return { ...g, entries: [...g.entries, newEntry] };
       }),
     );
@@ -405,36 +537,180 @@ export default function DriverCheckInPage() {
       headerName: "PRO #",
       flex: 1,
       minWidth: 140,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
-          <Typography sx={{ fontWeight: 700, fontSize: "13px" }}>
-            {params.value}
-          </Typography>
-        </Box>
-      ),
+      renderCell: (params) => {
+        if (editingEntry === params.row.id) {
+          return (
+            <TextField
+              size="small"
+              variant="outlined"
+              value={editingValues.pro}
+              onChange={(e) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  pro: e.target.value,
+                }))
+              }
+              sx={{ width: "100%" }}
+            />
+          );
+        }
+        return (
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+            <Typography sx={{ fontWeight: 700, fontSize: "13px" }}>
+              {params.value}
+            </Typography>
+          </Box>
+        );
+      },
     },
-    { field: "pieces", headerName: "Pieces", flex: 1, minWidth: 80 },
-    { field: "weight", headerName: "Weight (lbs)", flex: 1, minWidth: 110 },
-    { field: "shipper", headerName: "Shipper", flex: 1, minWidth: 120 },
     {
+      field: "pieces",
+      headerName: "Pieces",
+      flex: 1,
+      minWidth: 80,
+      renderCell: (params) => {
+        if (editingEntry === params.row.id) {
+          return (
+            <TextField
+              size="small"
+              variant="outlined"
+              type="number"
+              value={editingValues.pieces}
+              onChange={(e) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  pieces: e.target.value,
+                }))
+              }
+              sx={{ width: "100%" }}
+            />
+          );
+        }
+        return params.value;
+      },
+    },
+    {
+      field: "weight",
+      headerName: "Weight (lbs)",
+      flex: 1,
+      minWidth: 110,
+      renderCell: (params) => {
+        if (editingEntry === params.row.id) {
+          return (
+            <TextField
+              size="small"
+              variant="outlined"
+              type="number"
+              value={editingValues.weight}
+              onChange={(e) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  weight: e.target.value,
+                }))
+              }
+              sx={{ width: "100%" }}
+            />
+          );
+        }
+        return params.value;
+      },
+    },
+    {
+      field: "shipper",
+      headerName: "Shipper",
+      flex: 1,
+      minWidth: 120,
+      renderCell: (params) => {
+        if (editingEntry === params.row.id) {
+          return (
+            <TextField
+              size="small"
+              variant="outlined"
+              value={editingValues.shipper}
+              onChange={(e) =>
+                setEditingValues((prev) => ({
+                  ...prev,
+                  shipper: e.target.value,
+                }))
+              }
+              sx={{ width: "100%" }}
+            />
+          );
+        }
+        return params.value;
+      },
+    },
+ {
       field: "actions",
       headerName: "Actions",
-      width: 100,
+      width: 120,
       sortable: false,
-      renderCell: (params) => (
-        <Stack direction="row" spacing={0.5} alignItems="center">
-          <IconButton size="small" sx={{ color: "#555" }}>
-            <Iconify icon="mdi:pencil-outline" width={18} />
-          </IconButton>
-          <IconButton
-            size="small"
-            sx={{ color: "#555" }}
-            onClick={() => handleDelete(groupId, params.row.id)}
-          >
-            <Iconify icon="mingcute:delete-2-fill" width={18} />
-          </IconButton>
-        </Stack>
-      ),
+      renderCell: (params) => {
+        // Helper function to stop the DataGrid from stealing focus on click
+        const stopPropagation = (e) => {
+          e.stopPropagation();
+        };
+
+        return (
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            {editingEntry === params.row.id ? (
+              <>
+                <IconButton
+                  size="small"
+                  sx={{ color: "#4caf50" }}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Stop click bubbling
+                    handleSaveEdit(groupId, params.row.id);
+                  }}
+                  onMouseDown={stopPropagation} // Intercept focus
+                  title="Save"
+                >
+                  <Iconify icon="mdi:check" width={18} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  sx={{ color: "#f44336" }}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Stop click bubbling
+                    handleCancelEdit();
+                  }}
+                  onMouseDown={stopPropagation} // Intercept focus
+                  title="Cancel"
+                >
+                  <Iconify icon="mdi:close" width={18} />
+                </IconButton>
+              </>
+            ) : (
+              <>
+                <IconButton
+                  size="small"
+                  sx={{ color: "#555" }}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Stop click bubbling
+                    handleEditEntry(params.row);
+                  }}
+                  onMouseDown={stopPropagation} // Intercept focus
+                  title="Edit"
+                >
+                  <Iconify icon="mdi:pencil-outline" width={18} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  sx={{ color: "#555" }}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Stop click bubbling
+                    handleDelete(groupId, params.row.id);
+                  }}
+                  onMouseDown={stopPropagation} // Intercept focus
+                  title="Delete"
+                >
+                  <Iconify icon="mingcute:delete-2-fill" width={18} />
+                </IconButton>
+              </>
+            )}
+          </Stack>
+        );
+      },
     },
   ];
 
@@ -442,7 +718,7 @@ export default function DriverCheckInPage() {
     <ShipmentFormLayout
       title="Driver Check-In"
       handleClose={() => navigate(-1)}
-      onSubmit={() => {}}
+      onSubmit={handleSubmitCheckIn}
       onReset={handleResetForm}
       showCancel={false}
     >
@@ -519,6 +795,8 @@ export default function DriverCheckInPage() {
               size="small"
               required
               label="Door"
+              value={doorValue}
+              onChange={(e) => setDoorValue(e.target.value)}
               sx={{ width: { xs: "100%", md: "23%" } }}
             />
             <Button
@@ -562,7 +840,8 @@ export default function DriverCheckInPage() {
                   size="small"
                   required
                   label="Driver Name"
-                  defaultValue=""
+                  value={driverNameValue}
+                  onChange={(e) => setDriverNameValue(e.target.value)}
                   sx={{ flex: 1 }}
                 />
                 <Button
@@ -624,6 +903,8 @@ export default function DriverCheckInPage() {
                 variant="standard"
                 size="small"
                 placeholder="ID Type"
+                value={firstIdTypeValue}
+                onChange={(e) => setFirstIdTypeValue(e.target.value)}
                 sx={{ width: { xs: "100%", lg: "26%" } }}
               />
               <Stack
@@ -631,7 +912,12 @@ export default function DriverCheckInPage() {
                 alignItems="center"
                 sx={{ width: { xs: "100%", lg: "28%" } }}
               >
-                <StyledCheckbox size="small" sx={{ p: 0, mr: 1 }} />
+                <StyledCheckbox
+                  size="small"
+                  sx={{ p: 0, mr: 1 }}
+                  checked={firstIdPhotoChecked}
+                  onChange={(e) => setFirstIdPhotoChecked(e.target.checked)}
+                />
                 <Typography sx={{ fontSize: 12, lineHeight: 1.2 }}>
                   MATCHING PHOTO ON ID
                 </Typography>
@@ -655,13 +941,14 @@ export default function DriverCheckInPage() {
                 size="small"
                 placeholder="ID Type"
                 sx={{ width: { xs: "100%", lg: "26%" } }}
+                disabled
               />
               <Stack
                 direction="row"
                 alignItems="center"
                 sx={{ width: { xs: "100%", lg: "28%" } }}
               >
-                <StyledCheckbox size="small" sx={{ p: 0, mr: 1 }} />
+                <StyledCheckbox size="small" sx={{ p: 0, mr: 1 }} disabled />
                 <Typography sx={{ fontSize: 12, lineHeight: 1.2 }}>
                   MATCHING PHOTO ON ID
                 </Typography>
@@ -684,6 +971,7 @@ export default function DriverCheckInPage() {
                 size="small"
                 defaultValue="Listed Above"
                 sx={{ width: { xs: "100%", lg: "26%" } }}
+                disabled
               />
               <Box sx={{ width: { xs: "100%", lg: "28%" } }} />
             </Stack>
@@ -705,6 +993,8 @@ export default function DriverCheckInPage() {
                 size="small"
                 required
                 placeholder="Verifier *"
+                value={employeeNameValue}
+                onChange={(e) => setEmployeeNameValue(e.target.value)}
                 sx={{ width: { xs: "100%", lg: "26%" } }}
               />
               <Box sx={{ width: { xs: "100%", lg: "28%" } }} />
