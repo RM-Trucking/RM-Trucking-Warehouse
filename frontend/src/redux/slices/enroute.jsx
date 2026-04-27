@@ -18,6 +18,9 @@ const initialState = {
     // Customer search states
     customerOptions: [],
     customerLoading: false,
+    // Add carrier states
+    addCarrierLoading: false,
+    addCarrierSuccess: false,
 };
 
 const slice = createSlice({
@@ -82,6 +85,25 @@ const slice = createSlice({
         customerSearchError(state) {
             state.customerLoading = false;
             state.customerOptions = [];
+        },
+        // Add carrier actions
+        startAddCarrierLoading(state) {
+            state.addCarrierLoading = true;
+            state.addCarrierSuccess = false;
+            state.error = null;
+        },
+        addCarrierSuccess(state, action) {
+            state.addCarrierLoading = false;
+            state.addCarrierSuccess = true;
+            // Add new carrier to options
+            if (action.payload) {
+                state.carrierOptions = [action.payload, ...state.carrierOptions];
+            }
+        },
+        addCarrierError(state, action) {
+            state.addCarrierLoading = false;
+            state.addCarrierSuccess = false;
+            state.error = action.payload || 'Failed to add carrier';
         },
     },
 });
@@ -224,6 +246,28 @@ export function createEnroute(formData) {
         } catch (error) {
             console.error('Error creating enroute:', error);
             dispatch(slice.actions.hasError(error));
+            throw error;
+        }
+    };
+}
+
+// Add new carrier action
+export function addNewCarrier(carrierName, salesRepPhone) {
+    return async () => {
+        dispatch(slice.actions.startAddCarrierLoading());
+        try {
+            const payload = {
+                carrierName,
+                salesRepPhone
+            };
+
+            const response = await axios.post('/maintenance/carrier', payload);
+            const newCarrier = response.data?.data?.carrier || response.data?.data || response.data;
+            dispatch(slice.actions.addCarrierSuccess(newCarrier));
+            return newCarrier;
+        } catch (error) {
+            console.error('Error adding carrier:', error);
+            dispatch(slice.actions.addCarrierError(error.response?.data?.message || error.message || 'Failed to add carrier'));
             throw error;
         }
     };

@@ -4,12 +4,14 @@ import Iconify from '../../components/iconify';
 import Barcode from "react-barcode";
 
 // --- Shared Layout Wrapper ---
-export default function ShipmentFormLayout({ 
-    title, 
-    handleClose, 
-    onSubmit, 
-    topInfoPanel, 
-    children 
+export default function ShipmentFormLayout({
+    title,
+    handleClose,
+    onSubmit,
+    onReset,
+    showCancel = true,
+    topInfoPanel,
+    children
 }) {
     return (
         <Box sx={{ p: 2, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
@@ -20,17 +22,32 @@ export default function ShipmentFormLayout({
                     <Typography sx={{ fontSize: '18px', fontWeight: 600 }}>{title}</Typography>
                 </Stack>
                 <Stack direction="row" spacing={2}>
-                    <Button
-                        variant="outlined"
-                        onClick={handleClose}
-                        size="small"
-                        sx={{
-                            bgcolor: '#fff', color: '#000', borderColor: '#000',
-                            '&:hover': { bgcolor: '#f0f0f0', borderColor: '#000' }
-                        }}
-                    >
-                        Cancel
-                    </Button>
+                    {showCancel && (
+                        <Button
+                            variant="outlined"
+                            onClick={handleClose}
+                            size="small"
+                            sx={{
+                                bgcolor: '#fff', color: '#000', borderColor: '#000',
+                                '&:hover': { bgcolor: '#f0f0f0', borderColor: '#000' }
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                    )}
+                    {onReset && (
+                        <Button
+                            variant="outlined"
+                            onClick={onReset}
+                            size="small"
+                            sx={{
+                                bgcolor: '#fff', color: '#000', borderColor: '#000',
+                                '&:hover': { bgcolor: '#f0f0f0', borderColor: '#000' }
+                            }}
+                        >
+                            Reset
+                        </Button>
+                    )}
                     <Button
                         variant="contained"
                         onClick={onSubmit}
@@ -61,6 +78,8 @@ ShipmentFormLayout.propTypes = {
     title: PropTypes.string.isRequired,
     handleClose: PropTypes.func.isRequired,
     onSubmit: PropTypes.func.isRequired,
+    onReset: PropTypes.func,
+    showCancel: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     children: PropTypes.node.isRequired,
 };
