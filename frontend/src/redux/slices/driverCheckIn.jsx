@@ -92,6 +92,11 @@ export function verifyProNumber(carrierId, proNumber) {
             if (response.data?.success && response.data?.data) {
                 dispatch(slice.actions.proVerificationSuccess(response.data.data));
                 return response.data.data;
+            } else if (!response.data?.success && response.data?.message) {
+                // Return error message for handling in component
+                const errorMessage = response.data.message;
+                dispatch(slice.actions.proVerificationError(errorMessage));
+                return { error: true, message: errorMessage };
             } else {
                 dispatch(slice.actions.proVerificationNotFound());
                 return null;
@@ -103,9 +108,16 @@ export function verifyProNumber(carrierId, proNumber) {
             if (error.response?.status === 404) {
                 // PRO not found
                 dispatch(slice.actions.proVerificationNotFound());
-            } else {
-                errorMessage = error.response?.data?.message || error.message || 'Error verifying PRO number';
+                return null;
+            } else if (error.response?.data?.message) {
+                // Return API error message (duplicate, conflict, etc.)
+                errorMessage = error.response.data.message;
                 dispatch(slice.actions.proVerificationError(errorMessage));
+                return { error: true, message: errorMessage };
+            } else {
+                errorMessage = error.message || 'Error verifying PRO number';
+                dispatch(slice.actions.proVerificationError(errorMessage));
+                return { error: true, message: errorMessage };
             }
         }
     };
