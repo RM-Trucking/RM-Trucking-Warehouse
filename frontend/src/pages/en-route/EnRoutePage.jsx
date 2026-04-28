@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback  } from 'react';
-import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete, Collapse, Snackbar, Badge } from '@mui/material';
+import { Box, Button, Stack, TextField, InputAdornment, IconButton, Dialog, DialogContent, Paper, Grid, CircularProgress, Alert, Autocomplete, Collapse, Snackbar, Badge, DialogTitle, Divider, Typography } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -9,7 +9,8 @@ import ClearIcon from '@mui/icons-material/Clear';
 import Iconify from '../../components/iconify';
 // Redux
 import { useSelector, useDispatch } from '../../redux/store';
-import { getEnrouteData, clearEnrouteError, createEnroute, searchCarriers, searchCustomers } from '../../redux/slices/enroute';
+import { getEnrouteData, clearEnrouteError, createEnroute, searchCarriers, searchCustomers, addNewCarrier } from '../../redux/slices/enroute';
+import formatPhoneNumber from '../../utils/formatPhoneNumber';
 
 const standardInputStyles = {
   '& .MuiInputLabel-asterisk': { color: '#d32f2f' },
@@ -29,6 +30,7 @@ export default function EnRoutePage() {
   const [selectedEmails, setSelectedEmails] = useState({});
   const [currentFormEmails, setCurrentFormEmails] = useState([]);
   const [confirmedEmailCount, setConfirmedEmailCount] = useState(0);
+  const [confirmedEmailIds, setConfirmedEmailIds] = useState({});
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -37,6 +39,15 @@ export default function EnRoutePage() {
     fromDate: '',
     toDate: ''
   });
+
+  // Add Carrier Modal state
+  const [openAddCarrierModal, setOpenAddCarrierModal] = useState(false);
+  const [newCarrierForm, setNewCarrierForm] = useState({
+    name: "",
+    phone: "",
+  });
+  const [addCarrierLoading, setAddCarrierLoading] = useState(false);
+  const [addCarrierError, setAddCarrierError] = useState(null);
 
   // Local state for carrier search debounce
   const [carrierSearchValue, setCarrierSearchValue] = useState('');
@@ -53,7 +64,12 @@ export default function EnRoutePage() {
 
   const handleCloseMailList = () => {
     setOpenMailList(false);
-    // Don't clear selectedEmails here to persist selections
+  };
+
+  const handleCancelMailList = () => {
+    // Reset selections to the confirmed emails when Cancel is clicked
+    setSelectedEmails(confirmedEmailIds);
+    setOpenMailList(false);
   };
 
   const handleEmailCheckboxChange = (emailId) => {
@@ -69,10 +85,11 @@ export default function EnRoutePage() {
       .map((email) => email.entryEmail);
 
     console.log('Sending enroute details to:', selectedEmailAddresses);
-    // Update the count of confirmed emails
+    // Update the count and IDs of confirmed emails
     setConfirmedEmailCount(selectedEmailAddresses.length);
+    setConfirmedEmailIds(selectedEmails); // Save the confirmed selection state
+    setOpenMailList(false); // Close the dialog without resetting selections
     // TODO: Make API call to send emails
-    handleCloseMailList();
   };
 
   const [formData, setFormData] = useState({
@@ -228,10 +245,12 @@ const handleViewModal = useCallback((rowData) => {
         preSelectedEmails[email.entryId] = true;
       });
       setSelectedEmails(preSelectedEmails);
+      setConfirmedEmailIds(preSelectedEmails);
       setConfirmedEmailCount(rawData.toEmails.length);
     } else {
       setCurrentFormEmails([]);
       setSelectedEmails({});
+      setConfirmedEmailIds({});
       setConfirmedEmailCount(0);
     }
   }, []);
@@ -336,6 +355,7 @@ const handleViewModal = useCallback((rowData) => {
     setCurrentFormEmails([]);
     setConfirmedEmailCount(0);
     setSelectedEmails({});
+    setConfirmedEmailIds({});
     dispatch(searchCarriers(''));
     dispatch(searchCustomers(''));
   };
@@ -362,10 +382,23 @@ const handleViewModal = useCallback((rowData) => {
   };
 
   const handleDeleteItem = (itemId) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.filter((item) => item.id !== itemId),
-    }));
+    // If only one item exists, clear the values instead of deleting
+    if (formData.items.length === 1) {
+      setFormData((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.id === itemId
+            ? { id: item.id, proNumber: '', pieces: '', height: '', weight: '', shipper: '', activeStatus: 'Y' }
+            : item
+        ),
+      }));
+    } else {
+      // Delete the item if multiple items exist
+      setFormData((prev) => ({
+        ...prev,
+        items: prev.items.filter((item) => item.id !== itemId),
+      }));
+    }
   };
 
   const validateForm = () => {
@@ -409,6 +442,69 @@ const handleViewModal = useCallback((rowData) => {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  // Add Carrier Modal handlers
+  const handleOpenAddCarrierModal = () => setOpenAddCarrierModal(true);
+
+  const handleCloseAddCarrierModal = () => {
+    setOpenAddCarrierModal(false);
+    setAddCarrierError(null);
+    setNewCarrierForm({ name: "", phone: "" });
+  };
+
+  const validatePhoneNumber = (phone) => {
+    if (!phone) {
+      return 'Phone number is required';
+    }
+    if (phone.length > 20) {
+      return 'Phone number cannot exceed 20 characters';
+    }
+    const phoneRegex = /^\(\d{3}\) \d{3}-\d{4}.*$/;
+    if (!phoneRegex.test(phone)) {
+      return 'Invalid phone format. Use format: (XXX) XXX-XXXX';
+    }
+    return null;
+  };
+
+  const handleAddCarrierSubmit = async () => {
+    if (!newCarrierForm.name.trim()) {
+      setAddCarrierError('Delivery Carrier name is required');
+      return;
+    }
+
+    const phoneError = validatePhoneNumber(newCarrierForm.phone);
+    if (phoneError) {
+      setAddCarrierError(phoneError);
+      return;
+    }
+
+    setAddCarrierLoading(true);
+    setAddCarrierError(null);
+
+    try {
+      const result = await dispatch(addNewCarrier(newCarrierForm.name, newCarrierForm.phone));
+
+      // Set the newly created carrier as selected
+      if (result && result.carrierId && result.carrierName) {
+        // Set selected carrier in formData
+        setFormData((prev) => ({
+          ...prev,
+          deliveryCarrier: {
+            carrierId: result.carrierId,
+            carrierName: result.carrierName
+          }
+        }));
+      }
+
+      // Reset form and close modal on success
+      setNewCarrierForm({ name: "", phone: "" });
+      handleCloseAddCarrierModal();
+    } catch (error) {
+      setAddCarrierError(error.message || 'Failed to add carrier');
+    } finally {
+      setAddCarrierLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     const errors = validateForm();
 
@@ -436,7 +532,17 @@ const handleViewModal = useCallback((rowData) => {
       await dispatch(createEnroute(submitData));
       handleCloseModal();
     } catch (error) {
-      // Error is handled by Redux slice
+      // Extract error message from the error object
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to create en route. Please try again.';
+
+      setSnackbar({
+        open: true,
+        message: errorMessage,
+        severity: 'error'
+      });
       console.error('Failed to create enroute:', error);
     }
   };
@@ -665,55 +771,76 @@ const handleViewModal = useCallback((rowData) => {
                 En Route Details
               </legend>
               <Stack direction="row" spacing={4} sx={{ width: '100%' }}>
-                <Autocomplete
-                  fullWidth
-                  disabled={viewMode}
-                  options={carrierOptions}
-                  getOptionLabel={(option) => option.carrierName || option.name || option.toString()}
-                  value={formData.deliveryCarrier}
-                  onChange={(event, newValue) => {
-                    isSelectingRef.current = true;
-                    handleFormChange('deliveryCarrier', newValue);
-                    // Clear search results when field is cleared
-                    if (!newValue) {
-                      setCarrierSearchValue('');
-                      dispatch(searchCarriers(''));
-                    }
-                  }}
-                  onInputChange={(event, newInputValue, reason) => {
-                    // Only update search value for manual input, not selection
-                    if (reason !== 'reset') {
-                      setCarrierSearchValue(newInputValue);
-                      // If field is cleared, clear the options immediately
-                      if (!newInputValue || newInputValue.trim() === '') {
+                <Stack direction="column" spacing={1} sx={{ flex: 1 }}>
+                  <Autocomplete
+                    fullWidth
+                    disabled={viewMode}
+                    options={carrierOptions}
+                    getOptionLabel={(option) => option.carrierName || option.name || option.toString()}
+                    value={formData.deliveryCarrier}
+                    onChange={(event, newValue) => {
+                      isSelectingRef.current = true;
+                      handleFormChange('deliveryCarrier', newValue);
+                      // Clear search results when field is cleared
+                      if (!newValue) {
+                        setCarrierSearchValue('');
                         dispatch(searchCarriers(''));
                       }
-                    }
-                  }}
-                  loading={carrierLoading}
-                  loadingText="Searching carriers..."
-                  noOptionsText="No carriers found"
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      variant="standard"
-                      label="Delivery Carrier"
-                      required
-                      InputLabelProps={{ shrink: true }}
-                      sx={{ ...standardInputStyles, flex: 1 }}
-                      InputProps={{
-                        ...params.InputProps,
-                        endAdornment: (
-                          <>
-                            {carrierLoading ? <CircularProgress color="inherit" size={20} /> : null}
-                            {params.InputProps.endAdornment}
-                          </>
-                        ),
+                    }}
+                    onInputChange={(event, newInputValue, reason) => {
+                      // Only update search value for manual input, not selection
+                      if (reason !== 'reset') {
+                        setCarrierSearchValue(newInputValue);
+                        // If field is cleared, clear the options immediately
+                        if (!newInputValue || newInputValue.trim() === '') {
+                          dispatch(searchCarriers(''));
+                        }
+                      }
+                    }}
+                    loading={carrierLoading}
+                    loadingText="Searching carriers..."
+                    noOptionsText={carrierSearchValue ? "No carriers found" : "Type to search for carriers"}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        variant="standard"
+                        label="Delivery Carrier"
+                        required
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ ...standardInputStyles }}
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {carrierLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
+                  {!viewMode && (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleOpenAddCarrierModal}
+                      sx={{
+                        bgcolor: '#A22',
+                        color: '#fff',
+                        textTransform: 'none',
+                        minWidth: 96,
+                        height: 30,
+                        px: 2,
+                        fontSize: 12,
+                        '&:hover': { bgcolor: '#8b1c1c' },
+                        alignSelf: 'flex-start'
                       }}
-                    />
+                    >
+                      Add Carrier
+                    </Button>
                   )}
-                  sx={{ flex: 1 }}
-                />
+                </Stack>
                 <Autocomplete
                   fullWidth
                   disabled={viewMode}
@@ -751,7 +878,7 @@ const handleViewModal = useCallback((rowData) => {
                   }}
                   loading={customerLoading}
                   loadingText="Searching customers..."
-                  noOptionsText="No customers found"
+                  noOptionsText={customerSearchValue ? "No customers found" : "Type to search for customers"}
                   renderInput={(params) => (
                     <TextField
                       {...params}
@@ -816,8 +943,9 @@ const handleViewModal = useCallback((rowData) => {
                     fullWidth
                     disabled={viewMode}
                     value={item.proNumber}
-                    onChange={(e) => handleItemChange(item.id, 'proNumber', e.target.value)}
+                    onChange={(e) => handleItemChange(item.id, 'proNumber', e.target.value.slice(0, 50))}
                     required
+                    inputProps={{ maxLength: 50 }}
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 1 }}
                   />
@@ -851,8 +979,9 @@ const handleViewModal = useCallback((rowData) => {
                     fullWidth
                     disabled={viewMode}
                     value={item.shipper}
-                    onChange={(e) => handleItemChange(item.id, 'shipper', e.target.value)}
+                    onChange={(e) => handleItemChange(item.id, 'shipper', e.target.value.slice(0, 255))}
                     required
+                    inputProps={{ maxLength: 255 }}
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 2 }} // Double width for Shipper
                   />
@@ -959,7 +1088,7 @@ const handleViewModal = useCallback((rowData) => {
               }]),
               {
                 field: 'emailid',
-                headerName: 'EmailID',
+                headerName: 'Email ID',
                 flex: 1,
                 sortable: false
               }
@@ -979,7 +1108,7 @@ const handleViewModal = useCallback((rowData) => {
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, borderTop: '1px solid #e0e0e0' }}>
           <Button
             variant="outlined"
-            onClick={handleCloseMailList}
+            onClick={viewMode ? handleCloseMailList : handleCancelMailList}
             sx={{ color: 'black', borderColor: '#ccc' }}
           >
             {viewMode ? 'Close' : 'Cancel'}
@@ -1011,6 +1140,103 @@ const handleViewModal = useCallback((rowData) => {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Add New Delivery Carrier Modal */}
+      <Dialog
+        open={openAddCarrierModal}
+        onClose={handleCloseAddCarrierModal}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 600, fontSize: "16px", pb: 1 }}>
+          Add New Delivery Carrier
+          <IconButton
+            onClick={handleCloseAddCarrierModal}
+            sx={{ position: "absolute", right: 8, top: 8, color: "#333" }}
+          >
+            <Iconify icon="mdi:close" width={20} />
+          </IconButton>
+        </DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" sx={{ color: "#666", mb: 3 }}>
+            Begin by adding the carrier name and phone number, followed by including other details in maintenance.
+          </Typography>
+
+          {addCarrierError && (
+            <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2 }}>
+              {addCarrierError}
+            </Typography>
+          )}
+
+          <Box sx={{ display: "flex", gap: 3 }}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                Delivery Carrier <span style={{ color: "#d32f2f" }}>*</span>
+              </Typography>
+              <TextField
+                fullWidth
+                variant="standard"
+                placeholder=""
+                value={newCarrierForm.name}
+                onChange={(e) =>
+                  setNewCarrierForm((prev) => ({
+                    ...prev,
+                    name: e.target.value,
+                  }))
+                }
+                sx={{
+                  "& .MuiInputBase-input::placeholder": {
+                    color: "#999",
+                    opacity: 0.7,
+                  },
+                }}
+              />
+            </Box>
+
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                Phone Number <span style={{ color: "#d32f2f" }}>*</span>
+              </Typography>
+              <TextField
+                fullWidth
+                variant="standard"
+                placeholder="(XXX) XXX-XXXX"
+                value={newCarrierForm.phone}
+                onChange={(e) => {
+                  const formatted = formatPhoneNumber(e.target.value);
+                  setNewCarrierForm((prev) => ({
+                    ...prev,
+                    phone: formatted,
+                  }));
+                }}
+              />
+            </Box>
+          </Box>
+
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{ mt: 4, justifyContent: "flex-start" }}
+          >
+            <Button
+              variant="outlined"
+              sx={{ color: "#333", borderColor: "#333", px: 3 }}
+              onClick={handleCloseAddCarrierModal}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              sx={{ bgcolor: "#a22", "&:hover": { bgcolor: "#811" }, px: 3 }}
+              onClick={handleAddCarrierSubmit}
+              disabled={addCarrierLoading}
+            >
+              {addCarrierLoading ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Submit'}
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
