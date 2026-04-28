@@ -110,6 +110,8 @@ export default function DriverCheckInPage() {
   const [proFormError, setProFormError] = useState(null);
   const [openRejectionDialog, setOpenRejectionDialog] = useState(false);
   const [rejectedProData, setRejectedProData] = useState(null);
+  const [openApiErrorDialog, setOpenApiErrorDialog] = useState(false);
+  const [apiErrorMessage, setApiErrorMessage] = useState('');
   const [formErrors, setFormErrors] = useState({
     selectedCarrier: false,
     doorValue: false,
@@ -332,7 +334,27 @@ export default function DriverCheckInPage() {
     try {
       const proData = await dispatch(verifyProNumber(selectedCarrier.carrierId, formValues.pro));
 
-      if (proData) {
+      if (proData?.error) {
+        // Check the error message type
+        if (proData.message.toLowerCase().includes('no record found')) {
+          // PRO not found - show not available dialog (allow manual entry)
+          setProDialogSuccess(false);
+          setOpenProDialog(true);
+          setProValidated(false);
+          setShowRemainingFields(true);
+        } else {
+          // Other API error (like duplicate record) - show error dialog and reset PRO
+          setApiErrorMessage(proData.message);
+          setOpenApiErrorDialog(true);
+          // Reset the pro field
+          setFormValues(prev => ({
+            ...prev,
+            pro: ''
+          }));
+          setProValidated(false);
+          setShowRemainingFields(false);
+        }
+      } else if (proData) {
         // Check if PRO is rejected
         if (proData.isRejected) {
           setRejectedProData(proData);
@@ -360,7 +382,7 @@ export default function DriverCheckInPage() {
           setShowRemainingFields(true);
         }
       } else {
-        // PRO not found - show not available dialog
+        // PRO not found (404) - show not available dialog
         setProDialogSuccess(false);
         setOpenProDialog(true);
         setProValidated(false);
@@ -1504,6 +1526,50 @@ export default function DriverCheckInPage() {
             </Button>
           </Stack>
         </DialogContent>
+      </Dialog>
+
+      {/* API Error Dialog */}
+      <Dialog
+        open={openApiErrorDialog}
+        onClose={() => setOpenApiErrorDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2
+          }
+        }}
+      >
+        <Box sx={{ p: 3, textAlign: 'center' }}>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+            <Box
+              sx={{
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                bgcolor: '#f44336',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Iconify icon="mdi:alert" width={32} color="white" />
+            </Box>
+          </Box>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+            PRO Validation Error
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#666', mb: 3, whiteSpace: 'pre-wrap' }}>
+            {apiErrorMessage}
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => setOpenApiErrorDialog(false)}
+            sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' }, px: 4 }}
+          >
+            OK
+          </Button>
+        </Box>
       </Dialog>
 
       {/* Rejection Confirmation Dialog */}
