@@ -103,6 +103,13 @@ export default function EnRoutePage() {
     ],
   });
 
+  // Form validation errors state
+  const [formErrors, setFormErrors] = useState({
+    deliveryCarrier: false,
+    freightForwarder: false,
+    items: {} // Will store item-level errors like { 1: { proNumber: false, pieces: false, ... } }
+  });
+
   // Fetch data on component mount and when pagination/search changes
   useEffect(() => {
     dispatch(getEnrouteData({
@@ -349,6 +356,12 @@ const handleViewModal = useCallback((rowData) => {
         { id: 1, proNumber: '', pieces: '', height: '', weight: '', shipper: '', activeStatus: 'Y' },
       ],
     });
+    // Reset form errors
+    setFormErrors({
+      deliveryCarrier: false,
+      freightForwarder: false,
+      items: {}
+    });
     // Clear search values and options
     setCarrierSearchValue('');
     setCustomerSearchValue('');
@@ -358,10 +371,18 @@ const handleViewModal = useCallback((rowData) => {
     setConfirmedEmailIds({});
     dispatch(searchCarriers(''));
     dispatch(searchCustomers(''));
+    // Clear Redux error when closing modal
+    dispatch(clearEnrouteError());
   };
 
   const handleFormChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    // Clear error for this field when value changes
+    if (field === 'deliveryCarrier') {
+      setFormErrors((prev) => ({ ...prev, deliveryCarrier: false }));
+    } else if (field === 'freightForwarder') {
+      setFormErrors((prev) => ({ ...prev, freightForwarder: false }));
+    }
   };
 
   const handleItemChange = (itemId, field, value) => {
@@ -370,6 +391,17 @@ const handleViewModal = useCallback((rowData) => {
       items: prev.items.map((item) =>
         item.id === itemId ? { ...item, [field]: value } : item
       ),
+    }));
+    // Clear error for this field when value changes
+    setFormErrors((prev) => ({
+      ...prev,
+      items: {
+        ...prev.items,
+        [itemId]: {
+          ...prev.items[itemId],
+          [field]: false
+        }
+      }
     }));
   };
 
@@ -402,40 +434,48 @@ const handleViewModal = useCallback((rowData) => {
   };
 
   const validateForm = () => {
-    const errors = [];
+    const newErrors = {
+      deliveryCarrier: false,
+      freightForwarder: false,
+      items: {}
+    };
 
     // Check delivery carrier
     if (!formData.deliveryCarrier) {
-      errors.push('Delivery Carrier is required');
+      newErrors.deliveryCarrier = true;
     }
 
     // Check freight forwarder
     if (!formData.freightForwarder) {
-      errors.push('Freight Forwarder is required');
+      newErrors.freightForwarder = true;
     }
 
-    // Check items array is not empty
-    if (!formData.items || formData.items.length === 0) {
-      errors.push('At least one item is required');
-    } else {
-      // Check each item for required fields
-      formData.items.forEach((item, index) => {
-        if (!item.proNumber || item.proNumber.trim() === '') {
-          errors.push(`Item ${index + 1}: Pro Number is required`);
-        }
-        if (!item.pieces || item.pieces.toString().trim() === '') {
-          errors.push(`Item ${index + 1}: Pieces is required`);
-        }
-        if (!item.weight || item.weight.toString().trim() === '') {
-          errors.push(`Item ${index + 1}: Weight is required`);
-        }
-        if (!item.shipper || item.shipper.trim() === '') {
-          errors.push(`Item ${index + 1}: Shipper is required`);
-        }
-      });
-    }
+    // Check each item for required fields
+    formData.items.forEach((item) => {
+      const itemErrors = {
+        proNumber: false,
+        pieces: false,
+        weight: false,
+        shipper: false
+      };
 
-    return errors;
+      if (!item.proNumber || item.proNumber.trim() === '') {
+        itemErrors.proNumber = true;
+      }
+      if (!item.pieces || item.pieces.toString().trim() === '') {
+        itemErrors.pieces = true;
+      }
+      if (!item.weight || item.weight.toString().trim() === '') {
+        itemErrors.weight = true;
+      }
+      if (!item.shipper || item.shipper.trim() === '') {
+        itemErrors.shipper = true;
+      }
+
+      newErrors.items[item.id] = itemErrors;
+    });
+
+    return newErrors;
   };
 
   const handleCloseSnackbar = () => {
@@ -508,14 +548,21 @@ const handleViewModal = useCallback((rowData) => {
   const handleSubmit = async () => {
     const errors = validateForm();
 
-    if (errors.length > 0) {
-      setSnackbar({
-        open: true,
-        message: `Please fill the mandatory fields:\n${errors.join('\n')}`,
-        severity: 'error'
-      });
+    // Check if there are any errors
+    const hasErrors = errors.deliveryCarrier || errors.freightForwarder ||
+                      Object.values(errors.items).some(itemErrors => Object.values(itemErrors).some(e => e));
+
+    if (hasErrors) {
+      setFormErrors(errors);
       return;
     }
+
+    // Clear errors if validation passes
+    setFormErrors({
+      deliveryCarrier: false,
+      freightForwarder: false,
+      items: {}
+    });
 
     try {
       // Convert selectedEmails object to array of actual email addresses
@@ -791,6 +838,8 @@ const handleViewModal = useCallback((rowData) => {
                       // Only update search value for manual input, not selection
                       if (reason !== 'reset') {
                         setCarrierSearchValue(newInputValue);
+                        // Clear error when user starts typing
+                        setFormErrors((prev) => ({ ...prev, deliveryCarrier: false }));
                         // If field is cleared, clear the options immediately
                         if (!newInputValue || newInputValue.trim() === '') {
                           dispatch(searchCarriers(''));
@@ -806,6 +855,8 @@ const handleViewModal = useCallback((rowData) => {
                         variant="standard"
                         label="Delivery Carrier"
                         required
+                        error={formErrors.deliveryCarrier}
+                        helperText={formErrors.deliveryCarrier ? 'Delivery Carrier is required' : ' '}
                         InputLabelProps={{ shrink: true }}
                         sx={{ ...standardInputStyles }}
                         InputProps={{
@@ -857,8 +908,16 @@ const handleViewModal = useCallback((rowData) => {
                     // Set emails from the selected freight forwarder
                     if (newValue && newValue.emails) {
                       setCurrentFormEmails(newValue.emails);
+                      // Reset email selection states when customer changes
+                      setSelectedEmails({});
+                      setConfirmedEmailIds({});
+                      setConfirmedEmailCount(0);
                     } else {
                       setCurrentFormEmails([]);
+                      // Reset email selection states when customer is cleared
+                      setSelectedEmails({});
+                      setConfirmedEmailIds({});
+                      setConfirmedEmailCount(0);
                     }
                     // Clear search results when field is cleared
                     if (!newValue) {
@@ -870,6 +929,8 @@ const handleViewModal = useCallback((rowData) => {
                     // Only update search value for manual input, not selection
                     if (reason !== 'reset') {
                       setCustomerSearchValue(newInputValue);
+                      // Clear error when user starts typing
+                      setFormErrors((prev) => ({ ...prev, freightForwarder: false }));
                       // If field is cleared, clear the options immediately
                       if (!newInputValue || newInputValue.trim() === '') {
                         dispatch(searchCustomers(''));
@@ -885,6 +946,8 @@ const handleViewModal = useCallback((rowData) => {
                       variant="standard"
                       label="Freight Forwarder"
                       required
+                      error={formErrors.freightForwarder}
+                      helperText={formErrors.freightForwarder ? 'Freight Forwarder is required' : ' '}
                       InputLabelProps={{ shrink: true }}
                       sx={{ ...standardInputStyles, flex: 1 }}
                       InputProps={{
@@ -945,6 +1008,8 @@ const handleViewModal = useCallback((rowData) => {
                     value={item.proNumber}
                     onChange={(e) => handleItemChange(item.id, 'proNumber', e.target.value.slice(0, 50))}
                     required
+                    error={formErrors.items[item.id]?.proNumber}
+                    helperText={formErrors.items[item.id]?.proNumber ? 'Required' : ' '}
                     inputProps={{ maxLength: 50 }}
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 1 }}
@@ -958,6 +1023,8 @@ const handleViewModal = useCallback((rowData) => {
                     value={item.pieces}
                     onChange={(e) => handleItemChange(item.id, 'pieces', e.target.value)}
                     required
+                    error={formErrors.items[item.id]?.pieces}
+                    helperText={formErrors.items[item.id]?.pieces ? 'Required' : ' '}
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 1 }}
                   />
@@ -970,6 +1037,8 @@ const handleViewModal = useCallback((rowData) => {
                     value={item.weight}
                     onChange={(e) => handleItemChange(item.id, 'weight', e.target.value)}
                     required
+                    error={formErrors.items[item.id]?.weight}
+                    helperText={formErrors.items[item.id]?.weight ? 'Required' : ' '}
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 1 }}
                   />
@@ -981,6 +1050,8 @@ const handleViewModal = useCallback((rowData) => {
                     value={item.shipper}
                     onChange={(e) => handleItemChange(item.id, 'shipper', e.target.value.slice(0, 255))}
                     required
+                    error={formErrors.items[item.id]?.shipper}
+                    helperText={formErrors.items[item.id]?.shipper ? 'Required' : ' '}
                     inputProps={{ maxLength: 255 }}
                     InputLabelProps={{ shrink: true }}
                     sx={{ ...standardInputStyles, flex: 2 }} // Double width for Shipper
