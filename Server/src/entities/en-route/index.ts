@@ -73,3 +73,26 @@ export interface VerifyProResponse {
     stationName: string;
     toEmails?: string[];
 }
+
+// Comprehensive verification response (used by overall verify API)
+export interface ComprehensiveVerifyResponse {
+    isRejected?: boolean;
+    source?: 'warehouse' | 'enroute';
+    receiptId?: number;
+    carrierId: number;
+    carrierName: string;
+    customerId: number;
+    customerName: string;
+    stationId: number;
+    stationName: string;
+    proNumber: string;
+    pieces?: number;
+    weight?: number;
+    shipper?: string;
+    piecesInland?: number;
+    weightInland?: number;
+    activeStatus?: string;
+    enrouteId?: number;
+    toEmails?: string[];
+    message?: string;
+}

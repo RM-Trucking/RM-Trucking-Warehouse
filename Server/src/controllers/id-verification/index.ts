@@ -124,9 +124,6 @@ export async function createVerification(req: Request, res: Response, conn: Conn
             }
         }
 
-
-
-
         // Create verification
         const result = await idVerificationService.createVerificationService(
             conn,

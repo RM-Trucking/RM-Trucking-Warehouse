@@ -9,6 +9,71 @@ tags:
     description: Operations related to customer data
 
 paths:
+  /api/maintenance/carrier:
+    post:
+      tags:
+        - Carrier
+      summary: Create a new carrier
+      description: Creates a new carrier with the provided information.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - carrierName
+              properties:
+                carrierName:
+                  type: string
+                  example: "Blue Star Logistics"
+                  description: Name of the carrier (required)
+                salesRepPhone:
+                  type: string
+                  example: "+1-800-123-4567"
+                  description: Sales representative phone number (optional)
+      responses:
+        "201":
+          description: Carrier created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Carrier created successfully"
+                  data:
+                    type: object
+                    properties:
+                      carrier:
+                        type: object
+                        properties:
+                          carrierId:
+                            type: integer
+                            example: 1
+                          carrierName:
+                            type: string
+                            example: "Blue Star Logistics"
+        "400":
+          description: Failed to create carrier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Carrier name is required"
+
   /api/maintenance/carrier/dropdown:
     get:
       tags:

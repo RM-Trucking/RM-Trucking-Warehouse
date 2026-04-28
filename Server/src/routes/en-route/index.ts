@@ -2,15 +2,20 @@ import { Router, Request, Response } from "express";
 import { authenticateJWT } from "../../middleware/auth";
 import * as enrouteController from "../../controllers/en-route";
 import { db } from '../../config/db2';
+import { validateRequest } from "../../middleware/validation";
+import { CreateEnroutePayloadSchema } from "../../validations";
 
 const router = Router();
 
 // 1. Create Enroute with multiple PROs
-router.post("/", authenticateJWT, async (req: Request, res: Response) => {
-    const conn = await db();
-    await enrouteController.createEnroute(req, res, conn);
-    if (conn) conn.close();
-});
+router.post("/",
+    authenticateJWT,
+    validateRequest(CreateEnroutePayloadSchema),
+    async (req: Request, res: Response) => {
+        const conn = await db();
+        await enrouteController.createEnroute(req, res, conn);
+        if (conn) conn.close();
+    });
 
 // 2. List all Enroutes with PROs
 router.get("/", authenticateJWT, async (req: Request, res: Response) => {

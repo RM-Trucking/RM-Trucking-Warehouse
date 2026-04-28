@@ -48,11 +48,7 @@ export async function listEnroutes(req: Request, res: Response, conn: Connection
     }
 }
 
-
-
-
-
-// 3. Verify PRO by carrier + proNumber
+// 3. Verify PRO by carrier + proNumber (Comprehensive - checks Warehouse Receipt first, then En-Route)
 export async function verifyPro(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const carrierId = req.query.carrierId as string | undefined;
@@ -63,15 +59,10 @@ export async function verifyPro(req: Request, res: Response, conn: Connection): 
             return;
         }
 
-        const result = await enrouteService.verifyPro(conn, Number(carrierId), String(proNumber));
-        if (!result) {
-            res.status(404).json({ success: false, message: "PRO not found for given carrier" });
-            return;
-        }
-
+        const result = await enrouteService.comprehensiveVerifyPro(conn, Number(carrierId), String(proNumber));
         res.status(200).json({ success: true, data: result });
     } catch (error: any) {
         console.log(error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(400).json({ success: false, message: error.message });
     }
 }

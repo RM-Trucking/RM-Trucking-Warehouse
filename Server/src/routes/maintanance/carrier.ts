@@ -5,6 +5,13 @@ import * as carrierController from '../../controllers/maintanance/carrier';
 
 const router = Router();
 
+router.post("/", authenticateJWT, async (req, res) => {
+    const conn = await db();
+    await carrierController.createCarrier(req, res, conn);
+    conn.close();
+});
+
+
 router.get('/dropdown', authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     await carrierController.listCarrierDropdown(req, res, conn);

@@ -521,6 +521,37 @@ export async function deleteFreightImagesByFreight(conn: Connection, freightId: 
 }
 
 /**
+ * GET WAREHOUSE RECEIPT BY CARRIER AND PRO WITH FULL DETAILS
+ */
+export async function getWarehouseReceiptByCarrierAndPro(
+    conn: Connection,
+    carrierId: number,
+    proNumber: string
+): Promise<any | null> {
+    const query = `
+        SELECT wr."receiptId", wr."receiptNumber", wr."status", 
+               wr."carrierId", c."carrierName",
+               wr."customerId", cu."customerName",
+               wr."stationId", s."stationName",
+               wr."piecesInland", wr."weightInland",
+               wr."proNumber", wr."shipper", wr."toEmails"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        LEFT JOIN ${SCHEMA}."Carrier" c ON wr."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON wr."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON wr."stationId" = s."stationId"
+        WHERE wr."carrierId" = ? AND wr."proNumber" = ?
+        ORDER BY wr."receiptId" DESC
+        LIMIT 1
+    `;
+    const result = await conn.query(query, [carrierId, proNumber]) as any[];
+    return result.length > 0 ? {
+        ...result[0],
+        receiptId: result[0].receiptId != null ? parseInt(result[0].receiptId) : null,
+        receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
+    } : null;
+}
+
+/**
  * AUDIT LOG QUERIES
  */
 export async function createAuditLog(conn: Connection, log: Omit<AuditLog, "auditLogId" | "eventTime">): Promise<number> {

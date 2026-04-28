@@ -5,7 +5,7 @@ import { SCHEMA } from '../../config/db2';
 /**
  * Create a new note thread
  */
-export async function createNoteThread(
+export async function createWarehouseNoteThread(
     conn: Connection,
     entityId: number,
     createdBy: number
@@ -23,10 +23,28 @@ export async function createNoteThread(
 }
 
 
+export async function createNoteThread(
+    conn: Connection,
+    entityId: number,
+    createdBy: number
+): Promise<number> {
+    const query = `
+    SELECT "noteThreadId"
+    FROM FINAL TABLE (
+      INSERT INTO ${SCHEMA}."Note_Thread"
+        ("entityId", "createdBy", "createdAt")
+      VALUES (?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+    )
+  `;
+    const result = (await conn.query(query, [parseInt(entityId.toString()), createdBy])) as any[];
+    return result[0]?.noteThreadId || 0;
+}
+
+
 /**
  * Create a new note message
  */
-export async function createNoteMessage(
+export async function createWarehouseNoteMessage(
     conn: Connection,
     noteThreadId: number,
     messageText: string,
@@ -53,7 +71,7 @@ export async function createNoteMessage(
 /**
  * Get all messages for a thread
  */
-export async function getMessagesByThread(
+export async function getWarehouseMessagesByThread(
     conn: Connection,
     noteThreadId: number
 ): Promise<(NoteMessage & { createdByName: string })[]> {
@@ -76,7 +94,7 @@ export async function getMessagesByThread(
 }
 
 // database/maintenance/note.ts
-export async function updateNoteMessage(
+export async function updateWarehouseNoteMessage(
     conn: Connection,
     noteId: number,
     messageText: string,

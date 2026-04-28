@@ -10,7 +10,7 @@ export interface Entity {
 /**
  * Create a new entity
  */
-export async function createEntity(
+export async function createWarehouseEntity(
     conn: Connection,
     entityType: 'WAREHOUSE_RECEIPT' | 'ID_VERIFICATION',
     entityName: string
@@ -27,3 +27,22 @@ export async function createEntity(
     const result = (await conn.query(query, [entityType, entityName])) as any[];
     return result[0]?.entityId || 0;
 }
+
+export async function createEntity(
+    conn: Connection,
+    entityType: 'CARRIER',
+    entityName: string
+): Promise<number> {
+    const query = `
+        SELECT "entityId"
+        FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Entity"
+                ("entityType", "entityName")
+            VALUES (?, ?)
+        )
+    `;
+
+    const result = (await conn.query(query, [entityType, entityName])) as any[];
+    return result[0]?.entityId || 0;
+}
+

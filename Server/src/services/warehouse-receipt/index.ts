@@ -395,8 +395,8 @@ export async function batchProcessWarehouseReceiptsService(
             } else {
 
                 console.log("Creating new receipt with data:", receipt);
-                const entityId = await entityDB.createEntity(conn, 'WAREHOUSE_RECEIPT', receipt.receiptNumber.toString());
-                const noteThreadId = await noteDB.createNoteThread(conn, entityId, userId);
+                const entityId = await entityDB.createWarehouseEntity(conn, 'WAREHOUSE_RECEIPT', receipt.receiptNumber.toString());
+                const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
 
                 // Add createdBy from authenticated user
                 const dataWithUser = {

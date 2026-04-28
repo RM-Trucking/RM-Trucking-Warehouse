@@ -135,7 +135,7 @@ export async function getProDetailsByVerification(conn: Connection, verification
 }
 
 /**
- * CHECK DUPLICATE CARRIER + PRO NUMBER IN ID VERIFICATION
+ * CHECK DUPLICATE CARRIER + PRO NUMBER IN ID VERIFICATION WITH STATUS
  */
 export async function checkDuplicateCarrierProInVerification(conn: Connection, carrierId: number, proNumber: string): Promise<boolean> {
 
@@ -147,4 +147,25 @@ export async function checkDuplicateCarrierProInVerification(conn: Connection, c
     const result = await conn.query(query, [carrierId, proNumber]) as any[];
 
     return result[0].count > 0;
+}
+
+/**
+ * GET DUPLICATE CARRIER + PRO WITH STATUS (for validation with REJECTED check)
+ */
+export async function getDuplicateCarrierProWithStatus(conn: Connection, carrierId: number, proNumber: string): Promise<{ receiptId: number; status: string } | null> {
+    const query = `
+        SELECT wr."receiptId", wr."status"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        WHERE wr."carrierId" = ? AND wr."proNumber" = ?
+        ORDER BY wr."receiptId" DESC
+        LIMIT 1
+    `;
+    const result = await conn.query(query, [carrierId, proNumber]) as any[];
+
+    if (result.length === 0) return null;
+
+    return {
+        receiptId: parseInt(result[0].receiptId),
+        status: result[0].status
+    };
 }

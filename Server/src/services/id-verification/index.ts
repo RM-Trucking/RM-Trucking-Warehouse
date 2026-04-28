@@ -43,10 +43,17 @@ export async function createVerificationService(
         const driverId = await idVerificationDB.createDriver(conn, { driverName: header.driverName, driverSignature: header.driverSignature });
 
         // Step 2: Validate all freight details for duplicate carrier+proNumber upfront
+        // Allow creation only if duplicate status is REJECTED, otherwise prevent duplicate
         for (const detail of freightDetails) {
-            const duplicate = await idVerificationDB.checkDuplicateCarrierProInVerification(conn, header.carrierId, detail.proNumber);
-            if (duplicate) {
-                throw new Error(`Duplicate record already exists in ID Verification for carrier ${header.carrierId} and PRO ${detail.proNumber}`);
+            const duplicateRecord = await idVerificationDB.getDuplicateCarrierProWithStatus(conn, header.carrierId, detail.proNumber);
+            if (duplicateRecord) {
+                // If status is REJECTED, allow reuse; otherwise throw error
+                if (duplicateRecord.status !== 'REJECTED') {
+                    throw new Error(
+                        `Duplicate record already exists for carrier ${header.carrierId} and PRO ${detail.proNumber} with status ${duplicateRecord.status}. Can only reuse REJECTED records.`
+                    );
+                }
+                // If REJECTED, allow it to be recreated
             }
         }
 
@@ -113,8 +120,8 @@ export async function createVerificationService(
                     location: null
                 };
                 const receiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn, temp);
-                const entityId = await entityDB.createEntity(conn, 'WAREHOUSE_RECEIPT', receiptNumber.toString());
-                const noteThreadId = await noteDB.createNoteThread(conn, entityId, userId);
+                const entityId = await entityDB.createWarehouseEntity(conn, 'WAREHOUSE_RECEIPT', receiptNumber.toString());
+                const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
 
                 // Step 7: Create WarehouseReceipt
                 const receipt: Omit<WarehouseReceipt, "receiptId" | "receivedBy" | "location"> = {
@@ -138,7 +145,6 @@ export async function createVerificationService(
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, receipt);
 
                 console.log("Receipt ID:", receiptId);
-
 
                 // Step 8: Create initial audit log for INITIATE status
                 await warehouseReceiptDB.createAuditLog(conn, {

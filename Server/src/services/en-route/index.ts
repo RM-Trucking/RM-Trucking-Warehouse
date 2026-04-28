@@ -1,11 +1,13 @@
 import { Connection } from "odbc"; // adjust to your DB library
 import * as enrouteDB from "../../database/en-route";
+import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import * as userDB from "../../database/maintanance/auth";
 import {
     CreateEnroutePayload,
     EnrouteWithPros,
     VerifyProResponse,
-    EnrouteProDetail
+    EnrouteProDetail,
+    ComprehensiveVerifyResponse
 } from "../../entities/en-route";
 import { toUtcDate } from "../../utils/dateFormater";
 
@@ -17,6 +19,21 @@ export async function createEnrouteWithPros(
 ): Promise<number> {
     try {
         await conn.beginTransaction();
+
+        // Validate: Check if any PRO already exists for this carrier
+        for (const pro of payload.pros) {
+            const existingPro = await enrouteDB.verifyPro(
+                conn,
+                payload.carrierId,
+                pro.proNumber
+            );
+
+            if (existingPro) {
+                throw new Error(
+                    `PRO number ${pro.proNumber} is already added for carrier. Cannot create duplicate.`
+                );
+            }
+        }
 
         // Create enroute record
         const enrouteId = await enrouteDB.createEnroute(
@@ -105,5 +122,81 @@ export async function verifyPro(
     };
 
     return response;
+}
+
+/**
+ * COMPREHENSIVE VERIFY PRO - Check Warehouse Receipt first, then En-Route
+ * Flow:
+ * 1. Check Warehouse_Receipt (best source of truth for completed receipts)
+ *    - If REJECTED status: return isRejected=true with details for potential reuse
+ *    - If other status: return error "Record already exists"
+ * 2. If no Warehouse_Receipt found, check En_Route table
+ *    - If found: return en_route data
+ *    - If not found: return message "No record found"
+ */
+export async function comprehensiveVerifyPro(
+    conn: Connection,
+    carrierId: number,
+    proNumber: string
+): Promise<ComprehensiveVerifyResponse> {
+    // Step 1: Check Warehouse_Receipt first
+    const warehouseRecord = await warehouseReceiptDB.getWarehouseReceiptByCarrierAndPro(conn, carrierId, proNumber);
+
+    console.log("Warehouse record found:", warehouseRecord);
+
+    if (warehouseRecord) {
+        // Return warehouse record details with status check
+        if (warehouseRecord.status === 'REJECTED') {
+            // Allow reuse of rejected records
+            return {
+                isRejected: true,
+                source: 'warehouse',
+                receiptId: warehouseRecord.receiptId,
+                carrierId: warehouseRecord.carrierId,
+                carrierName: warehouseRecord.carrierName,
+                customerId: warehouseRecord.customerId,
+                customerName: warehouseRecord.customerName,
+                stationId: warehouseRecord.stationId,
+                stationName: warehouseRecord.stationName,
+                proNumber: warehouseRecord.proNumber,
+                pieces: warehouseRecord.piecesInland,
+                weight: warehouseRecord.weightInland,
+                shipper: warehouseRecord.shipper,
+                toEmails: warehouseRecord.toEmails ? JSON.parse(warehouseRecord.toEmails) : [],
+            };
+        } else {
+            // Record exists but not rejected
+            throw new Error(
+                `Record already exists for carrier ${carrierId} and PRO ${proNumber} with status ${warehouseRecord.status}. Only REJECTED records can be reused.`
+            );
+        }
+    }
+
+    // Step 2: If no warehouse record, check En_Route
+    const enrouteRecord = await enrouteDB.verifyPro(conn, carrierId, proNumber);
+
+    if (enrouteRecord) {
+        // Return en_route data
+        return {
+            isRejected: false,
+            source: 'enroute',
+            carrierId: enrouteRecord.carrierId,
+            carrierName: enrouteRecord.carrierName,
+            customerId: enrouteRecord.customerId,
+            customerName: enrouteRecord.customerName,
+            stationId: enrouteRecord.stationId,
+            stationName: enrouteRecord.stationName,
+            proNumber: enrouteRecord.proNumber,
+            pieces: enrouteRecord.pieces,
+            weight: enrouteRecord.weight,
+            shipper: enrouteRecord.shipper,
+            activeStatus: enrouteRecord.activeStatus,
+            enrouteId: enrouteRecord.enrouteId,
+            toEmails: enrouteRecord.toEmails ? JSON.parse(enrouteRecord.toEmails) : [],
+        };
+    }
+
+    // Step 3: No record found anywhere
+    throw new Error(`No record found`);
 }
 
