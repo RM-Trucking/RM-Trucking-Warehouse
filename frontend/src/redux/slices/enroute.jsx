@@ -252,13 +252,13 @@ export function createEnroute(formData) {
 }
 
 // Add new carrier action
-export function addNewCarrier(carrierName, salesRepPhone) {
+export function addNewCarrier(carrierName, corporatePhoneNumber) {
     return async () => {
         dispatch(slice.actions.startAddCarrierLoading());
         try {
             const payload = {
                 carrierName,
-                salesRepPhone
+                corporatePhoneNumber
             };
 
             const response = await axios.post('/maintenance/carrier', payload);
