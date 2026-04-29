@@ -39,6 +39,8 @@ export const PATH_DASHBOARD = {
   },
   driverCheckIn: path(ROOTS_DASHBOARD, '/driver-check-in'),
   warehouseCheckIn: path(ROOTS_DASHBOARD, '/warehouse-check-in'),
+  warehouseCheckInRegular: path(ROOTS_DASHBOARD, '/warehouse-check-in/regular'),
+  warehouseCheckInTrailer: path(ROOTS_DASHBOARD, '/warehouse-check-in/trailer'),
   enRoute: path(ROOTS_DASHBOARD, '/en-route'),
   idVerificationForm: path(ROOTS_DASHBOARD, '/id-verification-form'),
   warehouseReceiptForm: path(ROOTS_DASHBOARD, '/warehouse-receipt-form'),
