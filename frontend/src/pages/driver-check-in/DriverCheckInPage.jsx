@@ -113,6 +113,8 @@ export default function DriverCheckInPage() {
   const [rejectedProData, setRejectedProData] = useState(null);
   const [openApiErrorDialog, setOpenApiErrorDialog] = useState(false);
   const [apiErrorMessage, setApiErrorMessage] = useState('');
+  const [openSuccessDialog, setOpenSuccessDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const [formErrors, setFormErrors] = useState({
     selectedCarrier: false,
     doorValue: false,
@@ -311,11 +313,16 @@ export default function DriverCheckInPage() {
         setVerificationIds(response.verificationIds);
         setOpenVerificationDialog(true);
       } else {
-        alert('Driver Check-In submitted successfully!');
-        handleResetForm();
+        setSuccessMessage('Driver Check-In submitted successfully!');
+        setOpenSuccessDialog(true);
+        setTimeout(() => {
+          handleResetForm();
+        }, 1500);
       }
     } catch (error) {
-      alert('Error submitting check-in: ' + (error.message || 'Unknown error'));
+      const errorMsg = error.message || 'Unknown error';
+      setApiErrorMessage(errorMsg);
+      setOpenApiErrorDialog(true);
       console.error('Submit error:', error);
     }
   };
@@ -656,6 +663,8 @@ export default function DriverCheckInPage() {
         if (g.id !== groupId) return g;
         const nextSno = String(g.entries.length + 1).padStart(2, "0");
         const entryId = Date.now();
+        // Get customerId and stationId from the first entry in the group
+        const firstEntry = g.entries[0];
         const newEntry = {
           id: entryId,
           sno: nextSno,
@@ -663,6 +672,9 @@ export default function DriverCheckInPage() {
           pieces: "",
           weight: "",
           shipper: "",
+          customerId: firstEntry?.customerId || null,
+          stationId: firstEntry?.stationId || null,
+          proDetailId: 0,
         };
         // Set the new entry as editing immediately
         setEditingEntry(entryId);
@@ -1577,6 +1589,50 @@ export default function DriverCheckInPage() {
             variant="contained"
             onClick={() => setOpenApiErrorDialog(false)}
             sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' }, px: 4 }}
+          >
+            OK
+          </Button>
+        </Box>
+      </Dialog>
+
+      {/* Success Dialog */}
+      <Dialog
+        open={openSuccessDialog}
+        onClose={() => setOpenSuccessDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2
+          }
+        }}
+      >
+        <Box sx={{ p: 3, textAlign: 'center' }}>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+            <Box
+              sx={{
+                width: 60,
+                height: 60,
+                borderRadius: '50%',
+                bgcolor: '#4caf50',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Iconify icon="mdi:check-circle" width={32} color="white" />
+            </Box>
+          </Box>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+            Success
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#666', mb: 3, whiteSpace: 'pre-wrap' }}>
+            {successMessage}
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => setOpenSuccessDialog(false)}
+            sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' }, px: 4 }}
           >
             OK
           </Button>
