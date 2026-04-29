@@ -98,6 +98,7 @@ export default function DriverCheckInPage() {
     pieces: "",
     weight: "",
     shipper: "",
+    proDetailId: 0,
   });
 
   // PRO validation states
@@ -285,6 +286,7 @@ export default function DriverCheckInPage() {
             pieces: entry.pieces,
             weight: entry.weight,
             shipper: entry.shipper,
+            proDetailId: entry.proDetailId || 0,
             toEmails: ['demo1@gmail.com', 'demo2@gmail.com']
           });
         });
@@ -301,6 +303,7 @@ export default function DriverCheckInPage() {
         freightDetails: freightDetails
       };
 
+      console.log('Submitting with freightDetails:', freightDetails);
       const response = await dispatch(submitDriverCheckIn(checkInData));
 
       // Show verification ID dialog
@@ -376,7 +379,8 @@ export default function DriverCheckInPage() {
             },
             pieces: proData.pieces?.toString() || '',
             weight: proData.weight?.toString() || '',
-            shipper: proData.shipper || ''
+            shipper: proData.shipper || '',
+            proDetailId: proData.proDetailId || 0
           }));
           setProValidated(true);
           setShowRemainingFields(true);
@@ -407,7 +411,8 @@ export default function DriverCheckInPage() {
       freightForwarder: null,
       pieces: '',
       weight: '',
-      shipper: ''
+      shipper: '',
+      proDetailId: 0
     }));
     setShowRemainingFields(false);
     setProValidationError(null);
@@ -430,7 +435,8 @@ export default function DriverCheckInPage() {
         },
         pieces: rejectedProData.pieces?.toString() || '',
         weight: rejectedProData.weight?.toString() || '',
-        shipper: rejectedProData.shipper || ''
+        shipper: rejectedProData.shipper || '',
+        proDetailId: rejectedProData.proDetailId || 0
       }));
       setProValidated(true);
       setShowRemainingFields(true);
@@ -520,7 +526,7 @@ export default function DriverCheckInPage() {
   const handleFormChange = (field) => (e) =>
     setFormValues((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const addEntry = (freightForwarder, pro, pieces, weight, shipper) => {
+  const addEntry = (freightForwarder, pro, pieces, weight, shipper, proDetailId = 0) => {
     // Handle both object and string formats for backward compatibility
     const freightForwarderName = typeof freightForwarder === 'string'
       ? freightForwarder
@@ -543,7 +549,10 @@ export default function DriverCheckInPage() {
         shipper,
         customerId: typeof freightForwarder === 'object' ? freightForwarder?.customerId : null,
         stationId: typeof freightForwarder === 'object' ? freightForwarder?.stationId : null,
+        proDetailId: proDetailId || 0,
       };
+
+      console.log('Created newEntry:', newEntry);
 
       if (existing) {
         return prev.map((g) =>
@@ -570,14 +579,16 @@ export default function DriverCheckInPage() {
       return;
     }
 
-    const { freightForwarder, pro, pieces, weight, shipper } = formValues;
-    addEntry(freightForwarder, pro, pieces, weight, shipper);
+    const { freightForwarder, pro, pieces, weight, shipper, proDetailId } = formValues;
+    console.log('Adding entry with proDetailId:', proDetailId);
+    addEntry(freightForwarder, pro, pieces, weight, shipper, proDetailId);
     setFormValues({
       freightForwarder: null,
       pro: "",
       pieces: "",
       weight: "",
       shipper: "",
+      proDetailId: 0,
     });
     setCustomerSearchValue("");
     setShowRemainingFields(false);

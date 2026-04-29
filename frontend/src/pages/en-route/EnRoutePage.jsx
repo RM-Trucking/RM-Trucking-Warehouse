@@ -48,6 +48,10 @@ export default function EnRoutePage() {
   });
   const [addCarrierLoading, setAddCarrierLoading] = useState(false);
   const [addCarrierError, setAddCarrierError] = useState(null);
+  const [addCarrierFieldErrors, setAddCarrierFieldErrors] = useState({
+    name: '',
+    phone: ''
+  });
 
   // Local state for carrier search debounce
   const [carrierSearchValue, setCarrierSearchValue] = useState('');
@@ -488,6 +492,7 @@ const handleViewModal = useCallback((rowData) => {
   const handleCloseAddCarrierModal = () => {
     setOpenAddCarrierModal(false);
     setAddCarrierError(null);
+    setAddCarrierFieldErrors({ name: '', phone: '' });
     setNewCarrierForm({ name: "", phone: "" });
   };
 
@@ -495,10 +500,11 @@ const handleViewModal = useCallback((rowData) => {
     if (!phone) {
       return 'Phone number is required';
     }
-    if (phone.length > 20) {
-      return 'Phone number cannot exceed 20 characters';
+    // Check for exactly 14 characters: (XXX) XXX-XXXX
+    if (phone.length !== 14) {
+      return 'Phone number must be in format: (XXX) XXX-XXXX';
     }
-    const phoneRegex = /^\(\d{3}\) \d{3}-\d{4}.*$/;
+    const phoneRegex = /^\(\d{3}\) \d{3}-\d{4}$/;
     if (!phoneRegex.test(phone)) {
       return 'Invalid phone format. Use format: (XXX) XXX-XXXX';
     }
@@ -506,19 +512,26 @@ const handleViewModal = useCallback((rowData) => {
   };
 
   const handleAddCarrierSubmit = async () => {
+    const errors = { name: '', phone: '' };
+
     if (!newCarrierForm.name.trim()) {
-      setAddCarrierError('Delivery Carrier name is required');
-      return;
+      errors.name = 'Delivery Carrier name is required';
     }
 
     const phoneError = validatePhoneNumber(newCarrierForm.phone);
     if (phoneError) {
-      setAddCarrierError(phoneError);
+      errors.phone = phoneError;
+    }
+
+    // If there are any errors, set them and return
+    if (errors.name || errors.phone) {
+      setAddCarrierFieldErrors(errors);
       return;
     }
 
     setAddCarrierLoading(true);
     setAddCarrierError(null);
+    setAddCarrierFieldErrors({ name: '', phone: '' });
 
     try {
       const result = await dispatch(addNewCarrier(newCarrierForm.name, newCarrierForm.phone));
@@ -1235,9 +1248,9 @@ const handleViewModal = useCallback((rowData) => {
           </Typography>
 
           {addCarrierError && (
-            <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }}>
               {addCarrierError}
-            </Typography>
+            </Alert>
           )}
 
           <Box sx={{ display: "flex", gap: 3 }}>
@@ -1250,19 +1263,35 @@ const handleViewModal = useCallback((rowData) => {
                 variant="standard"
                 placeholder=""
                 value={newCarrierForm.name}
-                onChange={(e) =>
+                inputProps={{ maxLength: 100 }}
+                onChange={(e) => {
                   setNewCarrierForm((prev) => ({
                     ...prev,
                     name: e.target.value,
-                  }))
-                }
+                  }));
+                  if (addCarrierFieldErrors.name) {
+                    setAddCarrierFieldErrors((prev) => ({
+                      ...prev,
+                      name: ''
+                    }));
+                  }
+                }}
+                error={!!addCarrierFieldErrors.name}
                 sx={{
                   "& .MuiInputBase-input::placeholder": {
                     color: "#999",
                     opacity: 0.7,
                   },
+                  "& .MuiInputBase-root.Mui-error:after": {
+                    borderBottomColor: "#d32f2f"
+                  }
                 }}
               />
+              {addCarrierFieldErrors.name && (
+                <Typography variant="caption" sx={{ color: "#d32f2f", display: "block", mt: 0.5 }}>
+                  {addCarrierFieldErrors.name}
+                </Typography>
+              )}
             </Box>
 
             <Box sx={{ flex: 1 }}>
@@ -1280,8 +1309,25 @@ const handleViewModal = useCallback((rowData) => {
                     ...prev,
                     phone: formatted,
                   }));
+                  if (addCarrierFieldErrors.phone) {
+                    setAddCarrierFieldErrors((prev) => ({
+                      ...prev,
+                      phone: ''
+                    }));
+                  }
+                }}
+                error={!!addCarrierFieldErrors.phone}
+                sx={{
+                  "& .MuiInputBase-root.Mui-error:after": {
+                    borderBottomColor: "#d32f2f"
+                  }
                 }}
               />
+              {addCarrierFieldErrors.phone && (
+                <Typography variant="caption" sx={{ color: "#d32f2f", display: "block", mt: 0.5 }}>
+                  {addCarrierFieldErrors.phone}
+                </Typography>
+              )}
             </Box>
           </Box>
 

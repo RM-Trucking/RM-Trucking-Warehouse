@@ -154,6 +154,7 @@ export function submitDriverCheckIn(checkInData) {
                     pieces: detail.pieces,
                     weight: detail.weight,
                     shipper: detail.shipper,
+                    proDetailId: detail.proDetailId || 0,
                     toEmails: detail.toEmails || ['demo1@gmail.com', 'demo2@gmail.com']
                 }))
             };
