@@ -20,6 +20,7 @@ export const LoginPage = Loadable(lazy(() => import('../pages/auth/LoginPage')))
 export const DashboardPage = Loadable(lazy(() => import('../pages/dashboard/DashboardPage')));
 export const DriverCheckInPage = Loadable(lazy(() => import('../pages/driver-check-in/DriverCheckInPage')));
 export const WarehouseCheckInPage = Loadable(lazy(() => import('../pages/menu/WarehouseCheckInPage')));
+export const TrailerCheckInPage = Loadable(lazy(() => import('../pages/menu/TrailerCheckInPage')));
 export const EnRoutePage = Loadable(lazy(() => import('../pages/en-route/EnRoutePage')));
 export const IdVerificationFormPage = Loadable(lazy(() => import('../pages/IdVerificationForm/IdVerificationFormPage')));
 export const IdVerificationViewPage = Loadable(lazy(() => import('../pages/IdVerificationForm/IdVerificationView')));
