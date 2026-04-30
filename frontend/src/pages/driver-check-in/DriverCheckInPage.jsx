@@ -181,10 +181,17 @@ export default function DriverCheckInPage() {
   // Add to your state declarations
   const [isSignatureVisible, setIsSignatureVisible] = useState(false);
   const [signatureData, setSignatureData] = useState(null); // Will store your fetched Base64
-
   const [isPadConnected, setIsPadConnected] = useState(false);
   const canvasRef = useRef(null);
   const tabletTimerRef = useRef(null);
+
+  // Mail list state for freight forwarder emails
+  const [openMailList, setOpenMailList] = useState(false);
+  const [selectedEmails, setSelectedEmails] = useState({});
+  const [currentFormEmails, setCurrentFormEmails] = useState([]);
+  const [confirmedEmailCount, setConfirmedEmailCount] = useState(0);
+  const [confirmedEmailIds, setConfirmedEmailIds] = useState({});
+  const [currentGroupMailData, setCurrentGroupMailData] = useState(null);
 
   const [openVerificationDialog, setOpenVerificationDialog] = useState(false);
   const [verificationIds, setVerificationIds] = useState([]);
@@ -292,13 +299,55 @@ const handleDriverNameFocus = () => {
       window.ClearTablet();
     }
     setSignatureData(null);
-    
+
     // Turn the pad back on so they can re-sign immediately
     if (!tabletTimerRef.current && canvasRef.current && typeof window.SetTabletState === 'function') {
       const sigCtx = canvasRef.current.getContext('2d');
-      tabletTimerRef.current = window.SetTabletState(1, sigCtx); 
+      tabletTimerRef.current = window.SetTabletState(1, sigCtx);
     }
   };
+
+  // Mail list handlers for freight forwarder emails
+  const handleOpenMailList = (groupData) => {
+    setCurrentGroupMailData(groupData);
+    // Emails are already in the correct format: { entryId, entryType, entryEmail }
+    const emailsList = (groupData.emails || []).map((email, index) => ({
+      entryId: email.entryId,
+      entryType: email.entryType,
+      entryEmail: email.entryEmail
+    }));
+    setCurrentFormEmails(emailsList);
+    setOpenMailList(true);
+  };
+
+  const handleCloseMailList = () => {
+    setOpenMailList(false);
+  };
+
+  const handleCancelMailList = () => {
+    setSelectedEmails(confirmedEmailIds);
+    setOpenMailList(false);
+  };
+
+  const handleEmailCheckboxChange = (emailId) => {
+    setSelectedEmails((prev) => ({
+      ...prev,
+      [emailId]: !prev[emailId]
+    }));
+  };
+
+  const handleMailSubmit = () => {
+    const selectedEmailAddresses = currentFormEmails
+      .filter((email) => selectedEmails[email.entryId])
+      .map((email) => email.entryEmail);
+
+    console.log('Sending driver check-in details to:', selectedEmailAddresses);
+    setConfirmedEmailCount(selectedEmailAddresses.length);
+    setConfirmedEmailIds(selectedEmails);
+    setOpenMailList(false);
+    // TODO: Make API call to send emails
+  };
+
   
 
   const handleResetForm = () => {
@@ -674,6 +723,7 @@ const handleDriverNameFocus = () => {
         {
           id: groupId,
           label: `Freight Forwarder - ${freightForwarderName} | Elk Grove Village | IL`,
+          emails: typeof freightForwarder === 'object' ? (freightForwarder?.emails || []) : [],
           entries: [newEntry],
         },
       ];
@@ -1236,7 +1286,7 @@ const handleDriverNameFocus = () => {
                 sx={{ width: { xs: "100%", lg: "46%" }, fontSize: "0.8rem" }}
               >
                 TYPE OF SECOND ID REVIEWED (IF THE FIRST ID WAS NOT A PHOTO ID
-                ISSUED BY A GOVERNMENT AUTHORITY OR IS NOT A COMPANY 10)
+                ISSUED BY A GOVERNMENT AUTHORITY OR IS NOT A COMPANY ID)
               </Typography>
               <StyledTextField
                 variant="standard"
@@ -1509,8 +1559,14 @@ const handleDriverNameFocus = () => {
               <Typography sx={{ fontWeight: 600, fontSize: "13px" }}>
                 {group.label}
               </Typography>
-              <Stack direction="row" alignItems="center">
-                <IconButton size="small" sx={{ color: "#A22" }}>
+              {/* <Stack direction="row" alignItems="center">
+                <IconButton
+                  size="small"
+                  sx={{ color: "#A22" }}
+                  onClick={() => handleOpenMailList({
+                    emails: group.emails || []
+                  })}
+                >
                   <Iconify icon="mdi:email-outline" width={20} />
                 </IconButton>
                 <IconButton
@@ -1526,7 +1582,7 @@ const handleDriverNameFocus = () => {
                     width={20}
                   />
                 </IconButton>
-              </Stack>
+              </Stack> */}
             </Stack>
 
             {/* Collapsible DataGrid */}
@@ -1943,6 +1999,101 @@ const handleDriverNameFocus = () => {
             sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' }, px: 4 }}
           >
             OK
+          </Button>
+        </Box>
+      </Dialog>
+
+      {/* Mail List Dialog */}
+      <Dialog
+        open={openMailList}
+        onClose={handleCloseMailList}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '3px solid #a22'
+          }
+        }}
+      >
+        <Box sx={{ p: 2, bgcolor: '#a22', color: 'white', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Mail List</span>
+        </Box>
+        <DialogContent sx={{ p: 2, height: '400px' }}>
+          {currentFormEmails.length > 0 ? (
+            <DataGrid
+              rows={currentFormEmails.map((email, index) => ({
+                id: email.entryId,
+                sno: String(index + 1).padStart(2, '0'),
+                entryType: email.entryType || '',
+                emailid: email.entryEmail,
+                selected: selectedEmails[email.entryId] || false
+              }))}
+              columns={[
+                {
+                  field: 'selected',
+                  headerName: '',
+                  width: 50,
+                  sortable: false,
+                  renderCell: (params) => (
+                    <input
+                      type="checkbox"
+                      checked={params.row.selected}
+                      onChange={() => handleEmailCheckboxChange(params.row.id)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  )
+                },
+                {
+                  field: 'sno',
+                  headerName: 'SNO',
+                  width: 80,
+                  sortable: false
+                },
+                {
+                  field: 'entryType',
+                  headerName: 'Type',
+                  width: 100,
+                  sortable: false
+                },
+                {
+                  field: 'emailid',
+                  headerName: 'Email ID',
+                  flex: 1,
+                  sortable: false
+                }
+              ]}
+              hideFooter
+              sx={{
+                '& .MuiDataGrid-columnHeaders': {
+                  bgcolor: '#f5f5f5',
+                  borderBottom: '2px solid #e0e0e0'
+                },
+                '& .MuiDataGrid-cell': {
+                  borderBottom: '1px solid #e0e0e0'
+                }
+              }}
+            />
+          ) : (
+            <Typography variant="body2" sx={{ color: '#999', p: 2 }}>
+              No emails available for this freight forwarder
+            </Typography>
+          )}
+        </DialogContent>
+        <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end', gap: 1, borderTop: '1px solid #e0e0e0' }}>
+          <Button
+            variant="outlined"
+            onClick={handleCancelMailList}
+            sx={{ color: 'black', borderColor: '#ccc' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleMailSubmit}
+            sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' } }}
+          >
+            Confirm
           </Button>
         </Box>
       </Dialog>
