@@ -21,11 +21,11 @@ import { PATH_DASHBOARD } from '../../../routes/paths';
 const navConfig = [
   { title: 'Home',                  path: PATH_DASHBOARD.general.home,        icon: null },
   { title: 'Driver Check-In',       path: PATH_DASHBOARD.driverCheckIn,       icon: null },
-  { title: 'Warehouse Check-In',    path: PATH_DASHBOARD.warehouseCheckIn,    icon: null },
+  // { title: 'Warehouse Check-In',    path: PATH_DASHBOARD.warehouseCheckIn,    icon: null },
   { title: 'En Route',              path: PATH_DASHBOARD.enRoute,             icon: null },
-  { title: 'ID Verification Form',  path: PATH_DASHBOARD.idVerificationForm,  icon: null },
-  { title: 'Warehouse Receipt Form',path: PATH_DASHBOARD.warehouseReceiptForm,icon: null },
-  { title: 'Shipment Form',         path: PATH_DASHBOARD.shipmentBuilding,    icon: null },
+  // { title: 'ID Verification Form',  path: PATH_DASHBOARD.idVerificationForm,  icon: null },
+  // { title: 'Warehouse Receipt Form',path: PATH_DASHBOARD.warehouseReceiptForm,icon: null },
+  // { title: 'Shipment Form',         path: PATH_DASHBOARD.shipmentBuilding,    icon: null },
 ];
 
 // ----------------------------------------------------------------------
