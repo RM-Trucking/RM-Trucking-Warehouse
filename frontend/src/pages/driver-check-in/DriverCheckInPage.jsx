@@ -192,6 +192,8 @@ export default function DriverCheckInPage() {
   const [confirmedEmailCount, setConfirmedEmailCount] = useState(0);
   const [confirmedEmailIds, setConfirmedEmailIds] = useState({});
   const [currentGroupMailData, setCurrentGroupMailData] = useState(null);
+  const [currentGroupId, setCurrentGroupId] = useState(null);
+  const [confirmedEmailsByGroup, setConfirmedEmailsByGroup] = useState({});
 
   const [openVerificationDialog, setOpenVerificationDialog] = useState(false);
   const [verificationIds, setVerificationIds] = useState([]);
@@ -257,59 +259,37 @@ const handleDriverNameFocus = () => {
   };
 
   const handleGetSignature = () => {
-    if (!isPadConnected) {
-      alert("Signature pad is not connected. Please install Topaz SigWeb.");
-      return;
-    }
-
-    if (typeof window.NumberOfTabletPoints !== 'function') {
-      console.error("Topaz SigWeb NumberOfTabletPoints function not available");
-      alert("Signature pad is not properly initialized.");
-      return;
-    }
-
-    const pointCount = window.NumberOfTabletPoints();
-    console.log(`Signature points captured: ${pointCount}`);
-
-    if (pointCount > 0) {
-      // 1. Turn off the tablet loop
-      window.SetTabletState(0, tabletTimerRef.current);
-      tabletTimerRef.current = null;
-      console.log("Tablet state disabled");
-
-      // 2. Configure and Capture Image
-      window.SetImageXSize(500);
-      window.SetImageYSize(150);
-      window.SetImagePenWidth(5);
-
-      window.GetSigImageB64((base64String) => {
-        console.log("Base64 signature received, length:", base64String?.length);
-        setSignatureData(base64String); // Save to state for UI and API
-        console.log("Signature data set successfully");
-      });
-
-      clearFieldError('signatureData');
-    } else {
-      alert("Please sign on the pad first.");
-    }
+    // Use hardcoded signature for testing/demo
+    setSignatureData(signatureBase64);
+    setIsSignatureVisible(true);
+    clearFieldError('signatureData');
   };
 
   const handleClearSignature = () => {
-    if (typeof window.ClearTablet === 'function') {
-      window.ClearTablet();
+    try {
+      if (typeof window.ClearTablet === 'function') {
+        window.ClearTablet();
+      }
+    } catch (error) {
+      console.error("Error clearing tablet:", error);
     }
     setSignatureData(null);
 
     // Turn the pad back on so they can re-sign immediately
-    if (!tabletTimerRef.current && canvasRef.current && typeof window.SetTabletState === 'function') {
-      const sigCtx = canvasRef.current.getContext('2d');
-      tabletTimerRef.current = window.SetTabletState(1, sigCtx);
+    try {
+      if (!tabletTimerRef.current && canvasRef.current && typeof window.SetTabletState === 'function') {
+        const sigCtx = canvasRef.current.getContext('2d');
+        tabletTimerRef.current = window.SetTabletState(1, sigCtx);
+      }
+    } catch (error) {
+      console.error("Error setting tablet state:", error);
     }
   };
 
   // Mail list handlers for freight forwarder emails
-  const handleOpenMailList = (groupData) => {
+  const handleOpenMailList = (groupData, groupId) => {
     setCurrentGroupMailData(groupData);
+    setCurrentGroupId(groupId);
     // Emails are already in the correct format: { entryId, entryType, entryEmail }
     const emailsList = (groupData.emails || []).map((email, index) => ({
       entryId: email.entryId,
@@ -317,6 +297,11 @@ const handleDriverNameFocus = () => {
       entryEmail: email.entryEmail
     }));
     setCurrentFormEmails(emailsList);
+
+    // Pre-populate selected emails from confirmed state for this group
+    const groupConfirmedEmails = confirmedEmailsByGroup[groupId] || {};
+    setSelectedEmails(groupConfirmedEmails);
+
     setOpenMailList(true);
   };
 
@@ -344,6 +329,15 @@ const handleDriverNameFocus = () => {
     console.log('Sending driver check-in details to:', selectedEmailAddresses);
     setConfirmedEmailCount(selectedEmailAddresses.length);
     setConfirmedEmailIds(selectedEmails);
+
+    // Save confirmed emails for this group
+    if (currentGroupId) {
+      setConfirmedEmailsByGroup((prev) => ({
+        ...prev,
+        [currentGroupId]: selectedEmails
+      }));
+    }
+
     setOpenMailList(false);
     // TODO: Make API call to send emails
   };
@@ -351,7 +345,11 @@ const handleDriverNameFocus = () => {
   
 
   const handleResetForm = () => {
-    if (typeof window.ClearTablet === 'function') window.ClearTablet();
+    try {
+      if (typeof window.ClearTablet === 'function') window.ClearTablet();
+    } catch (error) {
+      console.error("Error clearing tablet on reset:", error);
+    }
     setSelectedCarrier(null);
     setCarrierSearchValue("");
     setCustomerSearchValue("");
@@ -431,6 +429,12 @@ const handleDriverNameFocus = () => {
       // Build freight details from proGroups
       const freightDetails = [];
       proGroups.forEach(group => {
+        // Get confirmed emails for this group
+        const groupConfirmedEmailIds = confirmedEmailsByGroup[group.id] || {};
+        const toEmailsList = (group.emails || [])
+          .filter((email) => groupConfirmedEmailIds[email.entryId])
+          .map((email) => email.entryEmail);
+
         group.entries.forEach(entry => {
           freightDetails.push({
             customerId: entry.customerId || 0,
@@ -440,7 +444,7 @@ const handleDriverNameFocus = () => {
             weight: entry.weight,
             shipper: entry.shipper,
             proDetailId: entry.proDetailId || 0,
-            toEmails: ['demo1@gmail.com', 'demo2@gmail.com']
+            toEmails: toEmailsList
           });
         });
       });
@@ -1559,13 +1563,13 @@ const handleDriverNameFocus = () => {
               <Typography sx={{ fontWeight: 600, fontSize: "13px" }}>
                 {group.label}
               </Typography>
-              {/* <Stack direction="row" alignItems="center">
+              <Stack direction="row" alignItems="center">
                 <IconButton
                   size="small"
                   sx={{ color: "#A22" }}
                   onClick={() => handleOpenMailList({
                     emails: group.emails || []
-                  })}
+                  }, group.id)}
                 >
                   <Iconify icon="mdi:email-outline" width={20} />
                 </IconButton>
@@ -1582,7 +1586,7 @@ const handleDriverNameFocus = () => {
                     width={20}
                   />
                 </IconButton>
-              </Stack> */}
+              </Stack> 
             </Stack>
 
             {/* Collapsible DataGrid */}
