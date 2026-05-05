@@ -746,6 +746,11 @@ const handleDriverNameFocus = () => {
     const { freightForwarder, pro, pieces, weight, shipper, proDetailId } = formValues;
     console.log('Adding entry with proDetailId:', proDetailId);
     addEntry(freightForwarder, pro, pieces, weight, shipper, proDetailId);
+
+    // Clear the proGroups error since at least one detail has been added
+    clearFieldError('proGroups');
+
+    // Completely reset the form to initial state
     setFormValues({
       freightForwarder: null,
       pro: "",
@@ -765,11 +770,19 @@ const handleDriverNameFocus = () => {
   const handleDelete = (groupId, entryId) => {
     setProGroups((prev) =>
       prev
-        .map((g) =>
-          g.id === groupId
-            ? { ...g, entries: g.entries.filter((e) => e.id !== entryId) }
-            : g,
-        )
+        .map((g) => {
+          if (g.id === groupId) {
+            // Filter out the deleted entry
+            const filteredEntries = g.entries.filter((e) => e.id !== entryId);
+            // Recalculate SNO for remaining entries
+            const updatedEntries = filteredEntries.map((entry, index) => ({
+              ...entry,
+              sno: String(index + 1).padStart(2, "0")
+            }));
+            return { ...g, entries: updatedEntries };
+          }
+          return g;
+        })
         .filter((g) => g.entries.length > 0),
     );
   };
@@ -810,9 +823,11 @@ const handleDriverNameFocus = () => {
   };
 
   const handleCancelEdit = () => {
+    // Revert changes by clearing edit mode without saving
     setEditingEntry(null);
     setEditingValues({});
   };
+
 
   const handleGroupAdd = (groupId) => {
     setProGroups((prev) =>
@@ -866,6 +881,7 @@ const handleDriverNameFocus = () => {
                   pro: e.target.value,
                 }))
               }
+              onKeyDown={(e) => e.stopPropagation()}
               sx={{ width: "100%" }}
             />
           );
@@ -890,7 +906,6 @@ const handleDriverNameFocus = () => {
             <TextField
               size="small"
               variant="outlined"
-              type="number"
               value={editingValues.pieces}
               onChange={(e) =>
                 setEditingValues((prev) => ({
@@ -898,6 +913,7 @@ const handleDriverNameFocus = () => {
                   pieces: e.target.value,
                 }))
               }
+              onKeyDown={(e) => e.stopPropagation()}
               sx={{ width: "100%" }}
             />
           );
@@ -916,7 +932,6 @@ const handleDriverNameFocus = () => {
             <TextField
               size="small"
               variant="outlined"
-              type="number"
               value={editingValues.weight}
               onChange={(e) =>
                 setEditingValues((prev) => ({
@@ -924,6 +939,7 @@ const handleDriverNameFocus = () => {
                   weight: e.target.value,
                 }))
               }
+              onKeyDown={(e) => e.stopPropagation()}
               sx={{ width: "100%" }}
             />
           );
@@ -949,6 +965,7 @@ const handleDriverNameFocus = () => {
                   shipper: e.target.value,
                 }))
               }
+              onKeyDown={(e) => e.stopPropagation()}
               sx={{ width: "100%" }}
             />
           );
@@ -1462,6 +1479,7 @@ const handleDriverNameFocus = () => {
                   loading={customerLoading}
                   loadingText="Searching customers..."
                   noOptionsText={customerSearchValue ? "No customers found" : "Type to search for customers"}
+                  disableClearable={!formValues.freightForwarder}
                   renderInput={(params) => (
                     <TextField
                       {...params}
