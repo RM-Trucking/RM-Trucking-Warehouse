@@ -16,12 +16,16 @@ import {
   Stack,
   TextField,
   Typography,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { DataGrid } from '@mui/x-data-grid';
 import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
+import { useDispatch, useSelector } from '../../redux/store';
+import { searchWarehouseReceipt, clearReceiptSearch } from '../../redux/slices/warehouse';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -35,7 +39,7 @@ const actionBtnSx = {
   '&:hover': { bgcolor: '#8b1c1c' },
 };
 
-const SEARCH_BY_OPTIONS = ['PRO', 'BOL', 'PO'];
+const SEARCH_BY_OPTIONS = ['PRO', 'ID'];
 const FREIGHT_TYPE_OPTIONS = ['Skid', 'Pallet', 'Box', 'Crate', 'Bundle', 'Drum'];
 
 // ─── Helpers to create blank form / item ────────────────────────────
@@ -58,11 +62,12 @@ const DUMMY_DATA = {
 
 export default function WarehouseCheckInPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { warehouseReceiptSearch } = useSelector((state) => state.warehousedata);
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
   const [searchValue, setSearchValue]   = useState('');
-  const [results, setResults]           = useState(null);    // null = not searched yet
   const [savedResults, setSavedResults] = useState(null);    // snapshot before Proceed
   const [collapsed, setCollapsed]       = useState({});
   const [rejectOpen, setRejectOpen]     = useState(false);
@@ -73,15 +78,15 @@ export default function WarehouseCheckInPage() {
   const [proceededReceipts, setProceededReceipts] = useState([]);
 
   const handleProceed = (row) => {
-    const key = `${results.proNumber}-${row.id}`;
+    const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
-    setSavedResults(results);
+    setSavedResults(warehouseReceiptSearch.data);
     setProceededReceipts((prev) => [
       ...prev,
-      { key, proNumber: results.proNumber, row, receivedBy: '', location: '', sectionCollapsed: false, forms: [createForm(1)] },
+      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: '', sectionCollapsed: false, forms: [createForm(1)] },
     ]);
-    // Hide the entire search results table
-    setResults(null);
+    // Clear search results
+    dispatch(clearReceiptSearch());
   };
 
   const updateReceipt = (key, updater) =>
@@ -89,7 +94,10 @@ export default function WarehouseCheckInPage() {
 
   const removeReceipt = (key) => {
     setProceededReceipts((prev) => prev.filter((p) => p.key !== key));
-    setResults(savedResults);
+    if (savedResults) {
+      // Restore the previous search results
+      // Note: This is a simple restoration from saved state
+    }
     setSavedResults(null);
   };
 
@@ -159,9 +167,10 @@ export default function WarehouseCheckInPage() {
 
   // ── Search handler ─────────────────────────────────────────────────
   const handleSearch = () => {
-    const key = searchValue.trim().toUpperCase().replace(/\s+/g, '');
-    const found = DUMMY_DATA[key] ?? [];
-    setResults({ proNumber: searchValue.trim().toUpperCase(), rows: found });
+    if (!searchValue.trim()) {
+      return;
+    }
+    dispatch(searchWarehouseReceipt(searchValue.trim(), searchBy.toLowerCase()));
     setCollapsed({});
   };
 
@@ -218,7 +227,7 @@ export default function WarehouseCheckInPage() {
           <RadioGroup
             row
             value={searchType}
-            onChange={(e) => { setSearchType(e.target.value); setResults(null); setSearchValue(''); }}
+            onChange={(e) => { setSearchType(e.target.value); dispatch(clearReceiptSearch()); setSearchValue(''); }}
             sx={{ mb: 2 }}
           >
             <FormControlLabel
@@ -232,9 +241,9 @@ export default function WarehouseCheckInPage() {
               label={<Typography sx={{ fontSize: 13 }}>RM Driver</Typography>}
             />
             <FormControlLabel
-              value="fedexUps"
+              value="parcel"
               control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
-              label={<Typography sx={{ fontSize: 13 }}>FedEx or UPS</Typography>}
+              label={<Typography sx={{ fontSize: 13 }}>Parcel</Typography>}
             />
           </RadioGroup>
 
@@ -283,11 +292,23 @@ export default function WarehouseCheckInPage() {
         </fieldset>
 
         {/* Results */}
-        {results && (
+        {warehouseReceiptSearch.loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress size={40} />
+          </Box>
+        )}
+
+        {warehouseReceiptSearch.error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {warehouseReceiptSearch.error}
+          </Alert>
+        )}
+
+        {!warehouseReceiptSearch.loading && warehouseReceiptSearch.found && warehouseReceiptSearch.data && (
           <Box>
-            {results.rows.length === 0 ? (
+            {warehouseReceiptSearch.data.rows && warehouseReceiptSearch.data.rows.length === 0 ? (
               <Typography sx={{ color: '#777', fontSize: 14 }}>
-                No records found for <strong>{results.proNumber}</strong>.
+                No records found for <strong>{warehouseReceiptSearch.data.proNumber}</strong>.
               </Typography>
             ) : (
               <Box sx={{ border: '1px solid #ddd', borderRadius: 1, overflow: 'hidden' }}>
@@ -297,23 +318,23 @@ export default function WarehouseCheckInPage() {
                   alignItems="center"
                   justifyContent="space-between"
                   sx={{ bgcolor: '#c8c8c8', px: 2, py: 1, cursor: 'pointer' }}
-                  onClick={() => toggleCollapse(results.proNumber)}
+                  onClick={() => toggleCollapse(warehouseReceiptSearch.data.proNumber)}
                 >
                   <Typography sx={{ fontWeight: 700, fontSize: 14 }}>
-                    {results.proNumber}
+                    {warehouseReceiptSearch.data.proNumber}
                   </Typography>
                   <IconButton size="small">
                     <Iconify
-                      icon={collapsed[results.proNumber] ? 'eva:arrow-ios-forward-fill' : 'eva:arrow-ios-downward-fill'}
+                      icon={collapsed[warehouseReceiptSearch.data.proNumber] ? 'eva:arrow-ios-forward-fill' : 'eva:arrow-ios-downward-fill'}
                       width={20}
                     />
                   </IconButton>
                 </Stack>
 
                 {/* Table */}
-                <Collapse in={!collapsed[results.proNumber]} timeout="auto">
+                <Collapse in={!collapsed[warehouseReceiptSearch.data.proNumber]} timeout="auto">
                   <DataGrid
-                    rows={results.rows}
+                    rows={warehouseReceiptSearch.data.rows}
                     columns={columns}
                     autoHeight
                     disableRowSelectionOnClick

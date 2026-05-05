@@ -19,11 +19,11 @@ export const LoginPage = Loadable(lazy(() => import('../pages/auth/LoginPage')))
 // Dashboard Page
 export const DashboardPage = Loadable(lazy(() => import('../pages/dashboard/DashboardPage')));
 export const DriverCheckInPage = Loadable(lazy(() => import('../pages/driver-check-in/DriverCheckInPage')));
-export const WarehouseCheckInPage = Loadable(lazy(() => import('../pages/menu/WarehouseCheckInPage')));
+export const WarehouseCheckInPage = Loadable(lazy(() => import('../pages/warehouse-check-in/WarehouseCheckInPage')));
 export const TrailerCheckInPage = Loadable(lazy(() => import('../pages/menu/TrailerCheckInPage')));
 export const EnRoutePage = Loadable(lazy(() => import('../pages/en-route/EnRoutePage')));
 export const IdVerificationFormPage = Loadable(lazy(() => import('../pages/menu/IdVerificationFormPage')));
-export const WarehouseReceiptFormPage = Loadable(lazy(() => import('../pages/menu/WarehouseReceiptFormPage')));
+export const WarehouseReceiptFormPage = Loadable(lazy(() => import('../pages/warehouse-check-in/WarehouseReceiptFormPage')));
 export const ShipmentFormPage = Loadable(lazy(() => import('../pages/shipment/ShipmentFormPage')));
 
 
