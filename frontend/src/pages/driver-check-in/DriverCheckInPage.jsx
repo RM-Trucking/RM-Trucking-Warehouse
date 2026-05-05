@@ -122,7 +122,11 @@ export default function DriverCheckInPage() {
     firstIdTypeValue: false,
     employeeNameValue: false,
     proGroups: false,
-    signatureData: false
+    signatureData: false,
+    freightForwarder: false,
+    pieces: false,
+    weight: false,
+    shipper: false
   });
 
   // Topaz Pad Initialization & Cleanup
@@ -379,7 +383,11 @@ const handleDriverNameFocus = () => {
       firstIdTypeValue: false,
       employeeNameValue: false,
       signatureData: false,
-      proGroups: false
+      proGroups: false,
+      freightForwarder: false,
+      pieces: false,
+      weight: false,
+      shipper: false
     });
     dispatch(clearProVerification());
   };
@@ -581,6 +589,13 @@ const handleDriverNameFocus = () => {
     setProValidationError(null);
     setProValidated(false);
     setProFormError(null);
+    setFormErrors(prev => ({
+      ...prev,
+      freightForwarder: false,
+      pieces: false,
+      weight: false,
+      shipper: false
+    }));
     dispatch(clearProVerification());
   };
 
@@ -620,7 +635,12 @@ const handleDriverNameFocus = () => {
   };
 
   const validateProDetails = () => {
-    const errors = [];
+    const errors = {
+      freightForwarder: false,
+      pieces: false,
+      weight: false,
+      shipper: false
+    };
 
     // Handle both object and string formats for backward compatibility
     const freightForwarderName = typeof formValues.freightForwarder === 'string'
@@ -628,23 +648,23 @@ const handleDriverNameFocus = () => {
       : (formValues.freightForwarder?.customerName || '');
 
     if (!freightForwarderName || !freightForwarderName.trim()) {
-      errors.push('Freight Forwarder is required');
+      errors.freightForwarder = true;
     }
 
     if (!formValues.pieces || !formValues.pieces.toString().trim()) {
-      errors.push('Pieces is required');
+      errors.pieces = true;
     } else if (isNaN(formValues.pieces) || Number(formValues.pieces) <= 0) {
-      errors.push('Pieces must be a valid number greater than 0');
+      errors.pieces = true;
     }
 
     if (!formValues.weight || !formValues.weight.toString().trim()) {
-      errors.push('Weight is required');
+      errors.weight = true;
     } else if (isNaN(formValues.weight) || Number(formValues.weight) <= 0) {
-      errors.push('Weight must be a valid number greater than 0');
+      errors.weight = true;
     }
 
     if (!formValues.shipper || !formValues.shipper.trim()) {
-      errors.push('Shipper is required');
+      errors.shipper = true;
     }
 
     return errors;
@@ -737,9 +757,13 @@ const handleDriverNameFocus = () => {
   const handleFormAdd = () => {
     // Validate form fields
     const errors = validateProDetails();
+    const hasErrors = Object.values(errors).some(error => error);
 
-    if (errors.length > 0) {
-      setProFormError(errors.join('\n'));
+    if (hasErrors) {
+      setFormErrors(prev => ({
+        ...prev,
+        ...errors
+      }));
       return;
     }
 
@@ -749,6 +773,15 @@ const handleDriverNameFocus = () => {
 
     // Clear the proGroups error since at least one detail has been added
     clearFieldError('proGroups');
+
+    // Clear Pro Details field errors
+    setFormErrors(prev => ({
+      ...prev,
+      freightForwarder: false,
+      pieces: false,
+      weight: false,
+      shipper: false
+    }));
 
     // Completely reset the form to initial state
     setFormValues({
@@ -1435,13 +1468,6 @@ const handleDriverNameFocus = () => {
             </Typography>
           )}
 
-          {/* Form validation errors */}
-          {proFormError && (
-            <Typography variant="body2" sx={{ color: "#d32f2f", mb: 2, whiteSpace: 'pre-line' }}>
-              {proFormError}
-            </Typography>
-          )}
-
           {/* Step 2: Remaining fields (shown after validation) */}
           {showRemainingFields && (
             <>
@@ -1467,10 +1493,12 @@ const handleDriverNameFocus = () => {
                       ...prev,
                       freightForwarder: newValue,
                     }));
+                    clearFieldError('freightForwarder');
                   }}
                   onInputChange={(event, newInputValue, reason) => {
                     if (reason !== "reset") {
                       setCustomerSearchValue(newInputValue);
+                      clearFieldError('freightForwarder');
                       if (!newInputValue || newInputValue.trim() === "") {
                         dispatch(searchCustomers(""));
                       }
@@ -1486,6 +1514,8 @@ const handleDriverNameFocus = () => {
                       variant="standard"
                       label="Freight Forwarder"
                       required
+                      error={formErrors.freightForwarder}
+                      helperText={formErrors.freightForwarder ? 'Freight Forwarder is required' : ' '}
                       InputLabelProps={{ shrink: true }}
                       sx={{
                         '& .MuiInputBase-input:disabled': {
@@ -1512,7 +1542,12 @@ const handleDriverNameFocus = () => {
                   required
                   label="Pieces"
                   value={formValues.pieces}
-                  onChange={handleFormChange("pieces")}
+                  onChange={(e) => {
+                    handleFormChange("pieces")(e);
+                    clearFieldError('pieces');
+                  }}
+                  error={formErrors.pieces}
+                  helperText={formErrors.pieces ? 'Pieces is required' : ' '}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
                 />
                 <StyledTextField
@@ -1521,7 +1556,12 @@ const handleDriverNameFocus = () => {
                   required
                   label="Weight (lbs)"
                   value={formValues.weight}
-                  onChange={handleFormChange("weight")}
+                  onChange={(e) => {
+                    handleFormChange("weight")(e);
+                    clearFieldError('weight');
+                  }}
+                  error={formErrors.weight}
+                  helperText={formErrors.weight ? 'Weight is required' : ' '}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
                 />
               </Stack>
@@ -1536,7 +1576,12 @@ const handleDriverNameFocus = () => {
                   required
                   label="Shipper"
                   value={formValues.shipper}
-                  onChange={handleFormChange("shipper")}
+                  onChange={(e) => {
+                    handleFormChange("shipper")(e);
+                    clearFieldError('shipper');
+                  }}
+                  error={formErrors.shipper}
+                  helperText={formErrors.shipper ? 'Shipper is required' : ' '}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
                 />
                 <Button
