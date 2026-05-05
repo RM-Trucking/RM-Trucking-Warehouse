@@ -546,7 +546,7 @@ const handleDriverNameFocus = () => {
               stationId: proData.stationId,
               customerName: proData.customerName,
               stationName: proData.stationName,
-              emails: proData.toEmails || []
+              emails: normalizeEmails(proData.toEmails)
             },
             pieces: proData.pieces?.toString() || '',
             weight: proData.weight?.toString() || '',
@@ -609,7 +609,7 @@ const handleDriverNameFocus = () => {
           stationId: rejectedProData.stationId,
           customerName: rejectedProData.customerName,
           stationName: rejectedProData.stationName,
-          emails: rejectedProData.toEmails || []
+          emails: normalizeEmails(rejectedProData.toEmails)
         },
         pieces: rejectedProData.pieces?.toString() || '',
         weight: rejectedProData.weight?.toString() || '',
@@ -708,6 +708,35 @@ const handleDriverNameFocus = () => {
 
   const handleFormChange = (field) => (e) =>
     setFormValues((prev) => ({ ...prev, [field]: e.target.value }));
+
+  // Normalize emails to ensure consistent structure
+  const normalizeEmails = (emails) => {
+    if (!emails || !Array.isArray(emails)) return [];
+
+    return emails.map((email, index) => {
+      // If email is already an object with the expected structure
+      if (typeof email === 'object' && email.entryId !== undefined) {
+        return email;
+      }
+      // If email is a string, convert it to the expected structure
+      if (typeof email === 'string') {
+        return {
+          entryId: `email_${index}_${Date.now()}`,
+          entryType: 'Email',
+          entryEmail: email
+        };
+      }
+      // If email is an object but missing properties, fill them in
+      if (typeof email === 'object') {
+        return {
+          entryId: email.entryId || `email_${index}_${Date.now()}`,
+          entryType: email.entryType || email.type || 'Email',
+          entryEmail: email.entryEmail || email.email || email
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  };
 
   const addEntry = (freightForwarder, pro, pieces, weight, shipper, proDetailId = 0) => {
     // Handle both object and string formats for backward compatibility
