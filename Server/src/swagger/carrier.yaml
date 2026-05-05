@@ -30,10 +30,10 @@ paths:
                   type: string
                   example: "Blue Star Logistics"
                   description: Name of the carrier (required)
-                salesRepPhone:
+                corporatePhoneNumber:
                   type: string
                   example: "+1-800-123-4567"
-                  description: Sales representative phone number (optional)
+                  description: Corporate phone number (optional)
       responses:
         "201":
           description: Carrier created successfully

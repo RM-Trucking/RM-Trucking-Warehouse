@@ -1,6 +1,6 @@
 export interface WarehouseReceiptTemp {
-    receiptNumber: number;
-    verificationId: number;
+    receiptNumber: number | bigint;
+    verificationId: number | bigint;
     receiptDate: Date;
     receivedBy: string | null;
     location: string | null;
@@ -20,7 +20,7 @@ export interface WarehouseReceiptTemp {
  * Create interface for WarehouseReceiptTemp
  */
 export interface CreateWarehouseReceiptTemp {
-    verificationId: number;
+    verificationId: number | bigint;
     receiptDate: Date;
     receivedBy: string;
     location: string;
@@ -33,8 +33,8 @@ export interface CreateWarehouseReceiptTemp {
 }
 
 export interface WarehouseReceipt {
-    receiptId: number;
-    receiptNumber: number;
+    receiptId: number | bigint;
+    receiptNumber: number | bigint;
     receiptDate: Date;
     receivedBy: string;
     location: string;
@@ -42,7 +42,7 @@ export interface WarehouseReceipt {
     shipper?: string;
     customerId: number;
     stationId: number;
-    verificationId: number;
+    verificationId: number | bigint;
     createdAt: Date;
     createdBy: number;
     updatedAt?: Date;
@@ -73,13 +73,14 @@ export interface WarehouseReceipt {
     status: string;
     noteThreadId?: number;
     entityId: number;
+    toEmails?: string[];
 }
 
 /**
  * Create interface for WarehouseReceipt
  */
 export interface CreateWarehouseReceipt {
-    receiptNumber: number;
+    receiptNumber: number | bigint;
     receiptDate: Date;
     receivedBy: string;
     location: string;
@@ -87,7 +88,7 @@ export interface CreateWarehouseReceipt {
     shipper?: string;
     customerId: number;
     stationId: number;
-    verificationId: number;
+    verificationId: number | bigint;
     createdBy: number;
     carrierId: number;
     piecesInland?: number;
@@ -102,7 +103,7 @@ export interface CreateWarehouseReceipt {
     shrinkWrappedSkid?: 'Y' | 'N';
     shtIppcSkid?: 'Y' | 'N';
     plasticSkid?: 'Y' | 'N';
-    documentId?: number;
+    documentId?: number | bigint;
     freightCondition?: 'Y' | 'N';
     handlingDescription?: string;
     destination?: string;
@@ -122,7 +123,7 @@ export interface CreateWarehouseReceipt {
  * Update interface for WarehouseReceipt
  */
 export interface UpdateWarehouseReceipt {
-    receiptId: number;
+    receiptId: number | bigint;
     location?: string;
     labelCount?: number;
     piecesInland?: number;
@@ -137,8 +138,8 @@ export interface UpdateWarehouseReceipt {
  * Warehouse Receipt Freight Info
  */
 export interface FreightInfo {
-    freightId: number;
-    receiptId: number;
+    freightId: number | bigint;
+    receiptId: number | bigint;
     pieces: number;
     type: string;
     length?: number;
@@ -148,7 +149,7 @@ export interface FreightInfo {
 }
 
 export interface CreateFreightInfo {
-    receiptId: number;
+    receiptId: number | bigint;
     pieces: number;
     type: string;
     length?: number;
@@ -161,9 +162,9 @@ export interface CreateFreightInfo {
  * Warehouse Receipt Audit Log
  */
 export interface AuditLog {
-    auditLogId: number;
-    receiptNumber: number;
-    receiptId: number;
+    auditLogId: number | bigint;
+    receiptNumber: number | bigint;
+    receiptId: number | bigint;
     proNumber?: string;
     level?: string;
     eventTime: Date;
@@ -173,8 +174,8 @@ export interface AuditLog {
 }
 
 export interface CreateAuditLog {
-    receiptNumber: number;
-    receiptId: number;
+    receiptNumber: number | bigint;
+    receiptId: number | bigint;
     proNumber?: string;
     level?: string;
     userId: number;
@@ -186,8 +187,8 @@ export interface CreateAuditLog {
  * Warehouse Receipt Rate
  */
 export interface WarehouseReceiptRate {
-    rateId: number;
-    receiptId: number;
+    rateId: number | bigint;
+    receiptId: number | bigint;
     rate: number;
     dimFactor?: number;
     baseRate?: number;
@@ -196,10 +197,27 @@ export interface WarehouseReceiptRate {
 }
 
 export interface CreateWarehouseReceiptRate {
-    receiptId: number;
+    receiptId: number | bigint;
     rate: number;
     dimFactor?: number;
     baseRate?: number;
     minRate?: number;
     maxRate?: number;
+}
+
+export interface WarehouseReceiptFreightImage {
+    imageId: number | bigint;
+    freightId: number | bigint;
+    receiptId: number | bigint;
+    imageUrl: string;
+    uploadedAt: Date;
+    uploadedBy: number;
+}
+
+export interface WarehouseReceiptDocuments {
+    documentId: number | bigint;
+    receiptId: number | bigint;
+    documentUrl: string;
+    uploadedAt: Date;
+    uploadedBy: number;
 }

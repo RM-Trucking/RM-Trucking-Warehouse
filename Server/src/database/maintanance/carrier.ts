@@ -26,7 +26,7 @@ export async function createCarrierMinimal(
     conn: Connection,
     carrier: {
         carrierName: string;
-        salesRepPhone?: string;
+        corporatePhoneNumber?: string;
         createdBy: number;
         entityId: number;
         noteThreadId?: number;
@@ -36,7 +36,7 @@ export async function createCarrierMinimal(
     SELECT "carrierId", "carrierName"
     FROM FINAL TABLE (
       INSERT INTO ${SCHEMA}."Carrier"
-      ("carrierName","salesRepPhone", "carrierStatus",
+      ("carrierName","corporatePhoneNumber", "carrierStatus",
        "createdAt","createdBy","entityId","noteThreadId")
       VALUES (?, ?, 'INCOMPLETE', (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?)
     )
@@ -44,7 +44,7 @@ export async function createCarrierMinimal(
 
     const params = [
         carrier.carrierName,
-        carrier.salesRepPhone ?? '',
+        carrier.corporatePhoneNumber ?? '',
         carrier.createdBy,
         carrier.entityId,
         carrier.noteThreadId ?? ''

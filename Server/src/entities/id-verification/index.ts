@@ -102,6 +102,7 @@ export interface CreateProDetail {
 export interface FreightDetailInput extends Omit<CreateProDetail, "verificationId"> {
     customerId: number;
     stationId: number;
+    proDetailId?: number; // Optional, can be used for linking to enroute if needed
     toEmails?: string[];
 }
 

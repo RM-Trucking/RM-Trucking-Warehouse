@@ -1,4 +1,4 @@
 export interface CreateCarrierRequest {
     carrierName: string;
-    salesRepPhone?: string;
+    corporatePhoneNumber?: string;
 }

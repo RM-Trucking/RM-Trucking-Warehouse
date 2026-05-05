@@ -42,7 +42,8 @@ router.post("/", authenticateJWT, async (req: Request, res: Response) => {
 });
 
 // Get receipt with all details (freight, rate, audit logs)
-router.get("/:receiptId", authenticateJWT, async (req: Request, res: Response) => {
+// Supports search by receiptId (default) or proNumber via ?searchBy=proNumber query parameter
+router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     await warehouseReceiptController.getWarehouseReceipt(req, res, conn);
     if (conn) conn.close();

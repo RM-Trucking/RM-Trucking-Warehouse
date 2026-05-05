@@ -167,7 +167,7 @@ export async function comprehensiveVerifyPro(
         } else {
             // Record exists but not rejected
             throw new Error(
-                `Record already exists for carrier ${carrierId} and PRO ${proNumber} with status ${warehouseRecord.status}. Only REJECTED records can be reused.`
+                `Record already exists for this carrier. PRO number with status ${warehouseRecord.status}. Cannot create duplicate unless status is REJECTED.`
             );
         }
     }
@@ -191,7 +191,7 @@ export async function comprehensiveVerifyPro(
             weight: enrouteRecord.weight,
             shipper: enrouteRecord.shipper,
             activeStatus: enrouteRecord.activeStatus,
-            enrouteId: enrouteRecord.enrouteId,
+            proDetailId: enrouteRecord.proDetailId,
             toEmails: enrouteRecord.toEmails ? JSON.parse(enrouteRecord.toEmails) : [],
         };
     }

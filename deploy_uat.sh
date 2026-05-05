@@ -59,6 +59,7 @@ DB2_CONNECTION_STRING=Driver={IBM i Access ODBC Driver};System=192.168.180.2;Use
 DB2_LIBRARY=RANDM_LCL
 ENVIRONMENT=uat
 PORT=6501
+JWT_EXPIRY=36000s
 ENVFILE
 
 # Remove existing zip on remote

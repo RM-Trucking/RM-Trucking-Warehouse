@@ -2,6 +2,7 @@ import { Connection } from "odbc";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
+import { emitAuditLog } from "../../utils/email";
 import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptTemp } from "../../entities/warehouse-receipt";
 
 /**
@@ -9,7 +10,7 @@ import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, Warehous
  * - Fetches receipt, freight info with images, rates, and audit logs
  */
 export async function getWarehouseReceiptWithDetailsService(conn: Connection, receiptId: number) {
-    const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, receiptId);
     if (!receipt) return null;
 
     const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
@@ -24,6 +25,35 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
 
     const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receiptId);
     const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receiptId);
+
+    return {
+        ...receipt,
+        freightInfos: freightWithImages,
+        rate,
+        auditLogs
+    };
+}
+
+/**
+ * GET WAREHOUSE RECEIPT BY PRO NUMBER WITH ALL DETAILS
+ * - Fetches receipt by PRO number, including freight info with images, rates, and audit logs
+ */
+export async function getWarehouseReceiptByProService(conn: Connection, proNumber: string) {
+    const receipt = await warehouseReceiptDB.getWarehouseReceiptByProNumber(conn, proNumber);
+    if (!receipt) return null;
+
+    const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+
+    // Fetch images for each freight
+    const freightWithImages = await Promise.all(
+        freightInfos.map(async (freight) => ({
+            ...freight,
+            images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
+        }))
+    );
+
+    const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
+    const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
 
     return {
         ...receipt,
@@ -79,9 +109,9 @@ export async function updateWarehouseReceiptService(
     // Update receipt
     await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, updates);
 
-    // If status changed, create audit log automatically
+    // If status changed, emit audit log automatically (centralized handling)
     if (updates.status && updates.status !== currentReceipt.status) {
-        await warehouseReceiptDB.createAuditLog(conn, {
+        emitAuditLog({
             receiptNumber: currentReceipt.receiptNumber,
             receiptId,
             proNumber: currentReceipt.proNumber || undefined,
@@ -149,10 +179,19 @@ export async function getFreightInfoWithImagesService(conn: Connection, freightI
 
 /**
  * ADD AUDIT LOG
+ * Emits audit log event for asynchronous centralized processing
  */
 export async function addAuditLogService(conn: Connection, logData: Omit<AuditLog, "auditLogId" | "eventTime">) {
-    const auditLogId = await warehouseReceiptDB.createAuditLog(conn, logData);
-    return { auditLogId };
+    emitAuditLog({
+        receiptNumber: logData.receiptNumber,
+        receiptId: logData.receiptId,
+        proNumber: logData.proNumber,
+        userId: logData.userId,
+        status: logData.status,
+        description: logData.description,
+        level: logData.level
+    });
+    return { message: 'Audit log queued for processing' };
 }
 
 /**

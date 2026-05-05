@@ -104,7 +104,14 @@ export async function getIDVerificationById(
 
 export async function listIDVerifications(conn: Connection, limit: number, offset: number): Promise<IDVerification[]> {
     const query = `SELECT * FROM ${SCHEMA}."ID_Verification" ORDER BY "verificationId" DESC LIMIT ? OFFSET ?`;
-    return await conn.query(query, [limit, offset]) as IDVerification[];
+    const result = await conn.query(query, [limit, offset]) as IDVerification[];
+    return result.map((row: any) => ({
+        ...row,
+        driverId: parseInt(row.driverId),
+        verificationId: parseInt(row.verificationId),
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : []
+    }));
+
 }
 
 /**

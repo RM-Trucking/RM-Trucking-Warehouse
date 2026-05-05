@@ -9,6 +9,7 @@ import { existsSync } from 'fs';
 import routes from './routes';
 import cors from 'cors';
 import { initializeDB2Pool, closeDB2Pool, getSchema } from './config/db2';
+import { setupStatusEventHandlers, setupAuditLogEventHandlers } from './utils/email';
 
 
 // ============================================================================
@@ -296,6 +297,14 @@ async function startServer(): Promise<void> {
         await initializeDB2Pool();
         db2PoolInitialized = true;
         console.log('DB2 pool initialized');
+
+        // Initialize email event handlers
+        setupStatusEventHandlers();
+        console.log('Email handlers initialized');
+
+        // Initialize audit log event handlers
+        setupAuditLogEventHandlers();
+        console.log('Audit log handlers initialized');
     } catch (err) {
         console.error('❌ Failed to initialize DB2 pool:', err);
         process.exit(1);

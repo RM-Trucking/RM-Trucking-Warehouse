@@ -14,6 +14,7 @@ export const CreateDriverSchema = z.object({
 export const FreightDetailInputSchema = z.object({
     customerId: z.number().int().positive('Customer ID is required and must be positive'),
     stationId: z.number().int().positive('Station ID is required and must be positive'),
+    proDetailId: z.number().int().positive('PRO Detail ID must be positive').optional(),
     proNumber: z.string().min(1, 'PRO number is required').trim(),
     pieces: z.number().positive('Pieces must be positive'),
     weight: z.number().positive('Weight must be positive'),
@@ -36,7 +37,6 @@ export const CreateIDVerificationSchema = z.object({
     driverSignature: z.string().min(1, 'Driver signature is required'),
     shipperCompanyName: z.string().optional(),
     verifiedByEmployee: z.string().min(1, 'Verified by employee is required'),
-    createdBy: z.number().int().optional(),
     toEmails: z.union([
         z.array(z.string().email('Invalid email format')),
         z.string().transform(v => {

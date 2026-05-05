@@ -92,7 +92,7 @@ export interface ComprehensiveVerifyResponse {
     piecesInland?: number;
     weightInland?: number;
     activeStatus?: string;
-    enrouteId?: number;
+    proDetailId?: number;
     toEmails?: string[];
     message?: string;
 }

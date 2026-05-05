@@ -1,5 +1,6 @@
 import { Connection } from "odbc";
 import * as idVerificationDB from "../../database/id-verification";
+import * as enrouteDB from "../../database/en-route";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as userDB from "../../database/maintanance/auth";
@@ -8,6 +9,7 @@ import { CreateIDVerification, CreateProDetail, Driver, IDVerification, IDVerifi
 import { WarehouseReceiptTemp, WarehouseReceipt } from "../../entities/warehouse-receipt";
 import { create } from "node:domain";
 import { toUtcDate } from "../../utils/dateFormater";
+import { emitEmail, emitAuditLog } from "../../utils/email";
 
 
 
@@ -94,7 +96,11 @@ export async function createVerificationService(
 
             // Step 5: Create ProDetails + Warehouse Receipts for each detail in this group
             for (const detail of details) {
-                // Create ProDetail (no customerId/stationId needed - they're in ID_Verification)
+                // Inactivate linked enroute PRO if exists to prevent reuse
+                if (detail.proDetailId && detail.proDetailId !== 0) {
+                    await enrouteDB.inactivatePro(conn, detail.proDetailId);
+                }
+                //Create ProDetail record linked to this verification
                 const proDetailId = await idVerificationDB.createProDetail(conn, {
                     verificationId,
                     pieces: detail.pieces,
@@ -139,15 +145,16 @@ export async function createVerificationService(
                     proNumber: detail.proNumber,
                     status: "INITIATE",
                     entityId: entityId,
-                    noteThreadId: noteThreadId
+                    noteThreadId: noteThreadId,
+                    toEmails: detail.toEmails,
                 };
 
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, receipt);
 
                 console.log("Receipt ID:", receiptId);
 
-                // Step 8: Create initial audit log for INITIATE status
-                await warehouseReceiptDB.createAuditLog(conn, {
+                // Step 8: Emit audit log event (centralized handling)
+                emitAuditLog({
                     receiptNumber,
                     receiptId,
                     proNumber: detail.proNumber,
@@ -156,6 +163,22 @@ export async function createVerificationService(
                     description: `Receipt created for verification ID ${verificationId}`,
                     level: "INFO"
                 });
+                console.log(`📝 Audit log queued for receipt #${receiptNumber}`);
+
+                // Step 9: Emit email notifications to multiple recipients (if configured)
+                if (detail.toEmails && detail.toEmails.length > 0) {
+                    for (const emailRecipient of detail.toEmails) {
+                        // emitEmail will queue email notification asynchronously
+                        emitEmail({
+                            receiptNumber,
+                            to: emailRecipient,
+                            status: "INITIATED"
+                        });
+                    }
+                    console.log(`📧 Email notifications queued for receipt #${receiptNumber} to ${detail.toEmails.length} recipient(s)`);
+                } else {
+                    console.warn(`⚠️ No email recipients configured for receipt #${receiptNumber}`);
+                }
             }
         }
 

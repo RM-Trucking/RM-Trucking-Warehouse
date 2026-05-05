@@ -7,24 +7,48 @@ const logger = new Logger("WarehouseReceiptController");
 
 /**
  * GET WAREHOUSE RECEIPT WITH DETAILS
- * Endpoint: GET /warehouse-receipt/:receiptId
+ * Endpoint: GET /warehouse-receipt/:id?searchBy=receiptId (default)
+ * Endpoint: GET /warehouse-receipt/:proNumber?searchBy=proNumber
+ *
+ * Query parameters:
+ * - searchBy: "receiptId" (default) or "proNumber" to specify the lookup type
  */
 export async function getWarehouseReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
-        const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const searchBy = (req.query.searchBy as string) || "receiptNumber"; // Default to receiptNumber
 
-        if (!receiptId) {
-            res.status(400).json({ success: false, message: "Receipt ID is required" });
+        if (!id) {
+            res.status(400).json({ success: false, message: "Receipt ID or PRO number is required" });
             return;
         }
 
-        const data = await warehouseReceiptService.getWarehouseReceiptWithDetailsService(
-            conn,
-            Number(receiptId)
-        );
+        let data;
+
+        // Search by receipt ID (default)
+        if (searchBy === "receiptNumber") {
+            data = await warehouseReceiptService.getWarehouseReceiptWithDetailsService(
+                conn,
+                Number(id)
+            );
+        }
+        // Search by PRO number
+        else if (searchBy === "proNumber") {
+            data = await warehouseReceiptService.getWarehouseReceiptByProService(conn, id);
+        }
+        else {
+            res.status(400).json({
+                success: false,
+                message: 'Invalid searchBy parameter. Use "receiptNumber" or "proNumber"'
+            });
+            return;
+        }
 
         if (!data) {
-            res.status(404).json({ success: false, message: "Receipt not found" });
+            res.status(404).json({
+                success: false,
+                message: `Receipt not found for ${searchBy}: ${id}`
+            });
             return;
         }
 

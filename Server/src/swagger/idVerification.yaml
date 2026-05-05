@@ -375,6 +375,10 @@ components:
           type: integer
           example: 93
           description: Station module ID
+        proDetailId:
+          type: integer
+          example: 0
+          description: Optional PRO detail ID if linked to a PRO record
         proNumber:
           type: string
           example: "PRO123456"

@@ -26,6 +26,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/async": "^3.2.25",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

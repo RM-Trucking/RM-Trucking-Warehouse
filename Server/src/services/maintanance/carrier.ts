@@ -12,7 +12,7 @@ export async function createNewCarrier(
     createCarrierReq: CreateCarrierRequest,
     adminId: number
 ): Promise<{ carrier: { carrierId: number, carrierName: string } }> {
-    const { carrierName, salesRepPhone } = createCarrierReq;
+    const { carrierName, corporatePhoneNumber } = createCarrierReq;
 
     await conn.beginTransaction();
     try {
@@ -33,7 +33,7 @@ export async function createNewCarrier(
         // 3) Insert Carrier
         const carrier = await carrierDB.createCarrierMinimal(conn, {
             carrierName,
-            salesRepPhone,
+            corporatePhoneNumber,
             createdBy: adminId,
             entityId,
             noteThreadId,

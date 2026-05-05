@@ -138,7 +138,7 @@ export async function verifyPro(
         JOIN ${SCHEMA}."Carrier" c ON e."carrierId" = c."carrierId"
         JOIN ${SCHEMA}."Customer" cu ON e."customerId" = cu."customerId"
         JOIN ${SCHEMA}."Station" s ON e."stationId" = s."stationId"
-        WHERE e."carrierId" = ? AND p."proNumber" = ?
+        WHERE e."carrierId" = ? AND p."proNumber" = ? AND p."activeStatus" = 'Y'
     `;
     const params = [carrierId, proNumber];
     const result = await conn.query(query, params) as any[];

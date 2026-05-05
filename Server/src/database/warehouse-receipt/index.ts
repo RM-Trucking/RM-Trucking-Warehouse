@@ -1,5 +1,5 @@
 import { Connection } from "odbc";
-import { WarehouseReceipt, WarehouseReceiptTemp, FreightInfo, AuditLog, WarehouseReceiptRate } from "../../entities/warehouse-receipt";
+import { WarehouseReceipt, WarehouseReceiptTemp, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptFreightImage, WarehouseReceiptDocuments } from "../../entities/warehouse-receipt";
 import { SCHEMA } from "../../config/db2";
 
 /**
@@ -92,14 +92,15 @@ export async function createWarehouseReceipt(
                 "unNumber",
                 "class",
                 "properShippingName",
-                "hazardousDescription"
+                "hazardousDescription",
+                "toEmails"
             )
-            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
     const params: (string | number | null)[] = [
-        receipt.receiptNumber ?? null,
+        receipt.receiptNumber != null ? Number(receipt.receiptNumber) : null,
         (receipt.receiptDate instanceof Date) ? receipt.receiptDate.toISOString() : receipt.receiptDate,
         receipt.labelCount ?? 0,
         receipt.shipper ?? '',
@@ -132,6 +133,7 @@ export async function createWarehouseReceipt(
         Array.isArray(receipt.class) ? JSON.stringify(receipt.class) : receipt.class ?? null,
         receipt.properShippingName ?? '',
         receipt.hazardousDescription ?? '',
+        Array.isArray(receipt.toEmails) ? JSON.stringify(receipt.toEmails) : receipt.toEmails ?? null
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -424,7 +426,7 @@ export async function createFreightInfo(conn: Connection, freight: Omit<FreightI
     return result[0].freightId;
 }
 
-export async function getFreightInfosByReceipt(conn: Connection, receiptId: number): Promise<FreightInfo[]> {
+export async function getFreightInfosByReceipt(conn: Connection, receiptId: number | bigint): Promise<FreightInfo[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info" WHERE "receiptId" = ?`;
     const result = await conn.query(query, [Number(receiptId)]) as FreightInfo[];
 
@@ -435,13 +437,13 @@ export async function getFreightInfosByReceipt(conn: Connection, receiptId: numb
     }));
 }
 
-export async function getFreightInfoById(conn: Connection, freightId: number): Promise<FreightInfo | null> {
+export async function getFreightInfoById(conn: Connection, freightId: number | bigint): Promise<FreightInfo | null> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info" WHERE "freightId" = ?`;
     const result = await conn.query(query, [Number(freightId)]) as any[];
     return result[0] || null;
 }
 
-export async function updateFreightInfo(conn: Connection, freightId: number, updates: any): Promise<void> {
+export async function updateFreightInfo(conn: Connection, freightId: number | bigint, updates: any): Promise<void> {
     const fields: string[] = [];
     const params: (string | number)[] = [];
 
@@ -474,12 +476,12 @@ export async function updateFreightInfo(conn: Connection, freightId: number, upd
     await conn.query(query, params);
 }
 
-export async function deleteFreightInfo(conn: Connection, freightId: number): Promise<void> {
+export async function deleteFreightInfo(conn: Connection, freightId: number | bigint): Promise<void> {
     const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info" WHERE "freightId" = ?`;
     await conn.query(query, [Number(freightId)]);
 }
 
-export async function deleteFreightInfoByReceipt(conn: Connection, receiptId: number): Promise<void> {
+export async function deleteFreightInfoByReceipt(conn: Connection, receiptId: number | bigint): Promise<void> {
     const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info" WHERE "receiptId" = ?`;
     await conn.query(query, [Number(receiptId)]);
 }
@@ -487,7 +489,7 @@ export async function deleteFreightInfoByReceipt(conn: Connection, receiptId: nu
 /**
  * FREIGHT IMAGES QUERIES
  */
-export async function createFreightImage(conn: Connection, freightId: number, imagePath: string): Promise<number> {
+export async function createFreightImage(conn: Connection, freightId: number | bigint, imagePath: string): Promise<number> {
     const query = `
         SELECT "imageId"
         FROM FINAL TABLE (
@@ -505,19 +507,52 @@ export async function createFreightImage(conn: Connection, freightId: number, im
     return Number(result[0].imageId);
 }
 
-export async function getFreightImages(conn: Connection, freightId: number): Promise<any[]> {
+export async function getFreightImages(conn: Connection, freightId: number | bigint): Promise<WarehouseReceiptFreightImage[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Images" WHERE "freightId" = ? ORDER BY "uploadedAt" DESC`;
-    return await conn.query(query, [Number(freightId)]) as any[];
+    const result = await conn.query(query, [Number(freightId)]) as any[];
+    return result.map((row: any) => ({
+        ...row,
+        imageId: row.imageId != null ? parseInt(row.imageId) : null,
+        freightId: row.freightId != null ? parseInt(row.freightId) : null,
+    }));
 }
 
-export async function deleteFreightImage(conn: Connection, imageId: number): Promise<void> {
+export async function deleteFreightImage(conn: Connection, imageId: number | bigint): Promise<void> {
     const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Freight_Images" WHERE "imageId" = ?`;
     await conn.query(query, [Number(imageId)]);
 }
 
-export async function deleteFreightImagesByFreight(conn: Connection, freightId: number): Promise<void> {
+export async function deleteFreightImagesByFreight(conn: Connection, freightId: number | bigint): Promise<void> {
     const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Freight_Images" WHERE "freightId" = ?`;
     await conn.query(query, [Number(freightId)]);
+}
+
+
+export async function getWarehouseReceiptByReceiptNumber(
+    conn: Connection,
+    receiptNumber: number
+): Promise<WarehouseReceipt | null> {
+    const query = `
+        SELECT * 
+        FROM ${SCHEMA}."Warehouse_Receipt" 
+        WHERE "receiptNumber" = ?
+    `;
+    const result = await conn.query(query, [Number(receiptNumber)]) as any[];
+
+    if (!result || result.length === 0) {
+        return null;
+    }
+
+    const row = result[0];
+    return {
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+    };
 }
 
 /**
@@ -525,7 +560,7 @@ export async function deleteFreightImagesByFreight(conn: Connection, freightId: 
  */
 export async function getWarehouseReceiptByCarrierAndPro(
     conn: Connection,
-    carrierId: number,
+    carrierId: number | bigint,
     proNumber: string
 ): Promise<any | null> {
     const query = `
@@ -543,12 +578,42 @@ export async function getWarehouseReceiptByCarrierAndPro(
         ORDER BY wr."receiptId" DESC
         LIMIT 1
     `;
-    const result = await conn.query(query, [carrierId, proNumber]) as any[];
+    const result = await conn.query(query, [Number(carrierId), proNumber]) as any[];
     return result.length > 0 ? {
         ...result[0],
         receiptId: result[0].receiptId != null ? parseInt(result[0].receiptId) : null,
         receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
     } : null;
+}
+
+/**
+ * GET WAREHOUSE RECEIPT BY PRO NUMBER
+ */
+export async function getWarehouseReceiptByProNumber(
+    conn: Connection,
+    proNumber: string
+): Promise<WarehouseReceipt | null> {
+    const query = `
+        SELECT * FROM ${SCHEMA}."Warehouse_Receipt" 
+        WHERE "proNumber" = ? 
+        ORDER BY "receiptId" DESC 
+        LIMIT 1
+    `;
+    const result = await conn.query(query, [proNumber]) as any[];
+    if (!result || result.length === 0) {
+        return null;
+    }
+
+    const row = result[0];
+    return {
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+    };
 }
 
 /**
@@ -576,9 +641,15 @@ export async function createAuditLog(conn: Connection, log: Omit<AuditLog, "audi
     return result[0].auditLogId;
 }
 
-export async function getAuditLogsByReceipt(conn: Connection, receiptId: number): Promise<AuditLog[]> {
+export async function getAuditLogsByReceipt(conn: Connection, receiptId: number | bigint): Promise<AuditLog[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Audit_Log" WHERE "receiptId" = ? ORDER BY "eventTime" DESC`;
-    return await conn.query(query, [Number(receiptId)]) as AuditLog[];
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+    return result.map((row: any) => ({
+        ...row,
+        auditLogId: row.auditLogId != null ? parseInt(row.auditLogId) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+    }));
 }
 
 /**
@@ -603,7 +674,7 @@ export async function createWarehouseReceiptRate(conn: Connection, rateData: Omi
     return result[0].rateId;
 }
 
-export async function getWarehouseReceiptRate(conn: Connection, receiptId: number): Promise<WarehouseReceiptRate | null> {
+export async function getWarehouseReceiptRate(conn: Connection, receiptId: number | bigint): Promise<WarehouseReceiptRate | null> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Rate" WHERE "receiptId" = ?`;
     const result = await conn.query(query, [Number(receiptId)]) as any[];
     return result[0] || null;
@@ -666,7 +737,7 @@ export async function createWarehouseReceiptDocument(
 export async function getWarehouseReceiptDocument(
     conn: Connection,
     documentId: number
-): Promise<any> {
+): Promise<WarehouseReceiptDocuments | null> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Documents" WHERE "documentId" = ?`;
     const result = await conn.query(query, [documentId]) as any[];
     return result[0] || null;
@@ -675,7 +746,12 @@ export async function getWarehouseReceiptDocument(
 export async function getDocumentsByReceiptNumber(
     conn: Connection,
     receiptNumber: number
-): Promise<any[]> {
+): Promise<WarehouseReceiptDocuments[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Documents" WHERE "receiptNumber" = ? ORDER BY "createdAt" DESC`;
-    return await conn.query(query, [receiptNumber]) as any[];
+    const result = await conn.query(query, [receiptNumber]) as any[];
+    return result.map((row: any) => ({
+        ...row,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+    }));
 }
