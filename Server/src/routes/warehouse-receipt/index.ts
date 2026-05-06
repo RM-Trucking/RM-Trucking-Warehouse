@@ -84,4 +84,12 @@ router.put("/:receiptId", authenticateJWT, async (req: Request, res: Response) =
     if (conn) conn.close();
 });
 
+router.put("/:receiptId/reject", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.rejectWarehouseReceipt(req, res, conn);
+    if (conn) conn.close();
+});
+
+
+
 export default router;

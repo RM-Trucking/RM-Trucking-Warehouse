@@ -38,30 +38,34 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
  * GET WAREHOUSE RECEIPT BY PRO NUMBER WITH ALL DETAILS
  * - Fetches receipt by PRO number, including freight info with images, rates, and audit logs
  */
-export async function getWarehouseReceiptByProService(conn: Connection, proNumber: string) {
-    const receipt = await warehouseReceiptDB.getWarehouseReceiptByProNumber(conn, proNumber);
-    if (!receipt) return null;
+export async function getWarehouseReceiptsByProService(conn: Connection, proNumber: string) {
+    const receipts = await warehouseReceiptDB.getWarehouseReceiptsByProNumber(conn, proNumber);
+    if (!receipts || receipts.length === 0) return [];
 
-    const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+    return Promise.all(
+        receipts.map(async (receipt) => {
+            const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
 
-    // Fetch images for each freight
-    const freightWithImages = await Promise.all(
-        freightInfos.map(async (freight) => ({
-            ...freight,
-            images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
-        }))
+            const freightWithImages = await Promise.all(
+                freightInfos.map(async (freight) => ({
+                    ...freight,
+                    images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
+                }))
+            );
+
+            const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
+            const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
+
+            return {
+                ...receipt,
+                freightInfos: freightWithImages,
+                rate,
+                auditLogs
+            };
+        })
     );
-
-    const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
-    const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
-
-    return {
-        ...receipt,
-        freightInfos: freightWithImages,
-        rate,
-        auditLogs
-    };
 }
+
 
 /**
  * LIST WAREHOUSE RECEIPTS WITH PAGINATION & FILTERING
@@ -494,6 +498,22 @@ export async function batchProcessWarehouseReceiptsService(
             totalUpdated: updatedReceipts.length,
             totalCreated: createdReceipts.length
         };
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    }
+}
+
+export async function rejectWarehouseReceiptService(conn: Connection, receiptId: number, reason: string, userId: number) {
+    await conn.beginTransaction();
+    try {
+        // Update receipt status to REJECTED and add rejection reason
+        await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, {
+            status: 'REJECTED',
+            rejectionReason: reason,
+            updatedBy: userId
+        });
+        await conn.commit();
     } catch (err) {
         await conn.rollback();
         throw err;

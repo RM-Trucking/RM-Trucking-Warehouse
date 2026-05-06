@@ -150,22 +150,55 @@ export async function createVerification(req: Request, res: Response, conn: Conn
 }
 
 /**
- * LIST VERIFICATIONS WITH PAGINATION
- * Endpoint: GET /id-verification/verify?page=1&pageSize=10
+ * LIST VERIFICATIONS WITH PAGINATION AND FILTERS
+ * Endpoint: GET /id-verification?page=1&pageSize=10&carrierName=ABC&customerName=Customer1&stationName=Station1&filterLogic=AND
+ * 
+ * Each verification includes: driver info, pro details, and user name
+ * All text filters support partial matching (case-insensitive LIKE queries)
+ * filterLogic: "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
  */
 export async function listVerifications(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const pageSize = parseInt(req.query.pageSize as string) || 10;
+        const filterLogic = ((req.query.filterLogic as string) || "AND").toUpperCase() as "AND" | "OR";
 
-        const result = await idVerificationService.listVerificationService(conn, page, pageSize);
+        // Validate filterLogic parameter
+        if (filterLogic !== "AND" && filterLogic !== "OR") {
+            res.status(400).json({
+                success: false,
+                message: 'Invalid filterLogic. Use "AND" (all filters must match) or "OR" (any filter matches)'
+            });
+            return;
+        }
+
+        // Search/Filter parameters (by names, not IDs)
+        const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : undefined;
+        const carrierName = req.query.carrierName as string | undefined;
+        const customerName = req.query.customerName as string | undefined;
+        const stationName = req.query.stationName as string | undefined;
+        const driverName = req.query.driverName as string | undefined;
+        const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+        const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+
+        const result = await idVerificationService.listVerificationService(conn, page, pageSize, {
+            driverId,
+            carrierName,
+            customerName,
+            stationName,
+            driverName,
+            startDate,
+            endDate
+        }, filterLogic);
 
         res.status(200).json({
             success: true,
             data: result.data,
             pagination: {
                 page: result.page,
-                pageSize: result.pageSize
+                pageSize: result.pageSize,
+                total: result.total,
+                totalPages: result.totalPages
             }
         });
     } catch (error: any) {

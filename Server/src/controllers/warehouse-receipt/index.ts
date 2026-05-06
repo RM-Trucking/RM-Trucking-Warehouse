@@ -27,14 +27,15 @@ export async function getWarehouseReceipt(req: Request, res: Response, conn: Con
 
         // Search by receipt ID (default)
         if (searchBy === "receiptNumber") {
-            data = await warehouseReceiptService.getWarehouseReceiptWithDetailsService(
+            const receipt = await warehouseReceiptService.getWarehouseReceiptWithDetailsService(
                 conn,
                 Number(id)
             );
+            data = receipt ? [receipt] : [];
         }
         // Search by PRO number
         else if (searchBy === "proNumber") {
-            data = await warehouseReceiptService.getWarehouseReceiptByProService(conn, id);
+            data = await warehouseReceiptService.getWarehouseReceiptsByProService(conn, id);
         }
         else {
             res.status(400).json({
@@ -441,6 +442,44 @@ export async function batchProcessWarehouseReceiptsWithImages(
     } catch (error: any) {
         console.log(error);
         logger.error("Error in batch process warehouse receipts with images", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+export async function rejectWarehouseReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
+        const { rejectionReason } = req.body;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!receiptId) {
+            res.status(400).json({ success: false, message: "Receipt ID is required" });
+            return;
+        }
+        if (!rejectionReason) {
+            res.status(400).json({ success: false, message: "Rejection reason is required" });
+            return;
+        }
+        if (!userId) {
+            res.status(401).json({
+                success: false,
+                message: "User ID not found in authentication token"
+            });
+            return;
+        }
+        await warehouseReceiptService.rejectWarehouseReceiptService(
+            conn,
+            Number(receiptId),
+            rejectionReason,
+            userId
+        );
+
+        res.status(200).json({
+            success: true,
+            message: " Warehouse Receipt rejected successfully",
+        });
+    } catch (error: any) {
+        console.log(error);
+        logger.error("Error rejecting warehouse receipt", error);
         res.status(500).json({ success: false, message: error.message });
     }
 }

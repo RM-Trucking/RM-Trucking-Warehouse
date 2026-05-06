@@ -195,7 +195,16 @@ export async function getWarehouseReceiptsByVerification(
 
 export async function getWarehouseReceiptsByCustomerStation(conn: Connection, customerId: number, stationId: number): Promise<WarehouseReceipt[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt" WHERE "customerId" = ? AND "stationId" = ? ORDER BY "receiptNumber" DESC`;
-    return await conn.query(query, [customerId, stationId]) as WarehouseReceipt[];
+    const result = await conn.query(query, [customerId, stationId]) as WarehouseReceipt[];
+    return result.map((row: any) => ({
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+    }));
 }
 
 export async function listWarehouseReceipts(conn: Connection, limit: number, offset: number, filters?: { status?: string; carrierId?: number }): Promise<WarehouseReceipt[]> {
@@ -214,7 +223,17 @@ export async function listWarehouseReceipts(conn: Connection, limit: number, off
     query += ` ORDER BY "receiptNumber" DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    return await conn.query(query, params) as WarehouseReceipt[];
+    const result = await conn.query(query, params) as WarehouseReceipt[];
+
+    return result.map((row: any) => ({
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+    }));
 }
 
 export async function updateWarehouseReceipt(conn: Connection, receiptId: number, updates: any): Promise<void> {
@@ -381,6 +400,11 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         params.push(updates.hazardousDescription ? updates.hazardousDescription : '' as string);
     }
 
+    if (updates.rejectionReason !== undefined) {
+        fields.push(`"rejectionReason" = ?`);
+        params.push(updates.rejectionReason ? updates.rejectionReason : '' as string);
+    }
+
     if (fields.length === 0) return;
 
     fields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
@@ -535,7 +559,7 @@ export async function getWarehouseReceiptByReceiptNumber(
     const query = `
         SELECT * 
         FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "receiptNumber" = ?
+        WHERE "receiptNumber" = ? AND "status" = 'INITIATED'
     `;
     const result = await conn.query(query, [Number(receiptNumber)]) as any[];
 
@@ -589,23 +613,21 @@ export async function getWarehouseReceiptByCarrierAndPro(
 /**
  * GET WAREHOUSE RECEIPT BY PRO NUMBER
  */
-export async function getWarehouseReceiptByProNumber(
+export async function getWarehouseReceiptsByProNumber(
     conn: Connection,
     proNumber: string
-): Promise<WarehouseReceipt | null> {
+): Promise<WarehouseReceipt[]> {
     const query = `
         SELECT * FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "proNumber" = ? 
+        WHERE "proNumber" = ? AND "status" = 'INITIATED'
         ORDER BY "receiptId" DESC 
-        LIMIT 1
     `;
     const result = await conn.query(query, [proNumber]) as any[];
     if (!result || result.length === 0) {
-        return null;
+        return [];
     }
 
-    const row = result[0];
-    return {
+    return result.map((row) => ({
         ...row,
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
@@ -613,8 +635,9 @@ export async function getWarehouseReceiptByProNumber(
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
-    };
+    }));
 }
+
 
 /**
  * AUDIT LOG QUERIES
@@ -755,3 +778,4 @@ export async function getDocumentsByReceiptNumber(
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
     }));
 }
+

@@ -36,6 +36,7 @@ export interface IDVerification {
     createdAt: Date;
     createdBy: number;
     toEmails: string[];
+   
 }
 
 /**

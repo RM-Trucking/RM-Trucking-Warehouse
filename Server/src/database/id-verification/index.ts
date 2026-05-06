@@ -115,6 +115,144 @@ export async function listIDVerifications(conn: Connection, limit: number, offse
 }
 
 /**
+ * LIST ID VERIFICATIONS WITH FILTERS AND PAGINATION
+ * @param filterLogic - "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
+ */
+export async function listIDVerificationsWithFilters(
+    conn: Connection,
+    limit: number,
+    offset: number,
+    filters?: {
+        driverId?: number;
+        carrierName?: string;
+        customerName?: string;
+        stationName?: string;
+        driverName?: string;
+        startDate?: Date;
+        endDate?: Date;
+    },
+    filterLogic: "AND" | "OR" = "AND"
+): Promise<IDVerification[]> {
+    let query = `
+        SELECT DISTINCT iv.* , c."carrierName", cu."customerName", s."stationName"
+        FROM ${SCHEMA}."ID_Verification" iv
+        LEFT JOIN ${SCHEMA}."Carrier" c ON iv."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON iv."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON iv."stationId" = s."stationId"
+        WHERE 1=1
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    // Build filter conditions
+    if (filters?.driverId) {
+        conditions.push(`iv."driverId" = ?`);
+        params.push(filters.driverId);
+    }
+    if (filters?.carrierName) {
+        conditions.push(`c."carrierName" LIKE ?`);
+        params.push(`%${filters.carrierName}%`);
+    }
+    if (filters?.customerName) {
+        conditions.push(`cu."customerName" LIKE ?`);
+        params.push(`%${filters.customerName}%`);
+    }
+    if (filters?.stationName) {
+        conditions.push(`s."stationName" LIKE ?`);
+        params.push(`%${filters.stationName}%`);
+    }
+    if (filters?.startDate) {
+        conditions.push(`iv."createdAt" >= ?`);
+        params.push(filters.startDate);
+    }
+    if (filters?.endDate) {
+        conditions.push(`iv."createdAt" <= ?`);
+        params.push(filters.endDate);
+    }
+
+    // Apply filter logic (AND or OR)
+    if (conditions.length > 0) {
+        const operator = filterLogic === "OR" ? " OR " : " AND ";
+        query += ` AND (${conditions.join(operator)})`;
+    }
+
+    query += ` ORDER BY iv."verificationId" DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const result = await conn.query(query, params) as IDVerification[];
+    return result.map((row: any) => ({
+        ...row,
+        driverId: parseInt(row.driverId),
+        verificationId: parseInt(row.verificationId),
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : []
+    }));
+}
+
+/**
+ * COUNT ID VERIFICATIONS WITH FILTERS
+ * @param filterLogic - "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
+ */
+export async function countIDVerifications(
+    conn: Connection,
+    filters?: {
+        driverId?: number;
+        carrierName?: string;
+        customerName?: string;
+        stationName?: string;
+        driverName?: string;
+        startDate?: Date;
+        endDate?: Date;
+    },
+    filterLogic: "AND" | "OR" = "AND"
+): Promise<number> {
+    let query = `
+        SELECT COUNT(DISTINCT iv."verificationId") as "total" 
+        FROM ${SCHEMA}."ID_Verification" iv
+        LEFT JOIN ${SCHEMA}."Carrier" c ON iv."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON iv."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON iv."stationId" = s."stationId"
+        WHERE 1=1
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    // Build filter conditions
+    if (filters?.driverId) {
+        conditions.push(`iv."driverId" = ?`);
+        params.push(filters.driverId);
+    }
+    if (filters?.carrierName) {
+        conditions.push(`c."carrierName" LIKE ?`);
+        params.push(`%${filters.carrierName}%`);
+    }
+    if (filters?.customerName) {
+        conditions.push(`cu."customerName" LIKE ?`);
+        params.push(`%${filters.customerName}%`);
+    }
+    if (filters?.stationName) {
+        conditions.push(`s."stationName" LIKE ?`);
+        params.push(`%${filters.stationName}%`);
+    }
+    if (filters?.startDate) {
+        conditions.push(`iv."createdAt" >= ?`);
+        params.push(filters.startDate);
+    }
+    if (filters?.endDate) {
+        conditions.push(`iv."createdAt" <= ?`);
+        params.push(filters.endDate);
+    }
+
+    // Apply filter logic (AND or OR)
+    if (conditions.length > 0) {
+        const operator = filterLogic === "OR" ? " OR " : " AND ";
+        query += ` AND (${conditions.join(operator)})`;
+    }
+
+    const result = await conn.query(query, params) as any[];
+    return result[0]?.total || 0;
+}
+
+/**
  * PRO DETAIL QUERIES
  */
 export async function createProDetail(conn: Connection, detail: Omit<IDVerificationProDetail, "proDetailId">): Promise<number> {

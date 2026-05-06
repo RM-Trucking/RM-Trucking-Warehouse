@@ -94,5 +94,10 @@ export interface ComprehensiveVerifyResponse {
     activeStatus?: string;
     proDetailId?: number;
     toEmails?: string[];
+    customerEmails?: {
+        entryId: number;
+        entryType: "Department" | "Personnel";
+        entryEmail: string
+    }[];
     message?: string;
 }

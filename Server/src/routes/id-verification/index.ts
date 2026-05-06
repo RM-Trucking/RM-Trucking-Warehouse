@@ -36,7 +36,9 @@ router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     if (conn) conn.close();
 });
 
-// List verifications with pagination
+// List verifications with pagination and advanced search/filters by names
+// Query params: page, pageSize, driverId, carrierName, customerName, stationName, driverName, startDate, endDate, filterLogic
+// filterLogic: "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
 router.get("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     await idVerificationController.listVerifications(req, res, conn);
