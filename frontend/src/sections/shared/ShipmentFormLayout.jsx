@@ -10,6 +10,7 @@ export default function ShipmentFormLayout({
     onSubmit,
     onReset,
     showCancel = true,
+    showSubmit = true,
     topInfoPanel,
     children
 }) {
@@ -48,14 +49,16 @@ export default function ShipmentFormLayout({
                             Reset
                         </Button>
                     )}
-                    <Button
-                        variant="contained"
-                        onClick={onSubmit}
-                        size="small"
-                        sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
-                    >
-                        Submit
-                    </Button>
+                    {showSubmit && (
+                        <Button
+                            variant="contained"
+                            onClick={onSubmit}
+                            size="small"
+                            sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            Submit
+                        </Button>
+                    )}
                 </Stack>
             </Stack>
 
@@ -80,6 +83,7 @@ ShipmentFormLayout.propTypes = {
     onSubmit: PropTypes.func.isRequired,
     onReset: PropTypes.func,
     showCancel: PropTypes.bool,
+    showSubmit: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     children: PropTypes.node.isRequired,
 };
