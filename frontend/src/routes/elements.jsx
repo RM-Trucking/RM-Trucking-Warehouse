@@ -22,6 +22,7 @@ export const DriverCheckInPage = Loadable(lazy(() => import('../pages/driver-che
 export const WarehouseCheckInPage = Loadable(lazy(() => import('../pages/menu/WarehouseCheckInPage')));
 export const EnRoutePage = Loadable(lazy(() => import('../pages/en-route/EnRoutePage')));
 export const IdVerificationFormPage = Loadable(lazy(() => import('../pages/IdVerificationForm/IdVerificationFormPage')));
+export const IdVerificationViewPage = Loadable(lazy(() => import('../pages/IdVerificationForm/IdVerificationView')));
 export const WarehouseReceiptFormPage = Loadable(lazy(() => import('../pages/menu/WarehouseReceiptFormPage')));
 export const ShipmentFormPage = Loadable(lazy(() => import('../pages/shipment/ShipmentFormPage')));
 

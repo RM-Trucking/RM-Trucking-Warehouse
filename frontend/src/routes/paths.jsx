@@ -41,6 +41,7 @@ export const PATH_DASHBOARD = {
   warehouseCheckIn: path(ROOTS_DASHBOARD, '/warehouse-check-in'),
   enRoute: path(ROOTS_DASHBOARD, '/en-route'),
   idVerificationForm: path(ROOTS_DASHBOARD, '/id-verification-form'),
+  idVerificationView: (id) => path(ROOTS_DASHBOARD, `/id-verification-form/${id}`),
   warehouseReceiptForm: path(ROOTS_DASHBOARD, '/warehouse-receipt-form'),
   shipmentBuilding: path(ROOTS_DASHBOARD, '/shipment-form'),
 };

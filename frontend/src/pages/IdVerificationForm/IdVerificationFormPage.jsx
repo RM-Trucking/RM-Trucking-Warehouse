@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -31,6 +32,7 @@ const actionBtnSx = {
 
 export default function IdVerificationFormPage() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { idVerificationData, isLoading, error, pagination, searchTerm } = useSelector((state) => state.idVerificationdata);
   const isInitialMount = useRef(true);
 
@@ -43,6 +45,11 @@ export default function IdVerificationFormPage() {
     fromDate: '',
     toDate: '',
   });
+
+  const handleViewVerification = (row) => {
+    // Navigate to IdVerificationView page with the verification ID
+    navigate(`/app/id-verification-form/${row.verificationId}`);
+  };
 
   // Fetch data when pagination/pageSize changes
  // Fetch data when pagination/pageSize changes
@@ -155,7 +162,7 @@ export default function IdVerificationFormPage() {
         return stationName ? `${customerName} | ${stationName}` : '';
       }
     },
-    { field: 'firstIdPhotoMatch', headerName: 'Photo Match', flex: 0.7, minWidth: 100 },
+    // { field: 'firstIdPhotoMatch', headerName: 'Photo Match', flex: 0.7, minWidth: 100 },
     { field: 'verifiedByEmployee', headerName: 'Verified By', flex: 0.8, minWidth: 110 },
     {
       field: 'createdAt',
@@ -174,7 +181,12 @@ export default function IdVerificationFormPage() {
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-          <Iconify icon="mdi:eye" width={20} sx={{ cursor: 'pointer', color: '#555' }} />
+          <Iconify
+            icon="mdi:eye"
+            width={20}
+            sx={{ cursor: 'pointer', color: '#555' }}
+            onClick={() => handleViewVerification(params.row)}
+          />
         </Box>
       ),
     },
