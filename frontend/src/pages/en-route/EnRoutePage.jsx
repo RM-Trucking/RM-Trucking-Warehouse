@@ -52,6 +52,7 @@ export default function EnRoutePage() {
     name: '',
     phone: ''
   });
+  const [submitLoading, setSubmitLoading] = useState(false);
 
   // Local state for carrier search debounce
   const [carrierSearchValue, setCarrierSearchValue] = useState('');
@@ -484,6 +485,8 @@ const handleViewModal = useCallback((rowData) => {
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+    // Clear Redux error when snackbar closes so it doesn't show on the grid
+    dispatch(clearEnrouteError());
   };
 
   // Add Carrier Modal handlers
@@ -577,6 +580,8 @@ const handleViewModal = useCallback((rowData) => {
       items: {}
     });
 
+    setSubmitLoading(true);
+
     try {
       // Convert selectedEmails object to array of actual email addresses
       const toEmailsList = currentFormEmails
@@ -603,7 +608,11 @@ const handleViewModal = useCallback((rowData) => {
         message: errorMessage,
         severity: 'error'
       });
+      // Clear the Redux error immediately so it doesn't show on the grid
+      dispatch(clearEnrouteError());
       console.error('Failed to create enroute:', error);
+    } finally {
+      setSubmitLoading(false);
     }
   };
 
@@ -782,8 +791,20 @@ const handleViewModal = useCallback((rowData) => {
               {viewMode ? 'Close' : 'Cancel'}
             </Button>
             {!viewMode && (
-              <Button variant="contained" onClick={handleSubmit} sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' } }}>
-                Submit
+              <Button
+                variant="contained"
+                onClick={handleSubmit}
+                disabled={submitLoading}
+                sx={{ bgcolor: '#b71c1c', '&:hover': { bgcolor: '#8b1c1c' }, '&:disabled': { bgcolor: '#d0d0d0' } }}
+              >
+                {submitLoading ? (
+                  <>
+                    <CircularProgress size={20} sx={{ color: 'white', mr: 1 }} />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit'
+                )}
               </Button>
             )}
           </Stack>

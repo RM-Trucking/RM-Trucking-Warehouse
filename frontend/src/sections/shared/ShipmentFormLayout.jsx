@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { Box, Stack, Typography, Button } from '@mui/material';
+import { Box, Stack, Typography, Button, CircularProgress } from '@mui/material';
 import Iconify from '../../components/iconify';
 import Barcode from "react-barcode";
 
@@ -10,6 +10,7 @@ export default function ShipmentFormLayout({
     onSubmit,
     onReset,
     showCancel = true,
+    submitLoading = false,
     topInfoPanel,
     children
 }) {
@@ -51,10 +52,18 @@ export default function ShipmentFormLayout({
                     <Button
                         variant="contained"
                         onClick={onSubmit}
+                        disabled={submitLoading}
                         size="small"
-                        sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, '&:disabled': { bgcolor: '#d0d0d0' } }}
                     >
-                        Submit
+                        {submitLoading ? (
+                            <>
+                                <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
+                                Submitting...
+                            </>
+                        ) : (
+                            'Submit'
+                        )}
                     </Button>
                 </Stack>
             </Stack>
@@ -80,6 +89,7 @@ ShipmentFormLayout.propTypes = {
     onSubmit: PropTypes.func.isRequired,
     onReset: PropTypes.func,
     showCancel: PropTypes.bool,
+    submitLoading: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     children: PropTypes.node.isRequired,
 };
