@@ -18,6 +18,7 @@ import {
   Typography,
   CircularProgress,
   Alert,
+  Snackbar,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { DataGrid } from '@mui/x-data-grid';
@@ -26,6 +27,7 @@ import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchWarehouseReceipt, clearReceiptSearch } from '../../redux/slices/warehouse';
+import axios from '../../utils/axios';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -73,6 +75,8 @@ export default function WarehouseCheckInPage() {
   const [rejectOpen, setRejectOpen]     = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectRow, setRejectRow]       = useState(null);
+  const [rejectLoading, setRejectLoading] = useState(false);
+  const [snackbar, setSnackbar]         = useState({ open: false, message: '', severity: 'success' });
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
@@ -159,10 +163,64 @@ export default function WarehouseCheckInPage() {
     setRejectReason('');
   };
 
-  const handleRejectSubmit = () => {
-    // TODO: call API with rejectRow and rejectReason
-    console.log('Rejected:', rejectRow, 'Reason:', rejectReason);
-    handleRejectClose();
+  const handleRejectSubmit = async () => {
+    if (!rejectReason.trim()) {
+      setSnackbar({ open: true, message: 'Please enter a rejection reason', severity: 'error' });
+      return;
+    }
+
+    if (!rejectRow) {
+      setSnackbar({ open: true, message: 'No receipt selected', severity: 'error' });
+      return;
+    }
+
+    setRejectLoading(true);
+
+    try {
+      const receiptId = rejectRow.receiptId || rejectRow.id;
+
+      // Make API call to reject the receipt
+      const response = await axios.put(`/warehouse-receipt/${receiptId}/reject`, {
+        rejectionReason: rejectReason
+      });
+
+      if (response.data?.success) {
+        // Remove the rejected receipt from the table by clearing and re-searching
+        // Or we can manually update the rows in state
+        setSnackbar({
+          open: true,
+          message: 'Receipt rejected successfully',
+          severity: 'success'
+        });
+
+        // Clear the search results to refresh
+        setTimeout(() => {
+          dispatch(clearReceiptSearch());
+        }, 1500);
+
+        handleRejectClose();
+      } else {
+        setSnackbar({
+          open: true,
+          message: response.data?.message || 'Failed to reject receipt',
+          severity: 'error'
+        });
+      }
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.message || 'Error rejecting receipt';
+      setSnackbar({
+        open: true,
+        message: errorMessage,
+        severity: 'error'
+      });
+      console.error('Error rejecting receipt:', error);
+    } finally {
+      setRejectLoading(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   // ── Search handler ─────────────────────────────────────────────────
@@ -306,7 +364,7 @@ export default function WarehouseCheckInPage() {
 
         {!warehouseReceiptSearch.loading && warehouseReceiptSearch.found && warehouseReceiptSearch.data && (
           <Box>
-            {warehouseReceiptSearch.data.rows && warehouseReceiptSearch.data.rows.length === 0 ? (
+            {!warehouseReceiptSearch.data.rows || warehouseReceiptSearch.data.rows.length === 0 ? (
               <Typography sx={{ color: '#777', fontSize: 14 }}>
                 No records found for <strong>{warehouseReceiptSearch.data.proNumber}</strong>.
               </Typography>
@@ -667,6 +725,7 @@ export default function WarehouseCheckInPage() {
             variant="outlined"
             size="small"
             onClick={handleRejectClose}
+            disabled={rejectLoading}
             sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
           >
             Cancel
@@ -674,14 +733,37 @@ export default function WarehouseCheckInPage() {
           <Button
             variant="contained"
             size="small"
-            disabled={!rejectReason.trim()}
+            disabled={!rejectReason.trim() || rejectLoading}
             onClick={handleRejectSubmit}
             sx={{ ...actionBtnSx, height: 32 }}
           >
-            Reject
+            {rejectLoading ? (
+              <>
+                <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
+                Rejecting...
+              </>
+            ) : (
+              'Reject'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </ShipmentFormLayout>
   );
 }

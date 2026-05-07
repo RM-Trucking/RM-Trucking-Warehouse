@@ -72,8 +72,48 @@ export function searchWarehouseReceipt(searchValue, searchBy) {
             const response = await axios.get(`/warehouse-receipt/${searchValue}?searchBy=${searchByParam}`);
 
             if (response.data?.success && response.data?.data) {
-                dispatch(slice.actions.receiptSearchSuccess(response.data.data));
-                return response.data.data;
+                // Transform the API response to the expected format
+                let receipts = response.data.data;
+                console.log('API Response receipts:', receipts);
+                console.log('Is array?', Array.isArray(receipts));
+                console.log('Length:', receipts?.length);
+
+                // Handle case where data might be a single object instead of array
+                if (!Array.isArray(receipts) && receipts) {
+                    receipts = [receipts];
+                    console.log('Converted single object to array:', receipts);
+                }
+
+                if (Array.isArray(receipts) && receipts.length > 0) {
+                    // Map each receipt to the table row format
+                    const rows = receipts.map((receipt, index) => ({
+                        id: receipt.receiptId || receipt.id || index,
+                        sno: String(index + 1).padStart(2, '0'),
+                        receiptNumber: receipt.receiptNumber,
+                        carrier: receipt.carrierName || '-',
+                        customer: receipt.customerName ? `${receipt.customerName} | ${receipt.stationName || '-'}` : '-',
+                        // Include original data for proceed action
+                        ...receipt
+                    }));
+
+                    console.log('Transformed rows:', rows);
+
+                    // Group by PRO number (if there are multiple PROs, use the first one)
+                    const proNumber = receipts[0]?.proNumber || searchValue;
+
+                    const transformedData = {
+                        proNumber,
+                        rows
+                    };
+
+                    console.log('Final transformed data:', transformedData);
+                    dispatch(slice.actions.receiptSearchSuccess(transformedData));
+                    return transformedData;
+                } else {
+                    console.log('No rows found or not an array');
+                    dispatch(slice.actions.receiptSearchNotFound());
+                    return null;
+                }
             } else if (!response.data?.success && response.data?.message) {
                 const errorMessage = response.data.message;
                 dispatch(slice.actions.receiptSearchError(errorMessage));
