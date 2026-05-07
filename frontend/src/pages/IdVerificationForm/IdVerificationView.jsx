@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
+import IdVerificationPrintTemplate from './IdVerificationPrintTemplate';
 import Iconify from '../../components/iconify';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import StyledCheckbox from '../../sections/shared/StyledCheckBox';
@@ -122,6 +123,7 @@ export default function IdVerificationViewPage() {
 
   return (
     <>
+    <Box sx={{ '@media print': { display: 'none' } }}>
       {/* Custom Header with Print and OK Buttons */}
       <Box
         sx={{
@@ -393,10 +395,10 @@ export default function IdVerificationViewPage() {
             </Box>
           </Collapse>
         </Box>
-          </Stack>
-        </Box>
-      </Box>
-
+</Stack> {/* 1. Closes <Stack spacing={3}> */}
+        </Box>  
+              </Box>     
+    </Box>     
       {/* Mail List Dialog */}
       <Dialog
         open={openMailDialog}
@@ -464,6 +466,29 @@ export default function IdVerificationViewPage() {
           </Button>
         </Box>
       </Dialog>
+
+      {/* Print Template */}
+      {verificationRecord && (
+        <IdVerificationPrintTemplate
+          data={{
+            verificationId: verificationRecord.verificationId,
+            date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+            carrier: verificationRecord.carrier,
+            freightForwarder: verificationRecord.shipperCompany,
+            door: verificationRecord.door,
+            driverName: verificationRecord.driverName,
+            signature: verificationRecord.driverSignature,
+            firstIdType: verificationRecord.firstIdType,
+            firstIdMatch: verificationRecord.firstIdMatch,
+            secondIdType: verificationRecord.secondIdType,
+            secondIdMatch: verificationRecord.secondIdMatch,
+            shipperCompany: verificationRecord.shipperCompany,
+            verifiedBy: verificationRecord.verifiedBy,
+            freightDetails: verificationRecord.proDetails || [],
+          }}
+        />
+      )}
     </>
-  );
+  );    
+
 }
