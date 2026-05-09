@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Box, Typography, Stack, Grid } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import RMLogo from '../../assets/RM.png';
 
 const ROWS_PER_PAGE = 10;
@@ -14,6 +14,37 @@ SELECT ONE OF THE FOLLOWING THREE OPTIONS AS A VALID FORM OF ID:
 
 NO SPACES MUST BE LEFT BLANK. THE TERMS "NONE" OR "N/A" MUST BE USED TO INDICATE OMITTED INFORMATION.
 IF THIS MEASURE IS NOT MET, THE IAC MUST REFUSE TO ACCEPT THE CARGO AND FOLLOW THE TSA NOTIFICATION PROCEDURES IN ACCORDANCE WITH CHAPTER 7 OF THE IACSSP. THE IAC MUST MAINTAIN ALL REQUIRED ID INFORMATION AT THE ACCEPTING STATION FOR A MINIMUM OF 30 CALENDAR DAYS FROM THE DATE THE CARGO WAS TRANSPORTED FROM THAT STATION AND MAKE THE ID INFORMATION AVAILABLE TO TSA UPON REQUEST. UNAUTHORIZED DISCLOSURE OF THE ID INFORMATION IS STRICTLY PROHIBITED.`;
+
+const getSignatureSrc = (signature) => {
+  if (!signature || typeof signature !== 'string') return '';
+
+  const trimmedSignature = signature.trim();
+  if (!trimmedSignature) return '';
+
+  if (/^(data:image\/|https?:\/\/|blob:)/i.test(trimmedSignature)) {
+    return trimmedSignature;
+  }
+
+  const compactSignature = trimmedSignature.replace(/\s/g, '');
+
+  if (/^iVBORw0KGgo/i.test(compactSignature)) {
+    return `data:image/png;base64,${compactSignature}`;
+  }
+
+  if (/^\/9j\//i.test(compactSignature)) {
+    return `data:image/jpeg;base64,${compactSignature}`;
+  }
+
+  if (/^R0lGOD/i.test(compactSignature)) {
+    return `data:image/gif;base64,${compactSignature}`;
+  }
+
+  if (/^UklGR/i.test(compactSignature)) {
+    return `data:image/webp;base64,${compactSignature}`;
+  }
+
+  return trimmedSignature;
+};
 
 export default function IdVerificationPrintTemplate({ data }) {
   if (!data) return null;
@@ -38,6 +69,7 @@ export default function IdVerificationPrintTemplate({ data }) {
   }
 
   const totalPages = pages.length;
+  const signatureSrc = getSignatureSrc(data.signature);
 
   // We define the template as a variable so we can inject it via Portal
   const printContent = (
@@ -102,10 +134,10 @@ export default function IdVerificationPrintTemplate({ data }) {
       <img
         src={RMLogo}
         alt="RM Trucking Logo"
-        style={{ height: '70px', marginBottom: '4px', objectFit: 'contain' }}
+        style={{ height: '90px', marginBottom: '5px', objectFit: 'contain' }}
       />
     </Box>
-    <Typography sx={{ fontSize: '10px', lineHeight: 1.3, fontWeight: 700, color: '#000' }}>
+    <Typography sx={{ fontSize: '14px', lineHeight: 1.5, fontWeight: 700, color: '#000' }}>
       840 E Green St STE 100,<br />
       Bensenville, IL 60106<br />
       Ph# (847) 616-1080 Fax# (847) 616-8811
@@ -170,7 +202,7 @@ export default function IdVerificationPrintTemplate({ data }) {
             padding: '4px 8px', 
             fontSize: '12px', 
             fontWeight: 800,
-            textAlign: 'center'
+            textAlign: 'left'
           }}>
             {data.door}
           </Box>
@@ -230,113 +262,123 @@ export default function IdVerificationPrintTemplate({ data }) {
             </Box>
 
             {/* --- DISCLAIMER --- */}
-            <Typography sx={{ fontSize: '10px', whiteSpace: 'pre-wrap', mb: 1.5, lineHeight: 0.9 }}>
+            <Typography sx={{ fontSize: '10.5px', whiteSpace: 'pre-wrap', mb: 0, lineHeight: 1.1 }}>
               {DISCLAIMER_TEXT}
             </Typography>
 
             {/* --- DRIVER DETAILS --- */}
-            <Box 
-              sx={{ 
-                border: '1px solid #ccc', 
-                borderRadius: 1, 
-                p: 1.5, 
-                position: 'relative', 
-                pt: 2.5,
-                mt: 'auto' // Pushes the driver details box to the absolute bottom of the container
-              }}
-            >
-              <Typography 
-                sx={{ 
-                  position: 'absolute', top: -10, left: 16, bgcolor: 'white', px: 1, 
-                  fontSize: '11px', fontWeight: 700 
-                }}
-              >
-                Driver Details
-              </Typography>
+         <Box
+  sx={{
+    border: '1px solid #999',
+    borderRadius: 1,
+    p: 2.5,
+    position: 'relative',
+    mt: 1,
+    backgroundColor: '#fff',
+  }}
+>
+  {/* <Typography
+    sx={{
+      position: 'absolute',
+      top: -10,
+      left: 16,
+      bgcolor: 'white',
+      px: 1,
+      fontSize: '12px',
+      fontWeight: 800,
+    }}
+  >
+    Driver Details
+  </Typography> */}
 
-              <Stack spacing={1.5}>
-                {/* Name and Signature */}
-                <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={6}>
-                    <Typography sx={{ fontSize: '9px', color: '#d32f2f', mb: 0.5 }}>Driver Name *</Typography>
-                    <Box sx={{ borderBottom: '1px solid #000', pb: 0.25, minHeight: '16px', fontSize: '11px', fontWeight: 600 }}>
-                      {data.driverName}
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box sx={{
-                      height: 40, width: 200, border: '1px dashed #ccc', bgcolor: '#f5f5f5',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {data.signature ? (
-                         <img src={data.signature} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                      ) : (
-                         <Typography sx={{ fontSize: '10px', color: '#999' }}>Signature</Typography>
-                      )}
-                    </Box>
-                  </Grid>
-                </Grid>
+  {/* CSS Grid explicitly forces 3 columns: Labels (1.5fr), Inputs (1fr), Checkboxes (1.2fr) */}
+  <Box
+    sx={{
+      display: 'grid',
+      gridTemplateColumns: '1.5fr 1fr 1.2fr',
+      rowGap: 2.5,
+      columnGap: 2,
+      alignItems: 'flex-end',
+    }}
+  >
+    {/* ROW 1: Driver Name & Signature */}
+    <Box>
+      <Typography sx={{ fontSize: '10px', color: '#d32f2f', fontWeight: 600, mb: 0.5 }}>
+        Driver Name *
+      </Typography>
+      <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '12px', fontWeight: 600, minHeight: '18px' }}>
+        {data.driverName}
+      </Box>
+    </Box>
+    <Box sx={{ alignSelf: 'flex-start' }}>
+      <Box
+        sx={{
+          width: '120px',
+          height: '40px',
+          border: '1px dashed #999',
+          borderRadius: 1,
+          bgcolor: '#f5f5f5',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {signatureSrc ? (
+          <img src={signatureSrc} alt="Signature" style={{ maxHeight: '90%', maxWidth: '90%' }} />
+        ) : (
+          <Typography sx={{ fontSize: '10px', color: '#999' }}>Signature</Typography>
+        )}
+      </Box>
+    </Box>
+    <Box /> {/* Empty 3rd column for Row 1 */}
 
-                {/* First ID */}
-                <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={5}>
-                    <Typography sx={{ fontSize: '9px' }}>TYPE OF FIRST ID REVIEWED. (GOVERNMENT ISSUED ID OR COMPANY ISSUED)</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                     <Box sx={{ borderBottom: '1px solid #000', pb: 0.25, minHeight: '16px', fontSize: '11px' }}>
-                      {data.firstIdType}
-                     </Box>
-                  </Grid>
-                  <Grid item xs={3}>
-                    <Typography sx={{ fontSize: '9px', display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', marginRight: '4px' }}>{data.firstIdMatch ? '☑' : '☐'}</span> MATCHING PHOTO ON ID
-                    </Typography>
-                  </Grid>
-                </Grid>
+    {/* ROW 2: First ID */}
+    <Typography sx={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', lineHeight: 1.3 }}>
+      Type of First ID Reviewed. (Government Issued ID or Company Issued)
+    </Typography>
+    <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
+      {data.firstIdType || 'IL_DL'}
+    </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 0.5 }}>
+      <Box sx={{ width: 14, height: 14, border: '2px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px' }}>
+        {data.firstIdMatch && <span style={{ fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+      </Box>
+      <Typography sx={{ fontSize: '9px', fontWeight: 800 }}>MATCHING PHOTO ON ID</Typography>
+    </Box>
 
-                {/* Second ID */}
-                <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={5}>
-                    <Typography sx={{ fontSize: '9px' }}>TYPE OF SECOND ID REVIEWED (IF THE FIRST ID WAS NOT A PHOTO ID ISSUED BY A GOVERNMENT AUTHORITY OR IS NOT A COMPANY ID)</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                     <Box sx={{ borderBottom: '1px solid #000', pb: 0.25, minHeight: '16px', fontSize: '11px' }}>
-                      {data.secondIdType}
-                     </Box>
-                  </Grid>
-                  <Grid item xs={3}>
-                    <Typography sx={{ fontSize: '9px', display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', marginRight: '4px' }}>{data.secondIdMatch ? '☑' : '☐'}</span> MATCHING PHOTO ON ID
-                    </Typography>
-                  </Grid>
-                </Grid>
+    {/* ROW 3: Second ID */}
+    <Typography sx={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', lineHeight: 1.3 }}>
+      Type of Second ID Reviewed (If the first id was not a photo id issued by a government authority or is not a company id)
+    </Typography>
+    <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
+      {data.secondIdType || 'NA'}
+    </Box>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 0.5 }}>
+      <Box sx={{ width: 14, height: 14, border: '2px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px' }}>
+        {data.secondIdMatch && <span style={{ fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+      </Box>
+      <Typography sx={{ fontSize: '9px', fontWeight: 800 }}>MATCHING PHOTO ON ID</Typography>
+    </Box>
 
-                 {/* Shipper Company */}
-                 <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={5}>
-                    <Typography sx={{ fontSize: '9px' }}>SHIPPER'S COMPANY NAME (WHERE APPLICABLE)</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                     <Box sx={{ borderBottom: '1px solid #000', pb: 0.25, minHeight: '16px', fontSize: '11px' }}>
-                      {data.shipperCompany}
-                     </Box>
-                  </Grid>
-                </Grid>
+    {/* ROW 4: Shipper Name */}
+    <Typography sx={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', lineHeight: 1.3 }}>
+      Shipper's Company Name (Where Applicable)
+    </Typography>
+    <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
+      {data.shipperCompany || 'Seacoast Logistics'}
+    </Box>
+    <Box /> {/* Empty 3rd column for Row 4 */}
 
-                {/* Verifier */}
-                <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={5}>
-                    <Typography sx={{ fontSize: '9px' }}>NAME OF EMPLOYEE OR AUTHORIZED REPRESENTATIVE WHO VERIFIED ID INFORMATION</Typography>
-                  </Grid>
-                  <Grid item xs={4}>
-                     <Box sx={{ borderBottom: '1px solid #000', pb: 0.25, minHeight: '16px', fontSize: '11px' }}>
-                      {data.verifiedBy}
-                     </Box>
-                  </Grid>
-                </Grid>
-
-              </Stack>
-            </Box>
+    {/* ROW 5: Employee Name */}
+    <Typography sx={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', lineHeight: 1.3 }}>
+      Name of employee or authorized representative who verified ID information
+    </Typography>
+    <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
+      {data.verifiedBy || 'Kevin'}
+    </Box>
+    <Box /> {/* Empty 3rd column for Row 5 */}
+  </Box>
+</Box>
           </Box>
         ))}
       </Box>

@@ -743,6 +743,7 @@ const handleDriverNameFocus = () => {
     const freightForwarderName = typeof freightForwarder === 'string'
       ? freightForwarder
       : (freightForwarder?.customerName || '');
+    const stationName = typeof freightForwarder === 'object' ? (freightForwarder?.stationName || '') : '';
 
     if (!freightForwarderName || !pro) return;
     const groupId = freightForwarderName.toUpperCase().replace(/\s+/g, "_");
@@ -775,7 +776,7 @@ const handleDriverNameFocus = () => {
         ...prev,
         {
           id: groupId,
-          label: `Freight Forwarder - ${freightForwarderName} | Elk Grove Village | IL`,
+          label: stationName ? `${freightForwarderName} | ${stationName}` : freightForwarderName,
           emails: typeof freightForwarder === 'object' ? (freightForwarder?.emails || []) : [],
           entries: [newEntry],
         },
