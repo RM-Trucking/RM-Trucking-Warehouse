@@ -54,7 +54,7 @@ const slice = createSlice({
 export default slice.reducer;
 
 // Async action to fetch ID Verification data
-export function getIdVerificationData({ page = 1, pageSize = 10, searchTerm = '' } = {}) {
+export function getIdVerificationData({ page = 1, pageSize = 10, searchTerm = '', filters = {}, filterLogic = '' } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
@@ -62,6 +62,10 @@ export function getIdVerificationData({ page = 1, pageSize = 10, searchTerm = ''
         page,
         pageSize,
         ...(searchTerm && { searchTerm }),
+        ...Object.fromEntries(
+          Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+        ),
+        ...(filterLogic && { filterLogic }),
       });
 
       const response = await axios.get(`/id-verification?${params.toString()}`);

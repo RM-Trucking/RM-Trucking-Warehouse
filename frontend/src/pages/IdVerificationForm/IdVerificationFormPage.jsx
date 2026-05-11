@@ -1,50 +1,85 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
   Button,
   Collapse,
-  Grid,
   IconButton,
+  InputAdornment,
+  MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import ClearIcon from '@mui/icons-material/Clear';
+import DeleteIcon from '@mui/icons-material/Delete';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import dayjs from 'dayjs';
 import { useDispatch, useSelector } from 'react-redux';
 import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import Iconify from '../../components/iconify';
+import StyledTextField from '../../sections/shared/StyledTextField';
 import { getIdVerificationData, clearIdVerificationError, setIdVerificationSearchTerm } from '../../redux/slices/idVerification';
 
-const actionBtnSx = {
-  bgcolor: '#A22',
-  color: '#fff',
-  textTransform: 'none',
-  minWidth: 80,
-  height: 28,
-  px: 1.5,
-  fontSize: 12,
-  '&:hover': { bgcolor: '#8b1c1c' },
+const createEmptyFilter = (id) => ({ id, field: '', value: '' });
+
+const getFreightForwarder = (row) => {
+  const customerName = row.customerName || '';
+  const stationName = row.stationName || '';
+  return stationName ? `${customerName} | ${stationName}` : customerName;
 };
+
+const getFilterParams = (filters) => filters.reduce((params, filter) => {
+  const value = String(filter.value || '').trim();
+  if (!filter.field || !value) return params;
+
+  if (filter.field === 'driver') {
+    params.driverName = value;
+    return params;
+  }
+
+  if (filter.field === 'freightForwarder') {
+    const [customerName, stationName] = value.split('|').map((part) => part.trim());
+    if (customerName) params.customerName = customerName;
+    if (stationName) params.stationName = stationName;
+    return params;
+  }
+
+  if (filter.field === 'startDate') {
+    params.startDate = `${value}T00:00:00Z`;
+    return params;
+  }
+
+  if (filter.field === 'endDate') {
+    params.endDate = `${value}T23:59:59Z`;
+    return params;
+  }
+
+  params[filter.field] = value;
+  return params;
+}, {});
 
 export default function IdVerificationFormPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { idVerificationData, isLoading, error, pagination, searchTerm } = useSelector((state) => state.idVerificationdata);
+  const { idVerificationData, isLoading, error, pagination } = useSelector((state) => state.idVerificationdata);
   const isInitialMount = useRef(true);
 
   const [searchValue, setSearchValue] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [paginationModel, setPaginationModel] = useState({ pageSize: 10, page: 0 });
-  const [filters, setFilters] = useState({
-    carrier: '',
-    freightForwarder: '',
-    fromDate: '',
-    toDate: '',
-  });
+  const filterIdRef = useRef(1);
+  const [filters, setFilters] = useState([createEmptyFilter(1)]);
+  const [appliedFilterParams, setAppliedFilterParams] = useState({});
+  const [logicOperator, setLogicOperator] = useState('and');
+  const [appliedLogicOperator, setAppliedLogicOperator] = useState('and');
+  const hasAppliedFilters = Object.keys(appliedFilterParams).length > 0;
 
   const handleViewVerification = (row) => {
     // Navigate to IdVerificationView page with the verification ID
@@ -57,10 +92,12 @@ export default function IdVerificationFormPage() {
     dispatch(getIdVerificationData({
       page: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
-      searchTerm: searchValue
+      searchTerm: searchValue,
+      filters: appliedFilterParams,
+      filterLogic: Object.keys(appliedFilterParams).length ? appliedLogicOperator.toUpperCase() : '',
     }));
     // ❌ REMOVED: Do not set isInitialMount.current = false here.
-  }, [paginationModel.page, paginationModel.pageSize]);
+  }, [paginationModel.page, paginationModel.pageSize, appliedFilterParams, appliedLogicOperator]);
 
   // Debounced search effect - skip on initial mount
   useEffect(() => {
@@ -73,7 +110,9 @@ export default function IdVerificationFormPage() {
       dispatch(getIdVerificationData({
         page: 1,
         pageSize: paginationModel.pageSize,
-        searchTerm: searchValue
+        searchTerm: searchValue,
+        filters: appliedFilterParams,
+        filterLogic: Object.keys(appliedFilterParams).length ? appliedLogicOperator.toUpperCase() : '',
       }));
       // Reset to first page when searching
       if (paginationModel.page !== 0) {
@@ -88,26 +127,47 @@ export default function IdVerificationFormPage() {
     setPaginationModel(newModel);
   };
 
-  const handleFilterChange = (filterName, value) => {
-    setFilters((prev) => ({
-      ...prev,
-      [filterName]: value,
-    }));
+  const updateFilter = (filterId, key, value) => {
+    setFilters((prev) => prev.map((filter) => (
+      filter.id === filterId ? { ...filter, [key]: value, ...(key === 'field' ? { value: '' } : {}) } : filter
+    )));
+  };
+
+  const addFilter = () => {
+    filterIdRef.current += 1;
+    setFilters((prev) => [...prev, createEmptyFilter(filterIdRef.current)]);
+  };
+
+  const removeFilter = (filterId) => {
+    setFilters((prev) => {
+      const nextFilters = prev.filter((filter) => filter.id !== filterId);
+      return nextFilters.length ? nextFilters : [createEmptyFilter(filterIdRef.current)];
+    });
   };
 
   const handleApplyFilters = () => {
-    // For now, filters are client-side. In production, these would be sent to API
+    const nextFilterParams = getFilterParams(filters);
+    setAppliedFilterParams(nextFilterParams);
+    setAppliedLogicOperator(logicOperator);
     setShowFilters(false);
+    dispatch(getIdVerificationData({
+      page: 1,
+      pageSize: paginationModel.pageSize,
+      searchTerm: searchValue,
+      filters: nextFilterParams,
+      filterLogic: Object.keys(nextFilterParams).length ? logicOperator.toUpperCase() : '',
+    }));
+    if (paginationModel.page !== 0) {
+      setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }
   };
 
   const handleClearFilters = () => {
-    const clearedFilters = {
-      carrier: '',
-      freightForwarder: '',
-      fromDate: '',
-      toDate: '',
-    };
-    setFilters(clearedFilters);
+    filterIdRef.current += 1;
+    setFilters([createEmptyFilter(filterIdRef.current)]);
+    setAppliedFilterParams({});
+    setLogicOperator('and');
+    setAppliedLogicOperator('and');
     dispatch(getIdVerificationData({
       page: 1,
       pageSize: paginationModel.pageSize,
@@ -156,11 +216,20 @@ export default function IdVerificationFormPage() {
       headerName: 'Freight Forwarder',
       flex: 1.2,
       minWidth: 160,
-      renderCell: (params) => {
-        const customerName = params.row.customerName || '';
-        const stationName = params.row.stationName || '';
-        return stationName ? `${customerName} | ${stationName}` : '';
-      }
+      renderCell: (params) => getFreightForwarder(params.row),
+    },
+    {
+      field: 'proCount',
+      headerName: 'Pro Count',
+      flex: 0.7,
+      minWidth: 90,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+          <Typography sx={{ fontSize: 13 }}>
+            {params.row.proDetails?.length || 0}
+          </Typography>
+        </Box>
+      ),
     },
     // { field: 'firstIdPhotoMatch', headerName: 'Photo Match', flex: 0.7, minWidth: 100 },
     { field: 'verifiedByEmployee', headerName: 'Verified By', flex: 0.8, minWidth: 110 },
@@ -191,6 +260,15 @@ export default function IdVerificationFormPage() {
       ),
     },
   ];
+
+  const filterColumns = useMemo(
+    () => [
+      ...columns.filter((column) => !['actions', 'proCount', 'createdAt'].includes(column.field)),
+      { field: 'startDate', headerName: 'Start Date' },
+      { field: 'endDate', headerName: 'End Date' },
+    ],
+    [columns]
+  );
 
   return (
     <ShipmentFormLayout
@@ -239,82 +317,143 @@ export default function IdVerificationFormPage() {
             <IconButton
               size="small"
               onClick={() => setShowFilters(!showFilters)}
-              sx={{ color: showFilters ? '#1976d2' : '#999' }}
+              sx={{
+                color: showFilters || hasAppliedFilters ? '#1976d2' : '#999',
+                bgcolor: hasAppliedFilters ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                '&:hover': {
+                  bgcolor: showFilters || hasAppliedFilters ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+                },
+              }}
             >
               <FilterListIcon />
             </IconButton>
           </Stack>
 
           {/* Filter Panel */}
-          <Collapse in={showFilters}>
-            <Paper sx={{ p: 2, mb: 2, border: '1px solid #e0e0e0' }}>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={3}>
-                  <TextField
-                    label="Filter by Carrier"
-                    size="small"
-                    fullWidth
-                    value={filters.carrier}
-                    onChange={(e) => handleFilterChange('carrier', e.target.value)}
-                    placeholder="Enter carrier name..."
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={3}>
-                  <TextField
-                    label="Filter by Freight Forwarder"
-                    size="small"
-                    fullWidth
-                    value={filters.freightForwarder}
-                    onChange={(e) => handleFilterChange('freightForwarder', e.target.value)}
-                    placeholder="Enter freight forwarder..."
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={2}>
-                  <TextField
-                    label="From Date"
-                    type="date"
-                    size="small"
-                    fullWidth
-                    value={filters.fromDate}
-                    onChange={(e) => handleFilterChange('fromDate', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={2}>
-                  <TextField
-                    label="To Date"
-                    type="date"
-                    size="small"
-                    fullWidth
-                    value={filters.toDate}
-                    onChange={(e) => handleFilterChange('toDate', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={2}>
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      variant="contained"
+          <Box sx={{ position: 'relative' }}>
+          <Collapse
+            in={showFilters}
+            sx={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              zIndex: 10,
+              width: 520,
+              maxWidth: '100%',
+            }}
+          >
+            <Paper
+              sx={{
+                p: 1.5,
+                width: '100%',
+                border: '1px solid #e0e0e0',
+                boxShadow: 3,
+              }}
+            >
+              <Box>
+                <Typography variant="subtitle2" mb={1}>Logic Operator</Typography>
+                <StyledTextField
+                  select
+                  value={logicOperator}
+                  onChange={(e) => setLogicOperator(e.target.value)}
+                  size="small"
+                  sx={{ mb: 2, width: 150 }}
+                >
+                  <MenuItem value="and">And</MenuItem>
+                  <MenuItem value="or">Or</MenuItem>
+                </StyledTextField>
+
+                {filters.map((filter) => (
+                  <Box
+                    key={filter.id}
+                    sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
+                  >
+                    <StyledTextField
+                      select
+                      value={filter.field}
+                      onChange={(e) => updateFilter(filter.id, 'field', e.target.value)}
                       size="small"
-                      onClick={handleApplyFilters}
-                      sx={{ bgcolor: '#1976d2' }}
+                      displayEmpty
+                      sx={{ width: 170, flexShrink: 0 }}
                     >
-                      Apply
-                    </Button>
-                    <Button
-                      variant="outlined"
+                      <MenuItem value="" disabled>Select Column</MenuItem>
+                      {filterColumns.map((column) => (
+                        <MenuItem key={column.field} value={column.field}>
+                          {column.headerName || column.field}
+                        </MenuItem>
+                      ))}
+                    </StyledTextField>
+
+                    {['startDate', 'endDate'].includes(filter.field) ? (
+                      <LocalizationProvider dateAdapter={AdapterDayjs}>
+                        <DatePicker
+                          format="MM/DD/YYYY"
+                          value={filter.value ? dayjs(filter.value) : null}
+                          onChange={(newValue) => {
+                            updateFilter(
+                              filter.id,
+                              'value',
+                              newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : ''
+                            );
+                          }}
+                          slotProps={{
+                            textField: {
+                              size: 'small',
+                              placeholder: 'Select date...',
+                              sx: { width: 260 },
+                            },
+                          }}
+                        />
+                      </LocalizationProvider>
+                    ) : (
+                      <StyledTextField
+                        size="small"
+                        placeholder="Filter value..."
+                        value={filter.value}
+                        onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+                        sx={{ width: 260 }}
+                        InputProps={{
+                          endAdornment: filter.value ? (
+                            <InputAdornment position="end">
+                              <IconButton
+                                size="small"
+                                onClick={() => updateFilter(filter.id, 'value', '')}
+                                edge="end"
+                              >
+                                <ClearIcon fontSize="small" />
+                              </IconButton>
+                            </InputAdornment>
+                          ) : null,
+                        }}
+                      />
+                    )}
+
+                    <IconButton
+                      onClick={() => removeFilter(filter.id)}
+                      color="error"
                       size="small"
-                      onClick={handleClearFilters}
                     >
-                      Clear
-                    </Button>
-                  </Stack>
-                </Grid>
-              </Grid>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+
+                <Button size="small" onClick={addFilter} sx={{ mt: 1 }}>
+                  + Add Filter Condition
+                </Button>
+
+                <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+                  <Button variant="outlined" onClick={handleClearFilters}>
+                    Clear
+                  </Button>
+                  <Button variant="contained" onClick={handleApplyFilters}>
+                    Apply Filter
+                  </Button>
+                </Box>
+              </Box>
             </Paper>
           </Collapse>
+          </Box>
 
           {/* Error Alert */}
           {error && (
