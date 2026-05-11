@@ -74,6 +74,7 @@ export interface WarehouseReceipt {
     noteThreadId?: number;
     entityId: number;
     toEmails?: string[];
+    rejectionReason?: string;
 }
 
 /**

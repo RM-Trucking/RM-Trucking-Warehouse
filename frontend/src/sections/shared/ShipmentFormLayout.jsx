@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { Box, Stack, Typography, Button } from '@mui/material';
+import { Box, Stack, Typography, Button, CircularProgress } from '@mui/material';
 import Iconify from '../../components/iconify';
 import Barcode from "react-barcode";
 
@@ -10,7 +10,7 @@ export default function ShipmentFormLayout({
     onSubmit,
     onReset,
     showCancel = true,
-    showSubmit = true,
+    submitLoading = false,
     topInfoPanel,
     children
 }) {
@@ -49,16 +49,22 @@ export default function ShipmentFormLayout({
                             Reset
                         </Button>
                     )}
-                    {showSubmit && (
-                        <Button
-                            variant="contained"
-                            onClick={onSubmit}
-                            size="small"
-                            sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
-                        >
-                            Submit
-                        </Button>
-                    )}
+                    <Button
+                        variant="contained"
+                        onClick={onSubmit}
+                        disabled={submitLoading}
+                        size="small"
+                        sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, '&:disabled': { bgcolor: '#d0d0d0' } }}
+                    >
+                        {submitLoading ? (
+                            <>
+                                <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
+                                Submitting...
+                            </>
+                        ) : (
+                            'Submit'
+                        )}
+                    </Button>
                 </Stack>
             </Stack>
 
@@ -84,6 +90,7 @@ ShipmentFormLayout.propTypes = {
     onReset: PropTypes.func,
     showCancel: PropTypes.bool,
     showSubmit: PropTypes.bool,
+    submitLoading: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     children: PropTypes.node.isRequired,
 };

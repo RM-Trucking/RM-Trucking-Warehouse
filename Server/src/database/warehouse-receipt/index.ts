@@ -30,7 +30,6 @@ export async function createWarehouseReceiptTemp(conn: Connection, temp: Omit<Wa
         temp.location ? temp.location : '' as string | number,
         temp.receivedBy ? temp.receivedBy : '' as string | number
     ];
-
     const result = await conn.query(query, params) as any[];
     return result[0].receiptNumber;
 }
@@ -195,7 +194,16 @@ export async function getWarehouseReceiptsByVerification(
 
 export async function getWarehouseReceiptsByCustomerStation(conn: Connection, customerId: number, stationId: number): Promise<WarehouseReceipt[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt" WHERE "customerId" = ? AND "stationId" = ? ORDER BY "receiptNumber" DESC`;
-    return await conn.query(query, [customerId, stationId]) as WarehouseReceipt[];
+    const result = await conn.query(query, [customerId, stationId]) as WarehouseReceipt[];
+    return result.map((row: any) => ({
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+    }));
 }
 
 export async function listWarehouseReceipts(conn: Connection, limit: number, offset: number, filters?: { status?: string; carrierId?: number }): Promise<WarehouseReceipt[]> {
@@ -214,7 +222,17 @@ export async function listWarehouseReceipts(conn: Connection, limit: number, off
     query += ` ORDER BY "receiptNumber" DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    return await conn.query(query, params) as WarehouseReceipt[];
+    const result = await conn.query(query, params) as WarehouseReceipt[];
+
+    return result.map((row: any) => ({
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+    }));
 }
 
 export async function updateWarehouseReceipt(conn: Connection, receiptId: number, updates: any): Promise<void> {
@@ -381,6 +399,11 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         params.push(updates.hazardousDescription ? updates.hazardousDescription : '' as string);
     }
 
+    if (updates.rejectionReason !== undefined) {
+        fields.push(`"rejectionReason" = ?`);
+        params.push(updates.rejectionReason ? updates.rejectionReason : '' as string);
+    }
+
     if (fields.length === 0) return;
 
     fields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
@@ -535,7 +558,7 @@ export async function getWarehouseReceiptByReceiptNumber(
     const query = `
         SELECT * 
         FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "receiptNumber" = ?
+        WHERE "receiptNumber" = ? AND "status" = 'INITIATED'
     `;
     const result = await conn.query(query, [Number(receiptNumber)]) as any[];
 
@@ -587,25 +610,55 @@ export async function getWarehouseReceiptByCarrierAndPro(
 }
 
 /**
+ * GET WAREHOUSE RECEIPT BY CARRIER NAME AND PRO
+ * Checks if a warehouse receipt already exists for carrier+pro combination
+ */
+export async function checkDuplicateProByCarrierName(
+    conn: Connection,
+    carrierName: string,
+    proNumber: string
+): Promise<any | null> {
+    const query = `
+        SELECT wr."receiptId", wr."receiptNumber", wr."status", 
+               wr."carrierId", c."carrierName",
+               wr."customerId", cu."customerName",
+               wr."stationId", s."stationName",
+               wr."piecesInland", wr."weightInland",
+               wr."proNumber", wr."shipper", wr."toEmails"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        LEFT JOIN ${SCHEMA}."Carrier" c ON wr."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON wr."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON wr."stationId" = s."stationId"
+        WHERE c."carrierName" = ? AND wr."proNumber" = ?
+        ORDER BY wr."receiptId" DESC
+        LIMIT 1
+    `;
+    const result = await conn.query(query, [carrierName, proNumber]) as any[];
+    return result.length > 0 ? {
+        ...result[0],
+        receiptId: result[0].receiptId != null ? parseInt(result[0].receiptId) : null,
+        receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
+    } : null;
+}
+
+/**
  * GET WAREHOUSE RECEIPT BY PRO NUMBER
  */
-export async function getWarehouseReceiptByProNumber(
+export async function getWarehouseReceiptsByProNumber(
     conn: Connection,
     proNumber: string
-): Promise<WarehouseReceipt | null> {
+): Promise<WarehouseReceipt[]> {
     const query = `
         SELECT * FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "proNumber" = ? 
+        WHERE "proNumber" = ? AND "status" = 'INITIATE'
         ORDER BY "receiptId" DESC 
-        LIMIT 1
     `;
     const result = await conn.query(query, [proNumber]) as any[];
     if (!result || result.length === 0) {
-        return null;
+        return [];
     }
 
-    const row = result[0];
-    return {
+    return result.map((row) => ({
         ...row,
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
@@ -613,8 +666,9 @@ export async function getWarehouseReceiptByProNumber(
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
-    };
+    }));
 }
+
 
 /**
  * AUDIT LOG QUERIES
@@ -755,3 +809,88 @@ export async function getDocumentsByReceiptNumber(
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
     }));
 }
+
+/**
+ * GET PRO HEADER DETAILS
+ * Query Warehouse_RM_Pro_Detail by PRO number
+ */
+export async function getProHeaderDetailsByProNumber(
+    conn: Connection,
+    proNumber: string
+): Promise<any | null> {
+    const query = `
+        SELECT 
+            "proDetailId",
+            "proNumber",
+            "driverNumber",
+            "shipperAccountNumber",
+            "shipperName",
+            "customrAccountNumber",
+            "customerName",
+            "carrierName",
+            "pieces",
+            "weight",
+            "proDate",
+            "customerReferenceNumber",
+            "city",
+            "hazmat"
+        FROM ${SCHEMA}."Warehouse_RM_Pro_Detail"
+        WHERE "proNumber" = ?
+    `;
+    const result = await conn.query(query, [proNumber]) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
+/**
+ * SAVE PRO DETAIL TO DATABASE
+ * Inserts a new PRO detail record
+ */
+export async function saveProDetail(
+    conn: Connection,
+    proDetail: {
+        proNumber: string;
+        driverNumber: string;
+        shipperAccountNumber: string;
+        shipperName: string;
+        customrAccountNumber: string;
+        customerName: string;
+        carrierName: string;
+        pieces: number;
+        weight: number;
+        proDate?: string;
+        customerReferenceNumber?: string;
+        city?: string;
+        hazmat?: string;
+    }
+): Promise<number> {
+    const query = `
+        SELECT "proDetailId"
+        FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Warehouse_RM_Pro_Detail"
+            ("proNumber", "driverNumber", "shipperAccountNumber", "shipperName",
+             "customrAccountNumber", "customerName", "carrierName", "pieces", "weight",
+             "proDate", "customerReferenceNumber", "city", "hazmat")
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        )
+    `;
+
+    const params = [
+        proDetail.proNumber,
+        proDetail.driverNumber,
+        proDetail.shipperAccountNumber,
+        proDetail.shipperName,
+        proDetail.customrAccountNumber,
+        proDetail.customerName,
+        proDetail.carrierName,
+        proDetail.pieces,
+        proDetail.weight,
+        proDetail.proDate || new Date().toISOString().split('T')[0],
+        proDetail.customerReferenceNumber || null,
+        proDetail.city || null,
+        proDetail.hazmat || 'N'
+    ];
+
+    const result = await conn.query(query, params as any[]) as any[];
+    return parseInt(result[0].proDetailId);
+}
+

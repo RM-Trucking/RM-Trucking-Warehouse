@@ -2,6 +2,7 @@ import { Connection } from "odbc"; // adjust to your DB library
 import * as enrouteDB from "../../database/en-route";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import * as userDB from "../../database/maintanance/auth";
+import * as customerDB from "../../database/maintanance/customer";
 import {
     CreateEnroutePayload,
     EnrouteWithPros,
@@ -20,9 +21,9 @@ export async function createEnrouteWithPros(
     try {
         await conn.beginTransaction();
 
-        // Validate: Check if any PRO already exists for this carrier
+        // Validate: Check if any PRO already exists for this carrier (regardless of status)
         for (const pro of payload.pros) {
-            const existingPro = await enrouteDB.verifyPro(
+            const existingPro = await enrouteDB.checkProExists(
                 conn,
                 payload.carrierId,
                 pro.proNumber
@@ -142,9 +143,10 @@ export async function comprehensiveVerifyPro(
     // Step 1: Check Warehouse_Receipt first
     const warehouseRecord = await warehouseReceiptDB.getWarehouseReceiptByCarrierAndPro(conn, carrierId, proNumber);
 
-    console.log("Warehouse record found:", warehouseRecord);
-
     if (warehouseRecord) {
+        // Fetch emails only after confirming record exists
+        const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, warehouseRecord.stationId);
+
         // Return warehouse record details with status check
         if (warehouseRecord.status === 'REJECTED') {
             // Allow reuse of rejected records
@@ -163,6 +165,7 @@ export async function comprehensiveVerifyPro(
                 weight: warehouseRecord.weightInland,
                 shipper: warehouseRecord.shipper,
                 toEmails: warehouseRecord.toEmails ? JSON.parse(warehouseRecord.toEmails) : [],
+                customerEmails: emails
             };
         } else {
             // Record exists but not rejected
@@ -176,6 +179,9 @@ export async function comprehensiveVerifyPro(
     const enrouteRecord = await enrouteDB.verifyPro(conn, carrierId, proNumber);
 
     if (enrouteRecord) {
+        // Fetch emails only after confirming record exists
+        const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, enrouteRecord.stationId);
+
         // Return en_route data
         return {
             isRejected: false,
@@ -193,6 +199,7 @@ export async function comprehensiveVerifyPro(
             activeStatus: enrouteRecord.activeStatus,
             proDetailId: enrouteRecord.proDetailId,
             toEmails: enrouteRecord.toEmails ? JSON.parse(enrouteRecord.toEmails) : [],
+            customerEmails: emails
         };
     }
 

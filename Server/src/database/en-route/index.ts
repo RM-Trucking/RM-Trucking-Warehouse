@@ -121,7 +121,7 @@ export async function countEnroutes(
 }
 
 
-// 4. Verify PRO by carrier + proNumber
+// 4. Verify PRO by carrier + proNumber (returns only ACTIVE pros, used for verification)
 export async function verifyPro(
     conn: Connection,
     carrierId: number,
@@ -139,6 +139,30 @@ export async function verifyPro(
         JOIN ${SCHEMA}."Customer" cu ON e."customerId" = cu."customerId"
         JOIN ${SCHEMA}."Station" s ON e."stationId" = s."stationId"
         WHERE e."carrierId" = ? AND p."proNumber" = ? AND p."activeStatus" = 'Y'
+    `;
+    const params = [carrierId, proNumber];
+    const result = await conn.query(query, params) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
+// 4b. Check PRO EXISTS (any status) - Used when creating en-route to prevent duplicates
+export async function checkProExists(
+    conn: Connection,
+    carrierId: number,
+    proNumber: string
+): Promise<any | null> {
+    const query = `
+        SELECT p."proDetailId", p."proNumber", p."pieces", p."weight", p."shipper", p."activeStatus",
+               e."enrouteId", e."toEmails",
+               c."carrierId", c."carrierName",
+               cu."customerId", cu."customerName",
+               s."stationId", s."stationName"
+        FROM ${SCHEMA}."En_Route_Pro_Detail" p
+        JOIN ${SCHEMA}."En_Route" e ON p."enrouteId" = e."enrouteId"
+        JOIN ${SCHEMA}."Carrier" c ON e."carrierId" = c."carrierId"
+        JOIN ${SCHEMA}."Customer" cu ON e."customerId" = cu."customerId"
+        JOIN ${SCHEMA}."Station" s ON e."stationId" = s."stationId"
+        WHERE e."carrierId" = ? AND p."proNumber" = ?
     `;
     const params = [carrierId, proNumber];
     const result = await conn.query(query, params) as any[];

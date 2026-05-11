@@ -27,14 +27,15 @@ export async function getWarehouseReceipt(req: Request, res: Response, conn: Con
 
         // Search by receipt ID (default)
         if (searchBy === "receiptNumber") {
-            data = await warehouseReceiptService.getWarehouseReceiptWithDetailsService(
+            const receipt = await warehouseReceiptService.getWarehouseReceiptWithDetailsService(
                 conn,
                 Number(id)
             );
+            data = receipt ? [receipt] : [];
         }
         // Search by PRO number
         else if (searchBy === "proNumber") {
-            data = await warehouseReceiptService.getWarehouseReceiptByProService(conn, id);
+            data = await warehouseReceiptService.getWarehouseReceiptsByProService(conn, id);
         }
         else {
             res.status(400).json({
@@ -442,5 +443,80 @@ export async function batchProcessWarehouseReceiptsWithImages(
         console.log(error);
         logger.error("Error in batch process warehouse receipts with images", error);
         res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+export async function rejectWarehouseReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
+        const { rejectionReason } = req.body;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!receiptId) {
+            res.status(400).json({ success: false, message: "Receipt ID is required" });
+            return;
+        }
+        if (!rejectionReason) {
+            res.status(400).json({ success: false, message: "Rejection reason is required" });
+            return;
+        }
+        if (!userId) {
+            res.status(401).json({
+                success: false,
+                message: "User ID not found in authentication token"
+            });
+            return;
+        }
+        await warehouseReceiptService.rejectWarehouseReceiptService(
+            conn,
+            Number(receiptId),
+            rejectionReason,
+            userId
+        );
+
+        res.status(200).json({
+            success: true,
+            message: " Warehouse Receipt rejected successfully",
+        });
+    } catch (error: any) {
+        console.log(error);
+        logger.error("Error rejecting warehouse receipt", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+/**
+ * GET PRO HEADER DETAILS
+ * Endpoint: GET /warehouse-receipt/pro-detail/:proNumber
+ * Returns formatted PRO data for a given PRO number with duplicate checks
+ */
+export async function getProHeaderDetails(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const proNumber = Array.isArray(req.params.pro) ? req.params.pro[0] : req.params.pro;
+
+        if (!proNumber) {
+            res.status(400).json({ success: false, message: "PRO number is required" });
+            return;
+        }
+
+        const proDetails = await warehouseReceiptService.getProHeaderDetailsService(conn, proNumber);
+
+        res.status(200).json({
+            success: true,
+            data: proDetails
+        });
+    } catch (error: any) {
+        logger.error("Error fetching PRO header details", error);
+
+        console.log(error);
+
+
+        // Check if it's a duplicate error
+        if (error.message.includes("Duplicate")) {
+            res.status(409).json({ success: false, message: error.message });
+        } else if (error.message.includes("No PRO detail found")) {
+            res.status(404).json({ success: false, message: error.message });
+        } else {
+            res.status(500).json({ success: false, message: error.message });
+        }
     }
 }

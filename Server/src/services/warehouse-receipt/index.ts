@@ -1,9 +1,14 @@
 import { Connection } from "odbc";
+import fs from "fs";
+import path from "path";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
+import * as customerDB from "../../database/maintanance/customer";
+import * as carrierDB from "../../database/maintanance/carrier";
 import { emitAuditLog } from "../../utils/email";
 import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptTemp } from "../../entities/warehouse-receipt";
+import { getProDetailFromCsv, validateProCsvData, findProCsvFile } from "../../utils/pro-csv-handler";
 
 /**
  * GET WAREHOUSE RECEIPT WITH ALL DETAILS
@@ -38,30 +43,34 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
  * GET WAREHOUSE RECEIPT BY PRO NUMBER WITH ALL DETAILS
  * - Fetches receipt by PRO number, including freight info with images, rates, and audit logs
  */
-export async function getWarehouseReceiptByProService(conn: Connection, proNumber: string) {
-    const receipt = await warehouseReceiptDB.getWarehouseReceiptByProNumber(conn, proNumber);
-    if (!receipt) return null;
+export async function getWarehouseReceiptsByProService(conn: Connection, proNumber: string) {
+    const receipts = await warehouseReceiptDB.getWarehouseReceiptsByProNumber(conn, proNumber);
+    if (!receipts || receipts.length === 0) return [];
 
-    const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+    return Promise.all(
+        receipts.map(async (receipt) => {
+            const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
 
-    // Fetch images for each freight
-    const freightWithImages = await Promise.all(
-        freightInfos.map(async (freight) => ({
-            ...freight,
-            images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
-        }))
+            const freightWithImages = await Promise.all(
+                freightInfos.map(async (freight) => ({
+                    ...freight,
+                    images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
+                }))
+            );
+
+            const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
+            const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
+
+            return {
+                ...receipt,
+                freightInfos: freightWithImages,
+                rate,
+                auditLogs
+            };
+        })
     );
-
-    const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
-    const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
-
-    return {
-        ...receipt,
-        freightInfos: freightWithImages,
-        rate,
-        auditLogs
-    };
 }
+
 
 /**
  * LIST WAREHOUSE RECEIPTS WITH PAGINATION & FILTERING
@@ -498,4 +507,140 @@ export async function batchProcessWarehouseReceiptsService(
         await conn.rollback();
         throw err;
     }
+}
+
+export async function rejectWarehouseReceiptService(conn: Connection, receiptId: number, reason: string, userId: number) {
+    await conn.beginTransaction();
+    try {
+        // Update receipt status to REJECTED and add rejection reason
+        await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, {
+            status: 'REJECTED',
+            rejectionReason: reason,
+            updatedBy: userId
+        });
+        await conn.commit();
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    }
+}
+
+/**
+ * GET PRO HEADER DETAILS SERVICE
+ * Retrieves detailed PRO information for a given PRO number
+ * Flow:
+ * 1. Check database first (Warehouse_RM_Pro_Detail)
+ * 2. If not found, read from CSV file in FTP folder
+ * 3. Validate data and save to database for future use
+ * 4. Check for duplicate warehouse receipts
+ * 5. Validate customer/station and carrier
+ * 6. Delete CSV file after successful processing
+ * 7. Return formatted response with all relevant fields
+ */
+export async function getProHeaderDetailsService(conn: Connection, proNumber: string) {
+    let proDetail = await warehouseReceiptDB.getProHeaderDetailsByProNumber(conn, proNumber);
+    let csvFilePath: string | null = null;
+
+    // If not in database, try to read from CSV file
+    if (!proDetail) {
+        try {
+            const csvData = await getProDetailFromCsv(proNumber);
+
+            if (!csvData) {
+                throw new Error(`No PRO detail found for PRO number: ${proNumber} (not in database or CSV file)`);
+            }
+
+            console.log(`PRO detail retrieved from CSV for PRO ${proNumber}:`, csvData);
+
+            // Validate CSV data
+            const validation = validateProCsvData(csvData);
+            if (!validation.valid) {
+                throw new Error(`Invalid PRO data in CSV: ${validation.errors.join(', ')}`);
+            }
+
+            // Save CSV data to database for future use
+            await warehouseReceiptDB.saveProDetail(conn, {
+                proNumber: csvData.proNumber,
+                driverNumber: csvData.driverNumber,
+                shipperAccountNumber: csvData.shipperAccountNumber,
+                shipperName: csvData.shipperName,
+                customrAccountNumber: csvData.fwdrAccountNumber,
+                customerName: csvData.fwdrName,
+                carrierName: csvData.carrierName,
+                pieces: csvData.pieces,
+                weight: csvData.weight,
+                proDate: csvData.proDate,
+                customerReferenceNumber: csvData.fwdrRef,
+                city: csvData.destCity,
+                hazmat: csvData.hazmat
+            });
+
+            // Get CSV file path for deletion later
+            csvFilePath = await findProCsvFile(proNumber);
+
+            // Fetch saved data to get proDetailId
+            proDetail = await warehouseReceiptDB.getProHeaderDetailsByProNumber(conn, proNumber);
+        } catch (error: any) {
+            throw new Error(`Failed to retrieve PRO details: ${error.message}`);
+        }
+    }
+
+    if (!proDetail) {
+        throw new Error(`Failed to retrieve or save PRO detail for PRO number: ${proNumber}`);
+    }
+
+    // Check for duplicate warehouse receipts (prevent reuse if already used)
+    const duplicateReceipt = await warehouseReceiptDB.checkDuplicateProByCarrierName(
+        conn,
+        proDetail.carrierName,
+        proNumber
+    );
+    if (duplicateReceipt) {
+        throw new Error(`Duplicate - Carrier "${proDetail.carrierName}" with PRO "${proNumber}" already added in another Record`);
+    }
+
+    // Validate customer/station exists
+    const station = await customerDB.getStationByRmAccountNumber(conn, proDetail.customrAccountNumber);
+    if (!station) {
+        throw new Error(`Customer not found with customer name: ${proDetail.customerName}`);
+    }
+
+    // Validate carrier exists
+    const carrier = await carrierDB.getCarrierByName(conn, proDetail.carrierName);
+    if (!carrier) {
+        throw new Error(`Carrier not found: ${proDetail.carrierName}`);
+    }
+
+    // Delete CSV file after successful processing
+    if (csvFilePath && fs.existsSync(csvFilePath)) {
+        try {
+            await fs.promises.unlink(csvFilePath);
+            console.log(`CSV file deleted successfully: ${csvFilePath}`);
+        } catch (error: any) {
+            console.error(`Failed to delete CSV file: ${csvFilePath}`, error.message);
+            // Don't throw error, just log it
+        }
+    }
+
+    // Format response with required fields and enriched customer/carrier data
+    return {
+        proDetailId: proDetail.proDetailId,
+        driver: proDetail.driverNumber,
+        shipper: proDetail.shipperName,
+        shipperAccountNumber: proDetail.shipperAccountNumber,
+        customerId: station.customerId,
+        customerName: station.customerName,
+        stationId: station.stationId,
+        stationName: station.stationName,
+        consigneeAccountNumber: proDetail.customrAccountNumber,
+        customerReferenceNumber: proDetail.customerReferenceNumber,
+        carrierId: carrier.carrierId,
+        carrier: carrier.carrierName,
+        city: proDetail.city || '',
+        weight: proDetail.weight,
+        pieces: proDetail.pieces,
+        proNumber: proDetail.proNumber,
+        proDate: proDetail.proDate,
+        hazmat: proDetail.hazmat || 'N'
+    };
 }

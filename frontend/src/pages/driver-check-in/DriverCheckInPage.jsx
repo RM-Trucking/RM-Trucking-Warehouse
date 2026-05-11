@@ -86,6 +86,7 @@ export default function DriverCheckInPage() {
   });
   const [addCarrierLoading, setAddCarrierLoading] = useState(false);
   const [addCarrierError, setAddCarrierError] = useState(null);
+  const [submitLoading, setSubmitLoading] = useState(false);
   const [signature, setSignature] = useState(true);
   const [doorValue, setDoorValue] = useState("");
   const [driverNameValue, setDriverNameValue] = useState("");
@@ -433,6 +434,8 @@ const handleDriverNameFocus = () => {
       proGroups: false
     });
 
+    setSubmitLoading(true);
+
     try {
       // Build freight details from proGroups
       const freightDetails = [];
@@ -488,6 +491,8 @@ const handleDriverNameFocus = () => {
       setApiErrorMessage(errorMsg);
       setOpenApiErrorDialog(true);
       console.error('Submit error:', error);
+    } finally {
+      setSubmitLoading(false);
     }
   };
 
@@ -1116,6 +1121,7 @@ const handleDriverNameFocus = () => {
       handleClose={() => navigate(-1)}
       onSubmit={handleSubmitCheckIn}
       onReset={handleResetForm}
+      submitLoading={submitLoading}
       showCancel={false}
     >
       <Stack spacing={4}>

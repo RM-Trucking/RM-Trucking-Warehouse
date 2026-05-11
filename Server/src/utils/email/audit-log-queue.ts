@@ -3,7 +3,7 @@
  * Manages asynchronous audit log persistence using async.queue
  */
 
-import async, { AsyncQueue } from 'async';
+import async from 'async';
 import { AuditLogTask } from '../types/status-events';
 import { saveAuditLogAsync, validateAuditLogTask, formatAuditLogMessage } from './audit-log-service';
 

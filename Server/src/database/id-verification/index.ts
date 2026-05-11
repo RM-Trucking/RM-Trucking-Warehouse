@@ -1,7 +1,7 @@
 import { Connection } from "odbc";
 import { CreateIDVerification, Driver, IDVerification, IDVerificationProDetail } from "../../entities/id-verification";
 import { SCHEMA } from "../../config/db2";
-
+import { formatDateForDB2 } from "../../utils/dateFormater";
 
 /**
  * DRIVER QUERIES
@@ -112,6 +112,164 @@ export async function listIDVerifications(conn: Connection, limit: number, offse
         toEmails: row.toEmails ? JSON.parse(row.toEmails) : []
     }));
 
+}
+
+/**
+ * LIST ID VERIFICATIONS WITH FILTERS AND PAGINATION
+ * @param filterLogic - "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
+ */
+export async function listIDVerificationsWithFilters(
+    conn: Connection,
+    limit: number,
+    offset: number,
+    filters?: {
+        verificationId?: string;
+        carrierName?: string;
+        customerName?: string;
+        stationName?: string;
+        driverName?: string;
+        verifyedByEmployee?: string;
+        startDate?: Date;
+        endDate?: Date;
+    },
+    filterLogic: "AND" | "OR" = "AND"
+): Promise<IDVerification[]> {
+    let query = `
+        SELECT DISTINCT iv.* , c."carrierName", cu."customerName", s."stationName"
+        FROM ${SCHEMA}."ID_Verification" iv
+        LEFT JOIN ${SCHEMA}."Carrier" c ON iv."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON iv."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON iv."stationId" = s."stationId"
+        LEFT JOIN ${SCHEMA}."Driver" d ON iv."driverId" = d."driverId"
+        WHERE 1=1
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    // Build filter conditions
+    if (filters?.verificationId) {
+        conditions.push(`iv."verificationId" = ?`);
+        params.push(Number(filters.verificationId));
+    }
+    if (filters?.carrierName) {
+        conditions.push(`LOWER(c."carrierName") LIKE ?`);
+        params.push(`%${filters.carrierName.toLowerCase()}%`);
+    }
+    if (filters?.customerName) {
+        conditions.push(`LOWER(cu."customerName") LIKE ?`);
+        params.push(`%${filters.customerName.toLowerCase()}%`);
+    }
+    if (filters?.stationName) {
+        conditions.push(`LOWER(s."stationName") LIKE ?`);
+        params.push(`%${filters.stationName.toLowerCase()}%`);
+    }
+    if (filters?.driverName) {
+        conditions.push(`LOWER(d."driverName") LIKE ?`);
+        params.push(`%${filters.driverName.toLowerCase()}%`);
+    }
+    if (filters?.verifyedByEmployee) {
+        conditions.push(`LOWER(iv."verifiedByEmployee") LIKE ?`);
+        params.push(`%${filters.verifyedByEmployee.toLowerCase()}%`);
+    }
+    if (filters?.startDate) {
+        conditions.push(`iv."createdAt" >= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.startDate)));
+    }
+    if (filters?.endDate) {
+        conditions.push(`iv."createdAt" <= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.endDate)));
+    }
+
+    // Apply filter logic (AND or OR)
+    if (conditions.length > 0) {
+        const operator = filterLogic === "OR" ? " OR " : " AND ";
+        query += ` AND (${conditions.join(operator)})`;
+    }
+
+    query += ` ORDER BY iv."verificationId" DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const result = await conn.query(query, params) as IDVerification[];
+    return result.map((row: any) => ({
+        ...row,
+        driverId: parseInt(row.driverId),
+        verificationId: parseInt(row.verificationId),
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : []
+    }));
+}
+
+/**
+ * COUNT ID VERIFICATIONS WITH FILTERS
+ * @param filterLogic - "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
+ */
+export async function countIDVerifications(
+    conn: Connection,
+    filters?: {
+        verificationId?: string;
+        carrierName?: string;
+        customerName?: string;
+        stationName?: string;
+        driverName?: string;
+        verifyedByEmployee?: string;
+        startDate?: Date;
+        endDate?: Date;
+    },
+    filterLogic: "AND" | "OR" = "AND"
+): Promise<number> {
+    let query = `
+        SELECT COUNT(DISTINCT iv."verificationId") as "total" 
+        FROM ${SCHEMA}."ID_Verification" iv
+        LEFT JOIN ${SCHEMA}."Carrier" c ON iv."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON iv."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON iv."stationId" = s."stationId"
+        LEFT JOIN ${SCHEMA}."Driver" d ON iv."driverId" = d."driverId"
+        WHERE 1=1
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    // Build filter conditions
+    if (filters?.verificationId) {
+        conditions.push(`iv."verificationId" = ?`);
+        params.push(Number(filters.verificationId));
+    }
+    if (filters?.carrierName) {
+        conditions.push(`LOWER(c."carrierName") LIKE ?`);
+        params.push(`%${filters.carrierName.toLowerCase()}%`);
+    }
+    if (filters?.customerName) {
+        conditions.push(`LOWER(cu."customerName") LIKE ?`);
+        params.push(`%${filters.customerName.toLowerCase()}%`);
+    }
+    if (filters?.stationName) {
+        conditions.push(`LOWER(s."stationName") LIKE ?`);
+        params.push(`%${filters.stationName.toLowerCase()}%`);
+    }
+    if (filters?.driverName) {
+        conditions.push(`LOWER(d."driverName") LIKE ?`);
+        params.push(`%${filters.driverName.toLowerCase()}%`);
+    }
+    if (filters?.verifyedByEmployee) {
+        conditions.push(`LOWER(iv."verifiedByEmployee") LIKE ?`);
+        params.push(`%${filters.verifyedByEmployee.toLowerCase()}%`);
+    }
+    if (filters?.startDate) {
+        conditions.push(`iv."createdAt" >= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.startDate)));
+    }
+    if (filters?.endDate) {
+        conditions.push(`iv."createdAt" <= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.endDate)));
+    }
+
+    // Apply filter logic (AND or OR)
+    if (conditions.length > 0) {
+        const operator = filterLogic === "OR" ? " OR " : " AND ";
+        query += ` AND (${conditions.join(operator)})`;
+    }
+
+    const result = await conn.query(query, params) as any[];
+    return result[0]?.total || 0;
 }
 
 /**

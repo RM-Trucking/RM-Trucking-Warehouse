@@ -191,12 +191,63 @@ export async function createVerificationService(
 }
 
 /**
- * LIST VERIFICATIONS
+ * LIST VERIFICATIONS WITH DETAILED INFO
+ * @param filterLogic - "AND" (all filters must match) or "OR" (any filter matches). Default: "AND"
  */
-export async function listVerificationService(conn: Connection, page: number = 1, pageSize: number = 10) {
+export async function listVerificationService(
+    conn: Connection,
+    page: number = 1,
+    pageSize: number = 10,
+    filters?: {
+        verificationId?: string;
+        carrierName?: string;
+        customerName?: string;
+        stationName?: string;
+        driverName?: string;
+        verifyedByEmployee?: string;
+        startDate?: Date;
+        endDate?: Date;
+    },
+    filterLogic: "AND" | "OR" = "AND"
+) {
     const offset = (page - 1) * pageSize;
-    const data = await idVerificationDB.listIDVerifications(conn, pageSize, offset);
-    return { data, page, pageSize };
+
+    // Get total count
+    const total = await idVerificationDB.countIDVerifications(conn, filters, filterLogic);
+
+    // Get verifications with filters
+    const verifications = await idVerificationDB.listIDVerificationsWithFilters(
+        conn,
+        pageSize,
+        offset,
+        filters,
+        filterLogic
+    );
+
+    // Enrich each verification with driver info, pro details, and user name
+    const detailedVerifications = await Promise.all(
+        verifications.map(async (verification: any) => {
+            const driver = await idVerificationDB.getDriverById(conn, verification.driverId);
+            const proDetails = await idVerificationDB.getProDetailsByVerification(conn, verification.verificationId);
+            const createdByName = await userDB.getUserName(conn, verification.createdBy);
+
+            return {
+                ...verification,
+                createdAt: verification.createdAt ? toUtcDate(verification.createdAt) : null,
+                createdByName,
+                driver,
+                proDetails
+            };
+        })
+    );
+
+    return {
+        data: detailedVerifications,
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize)
+    };
 }
 
 /**

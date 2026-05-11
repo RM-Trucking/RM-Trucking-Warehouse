@@ -160,8 +160,18 @@ paths:
     get:
       tags:
         - Verification
-      summary: List ID verifications with pagination
-      description: Retrieve all ID verifications with optional pagination
+      summary: List ID verifications with pagination, filtering, and search
+      description: |
+        Retrieve all ID verifications with advanced filtering and search capabilities.
+
+        **Filter Logic:**
+        - `AND` (default): Returns verifications matching ALL applied filters
+        - `OR`: Returns verifications matching ANY of the applied filters
+
+        **Example Scenarios:**
+        - `?page=1&carrierName=ABC&customerName=Cust1&filterLogic=AND` → Returns verifications with carrier name containing "ABC" AND customer name containing "Cust1"
+        - `?page=1&carrierName=ABC&customerName=Cust1&filterLogic=OR` → Returns verifications with carrier name containing "ABC" OR customer name containing "Cust1"
+
       security:
         - bearerAuth: []
       parameters:
@@ -177,9 +187,69 @@ paths:
             type: integer
             default: 10
           description: Number of records per page
+        - in: query
+          name: verificationId
+          schema:
+            type: string
+          description: Filter by exact verification ID
+          example: "100000001"
+        - in: query
+          name: carrierName
+          schema:
+            type: string
+          description: Filter by carrier name (partial/fuzzy match, case-insensitive)
+          example: "ABC Logistics"
+        - in: query
+          name: customerName
+          schema:
+            type: string
+          description: Filter by customer name (partial/fuzzy match, case-insensitive)
+          example: "Customer One"
+        - in: query
+          name: stationName
+          schema:
+            type: string
+          description: Filter by station name (partial/fuzzy match, case-insensitive)
+          example: "Station A"
+        - in: query
+          name: driverName
+          schema:
+            type: string
+          description: Filter by driver name
+          example: "John Doe"
+        - in: query
+          name: verifiedByEmployee
+          schema:
+            type: string
+          description: Filter by name of employee who verified the ID
+          example: "Jane Smith"
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date-time
+          description: Filter verifications created from this date (ISO 8601 format)
+          example: "2026-01-01T00:00:00Z"
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date-time
+          description: Filter verifications created until this date (ISO 8601 format)
+          example: "2026-12-31T23:59:59Z"
+        - in: query
+          name: filterLogic
+          schema:
+            type: string
+            enum: [AND, OR]
+            default: AND
+          description: |
+            Logic operator for combining multiple filters:
+            - `AND` (default): All applied filters must match
+            - `OR`: Any applied filter can match
       responses:
         "200":
-          description: Verifications retrieved successfully
+          description: Verifications retrieved successfully with detailed information
           content:
             application/json:
               schema:
@@ -193,7 +263,20 @@ paths:
                     items:
                       $ref: "#/components/schemas/VerificationDetail"
                   pagination:
-                    $ref: "#/components/schemas/PaginationInfo"
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                        example: 1
+                      pageSize:
+                        type: integer
+                        example: 10
+                      total:
+                        type: integer
+                        example: 25
+                      totalPages:
+                        type: integer
+                        example: 3
         "500":
           description: Server error
           content:

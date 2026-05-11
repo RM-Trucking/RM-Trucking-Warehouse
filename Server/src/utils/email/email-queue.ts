@@ -3,7 +3,7 @@
  * Manages asynchronous email sending using async.queue
  */
 
-import async, { AsyncQueue } from 'async';
+import async from 'async';
 import { EmailTask, ReceiptStatusType } from '../types/status-events';
 import { sendStatusUpdateEmail, validateEmailTask, formatEmailLog } from './email-service';
 
