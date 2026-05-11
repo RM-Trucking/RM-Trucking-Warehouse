@@ -1,7 +1,7 @@
 import { Connection } from "odbc";
 import { CreateIDVerification, Driver, IDVerification, IDVerificationProDetail } from "../../entities/id-verification";
 import { SCHEMA } from "../../config/db2";
-
+import { formatDateForDB2 } from "../../utils/dateFormater";
 
 /**
  * DRIVER QUERIES
@@ -123,11 +123,12 @@ export async function listIDVerificationsWithFilters(
     limit: number,
     offset: number,
     filters?: {
-        driverId?: number;
+        verificationId?: string;
         carrierName?: string;
         customerName?: string;
         stationName?: string;
         driverName?: string;
+        verifyedByEmployee?: string;
         startDate?: Date;
         endDate?: Date;
     },
@@ -139,35 +140,44 @@ export async function listIDVerificationsWithFilters(
         LEFT JOIN ${SCHEMA}."Carrier" c ON iv."carrierId" = c."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" cu ON iv."customerId" = cu."customerId"
         LEFT JOIN ${SCHEMA}."Station" s ON iv."stationId" = s."stationId"
+        LEFT JOIN ${SCHEMA}."Driver" d ON iv."driverId" = d."driverId"
         WHERE 1=1
     `;
     const params: any[] = [];
     const conditions: string[] = [];
 
     // Build filter conditions
-    if (filters?.driverId) {
-        conditions.push(`iv."driverId" = ?`);
-        params.push(filters.driverId);
+    if (filters?.verificationId) {
+        conditions.push(`iv."verificationId" = ?`);
+        params.push(Number(filters.verificationId));
     }
     if (filters?.carrierName) {
-        conditions.push(`c."carrierName" LIKE ?`);
-        params.push(`%${filters.carrierName}%`);
+        conditions.push(`LOWER(c."carrierName") LIKE ?`);
+        params.push(`%${filters.carrierName.toLowerCase()}%`);
     }
     if (filters?.customerName) {
-        conditions.push(`cu."customerName" LIKE ?`);
-        params.push(`%${filters.customerName}%`);
+        conditions.push(`LOWER(cu."customerName") LIKE ?`);
+        params.push(`%${filters.customerName.toLowerCase()}%`);
     }
     if (filters?.stationName) {
-        conditions.push(`s."stationName" LIKE ?`);
-        params.push(`%${filters.stationName}%`);
+        conditions.push(`LOWER(s."stationName") LIKE ?`);
+        params.push(`%${filters.stationName.toLowerCase()}%`);
+    }
+    if (filters?.driverName) {
+        conditions.push(`LOWER(d."driverName") LIKE ?`);
+        params.push(`%${filters.driverName.toLowerCase()}%`);
+    }
+    if (filters?.verifyedByEmployee) {
+        conditions.push(`LOWER(iv."verifiedByEmployee") LIKE ?`);
+        params.push(`%${filters.verifyedByEmployee.toLowerCase()}%`);
     }
     if (filters?.startDate) {
-        conditions.push(`iv."createdAt" >= ?`);
-        params.push(filters.startDate);
+        conditions.push(`iv."createdAt" >= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.startDate)));
     }
     if (filters?.endDate) {
-        conditions.push(`iv."createdAt" <= ?`);
-        params.push(filters.endDate);
+        conditions.push(`iv."createdAt" <= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.endDate)));
     }
 
     // Apply filter logic (AND or OR)
@@ -195,11 +205,12 @@ export async function listIDVerificationsWithFilters(
 export async function countIDVerifications(
     conn: Connection,
     filters?: {
-        driverId?: number;
+        verificationId?: string;
         carrierName?: string;
         customerName?: string;
         stationName?: string;
         driverName?: string;
+        verifyedByEmployee?: string;
         startDate?: Date;
         endDate?: Date;
     },
@@ -211,35 +222,44 @@ export async function countIDVerifications(
         LEFT JOIN ${SCHEMA}."Carrier" c ON iv."carrierId" = c."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" cu ON iv."customerId" = cu."customerId"
         LEFT JOIN ${SCHEMA}."Station" s ON iv."stationId" = s."stationId"
+        LEFT JOIN ${SCHEMA}."Driver" d ON iv."driverId" = d."driverId"
         WHERE 1=1
     `;
     const params: any[] = [];
     const conditions: string[] = [];
 
     // Build filter conditions
-    if (filters?.driverId) {
-        conditions.push(`iv."driverId" = ?`);
-        params.push(filters.driverId);
+    if (filters?.verificationId) {
+        conditions.push(`iv."verificationId" = ?`);
+        params.push(Number(filters.verificationId));
     }
     if (filters?.carrierName) {
-        conditions.push(`c."carrierName" LIKE ?`);
-        params.push(`%${filters.carrierName}%`);
+        conditions.push(`LOWER(c."carrierName") LIKE ?`);
+        params.push(`%${filters.carrierName.toLowerCase()}%`);
     }
     if (filters?.customerName) {
-        conditions.push(`cu."customerName" LIKE ?`);
-        params.push(`%${filters.customerName}%`);
+        conditions.push(`LOWER(cu."customerName") LIKE ?`);
+        params.push(`%${filters.customerName.toLowerCase()}%`);
     }
     if (filters?.stationName) {
-        conditions.push(`s."stationName" LIKE ?`);
-        params.push(`%${filters.stationName}%`);
+        conditions.push(`LOWER(s."stationName") LIKE ?`);
+        params.push(`%${filters.stationName.toLowerCase()}%`);
+    }
+    if (filters?.driverName) {
+        conditions.push(`LOWER(d."driverName") LIKE ?`);
+        params.push(`%${filters.driverName.toLowerCase()}%`);
+    }
+    if (filters?.verifyedByEmployee) {
+        conditions.push(`LOWER(iv."verifiedByEmployee") LIKE ?`);
+        params.push(`%${filters.verifyedByEmployee.toLowerCase()}%`);
     }
     if (filters?.startDate) {
-        conditions.push(`iv."createdAt" >= ?`);
-        params.push(filters.startDate);
+        conditions.push(`iv."createdAt" >= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.startDate)));
     }
     if (filters?.endDate) {
-        conditions.push(`iv."createdAt" <= ?`);
-        params.push(filters.endDate);
+        conditions.push(`iv."createdAt" <= CAST(? AS TIMESTAMP)`);
+        params.push(formatDateForDB2(new Date(filters.endDate)));
     }
 
     // Apply filter logic (AND or OR)

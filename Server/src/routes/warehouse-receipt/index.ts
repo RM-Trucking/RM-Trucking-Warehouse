@@ -49,6 +49,13 @@ router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     if (conn) conn.close();
 });
 
+// Get PRO header details for a given PRO number
+router.get("/pro-detail/:pro", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.getProHeaderDetails(req, res, conn);
+    if (conn) conn.close();
+});
+
 // List receipts with pagination and filters
 router.get("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();

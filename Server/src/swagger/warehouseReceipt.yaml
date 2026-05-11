@@ -642,6 +642,151 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/pro-detail/{pro}:
+    get:
+      tags:
+        - Receipts
+      summary: Get PRO header details by PRO number
+      description: |
+        Retrieve detailed PRO (Progressive Rotating Order) information for a given PRO number.
+
+        **Flow:**
+        1. Checks database first (Warehouse_RM_Pro_Detail table)
+        2. If not found, reads from CSV file in FTP folder
+        3. Validates and saves CSV data to database for future use
+        4. Checks for duplicate warehouse receipts (prevents reuse)
+        5. Returns formatted response with all PRO details
+
+        **Response Fields:**
+        - proDetailId: Unique identifier for the PRO detail record
+        - driver: Driver number handling the shipment
+        - shipper: Name of the shipper
+        - shipperAccountNumber: Account number of the shipper
+        - consignee: Customer/consignee name
+        - consigneeAccountNumber: Customer account number
+        - customerReferenceNumber: Reference number provided by customer
+        - carrier: Carrier company name
+        - city: Destination city
+        - weight: Total weight in the shipment
+        - pieces: Number of pieces in shipment
+        - proNumber: PRO (Progressive Rotating Order) number
+        - proDate: Date the PRO was created
+        - hazmat: Hazardous materials indicator (Y/N)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: pro
+          schema:
+            type: string
+          required: true
+          description: PRO (Progressive Rotating Order) number
+          example: "PRO123456"
+      responses:
+        "200":
+          description: PRO header details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      proDetailId:
+                        type: integer
+                        example: 1
+                      driver:
+                        type: string
+                        example: "D123"
+                      shipper:
+                        type: string
+                        example: "Test Shipper Inc"
+                      shipperAccountNumber:
+                        type: string
+                        example: "ACC123"
+                      consignee:
+                        type: string
+                        example: "ABC Customer"
+                      consigneeAccountNumber:
+                        type: string
+                        example: "CACC456"
+                      customerReferenceNumber:
+                        type: string
+                        description: Optional customer reference
+                        example: "REF789"
+                      carrier:
+                        type: string
+                        example: "Shiva Test Carrier"
+                      city:
+                        type: string
+                        example: "New York"
+                      weight:
+                        type: integer
+                        example: 100
+                      pieces:
+                        type: integer
+                        example: 5
+                      proNumber:
+                        type: string
+                        example: "PRO123456"
+                      proDate:
+                        type: string
+                        format: date
+                        example: "2026-05-08"
+                      hazmat:
+                        type: string
+                        enum: ["Y", "N"]
+                        example: "N"
+        "400":
+          description: PRO number is required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "PRO number is required"
+        "404":
+          description: PRO detail not found in database or CSV file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "No PRO detail found for PRO number: PRO123456 (not in database or CSV file)"
+        "409":
+          description: Duplicate - Carrier and PRO already added in another Record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: 'Duplicate - Carrier "Shiva Test Carrier" with PRO "PRO123456" already added in another Record'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:

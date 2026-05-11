@@ -30,7 +30,6 @@ export async function createWarehouseReceiptTemp(conn: Connection, temp: Omit<Wa
         temp.location ? temp.location : '' as string | number,
         temp.receivedBy ? temp.receivedBy : '' as string | number
     ];
-
     const result = await conn.query(query, params) as any[];
     return result[0].receiptNumber;
 }
@@ -611,6 +610,38 @@ export async function getWarehouseReceiptByCarrierAndPro(
 }
 
 /**
+ * GET WAREHOUSE RECEIPT BY CARRIER NAME AND PRO
+ * Checks if a warehouse receipt already exists for carrier+pro combination
+ */
+export async function checkDuplicateProByCarrierName(
+    conn: Connection,
+    carrierName: string,
+    proNumber: string
+): Promise<any | null> {
+    const query = `
+        SELECT wr."receiptId", wr."receiptNumber", wr."status", 
+               wr."carrierId", c."carrierName",
+               wr."customerId", cu."customerName",
+               wr."stationId", s."stationName",
+               wr."piecesInland", wr."weightInland",
+               wr."proNumber", wr."shipper", wr."toEmails"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        LEFT JOIN ${SCHEMA}."Carrier" c ON wr."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON wr."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON wr."stationId" = s."stationId"
+        WHERE c."carrierName" = ? AND wr."proNumber" = ?
+        ORDER BY wr."receiptId" DESC
+        LIMIT 1
+    `;
+    const result = await conn.query(query, [carrierName, proNumber]) as any[];
+    return result.length > 0 ? {
+        ...result[0],
+        receiptId: result[0].receiptId != null ? parseInt(result[0].receiptId) : null,
+        receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
+    } : null;
+}
+
+/**
  * GET WAREHOUSE RECEIPT BY PRO NUMBER
  */
 export async function getWarehouseReceiptsByProNumber(
@@ -619,7 +650,7 @@ export async function getWarehouseReceiptsByProNumber(
 ): Promise<WarehouseReceipt[]> {
     const query = `
         SELECT * FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "proNumber" = ? AND "status" = 'INITIATED'
+        WHERE "proNumber" = ? AND "status" = 'INITIATE'
         ORDER BY "receiptId" DESC 
     `;
     const result = await conn.query(query, [proNumber]) as any[];
@@ -777,5 +808,89 @@ export async function getDocumentsByReceiptNumber(
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
     }));
+}
+
+/**
+ * GET PRO HEADER DETAILS
+ * Query Warehouse_RM_Pro_Detail by PRO number
+ */
+export async function getProHeaderDetailsByProNumber(
+    conn: Connection,
+    proNumber: string
+): Promise<any | null> {
+    const query = `
+        SELECT 
+            "proDetailId",
+            "proNumber",
+            "driverNumber",
+            "shipperAccountNumber",
+            "shipperName",
+            "customrAccountNumber",
+            "customerName",
+            "carrierName",
+            "pieces",
+            "weight",
+            "proDate",
+            "customerReferenceNumber",
+            "city",
+            "hazmat"
+        FROM ${SCHEMA}."Warehouse_RM_Pro_Detail"
+        WHERE "proNumber" = ?
+    `;
+    const result = await conn.query(query, [proNumber]) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
+/**
+ * SAVE PRO DETAIL TO DATABASE
+ * Inserts a new PRO detail record
+ */
+export async function saveProDetail(
+    conn: Connection,
+    proDetail: {
+        proNumber: string;
+        driverNumber: string;
+        shipperAccountNumber: string;
+        shipperName: string;
+        customrAccountNumber: string;
+        customerName: string;
+        carrierName: string;
+        pieces: number;
+        weight: number;
+        proDate?: string;
+        customerReferenceNumber?: string;
+        city?: string;
+        hazmat?: string;
+    }
+): Promise<number> {
+    const query = `
+        SELECT "proDetailId"
+        FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Warehouse_RM_Pro_Detail"
+            ("proNumber", "driverNumber", "shipperAccountNumber", "shipperName",
+             "customrAccountNumber", "customerName", "carrierName", "pieces", "weight",
+             "proDate", "customerReferenceNumber", "city", "hazmat")
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        )
+    `;
+
+    const params = [
+        proDetail.proNumber,
+        proDetail.driverNumber,
+        proDetail.shipperAccountNumber,
+        proDetail.shipperName,
+        proDetail.customrAccountNumber,
+        proDetail.customerName,
+        proDetail.carrierName,
+        proDetail.pieces,
+        proDetail.weight,
+        proDetail.proDate || new Date().toISOString().split('T')[0],
+        proDetail.customerReferenceNumber || null,
+        proDetail.city || null,
+        proDetail.hazmat || 'N'
+    ];
+
+    const result = await conn.query(query, params as any[]) as any[];
+    return parseInt(result[0].proDetailId);
 }
 

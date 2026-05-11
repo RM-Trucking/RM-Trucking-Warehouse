@@ -38,7 +38,7 @@ export async function createCarrierMinimal(
       INSERT INTO ${SCHEMA}."Carrier"
       ("carrierName","corporatePhoneNumber", "carrierStatus",
        "createdAt","createdBy","entityId","noteThreadId")
-      VALUES (?, ?, 'INCOMPLETE', (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?)
+      VALUES (?, ?, 'Incomplete', (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?)
     )
   `;
 
@@ -82,4 +82,19 @@ export async function checkCarrierUniqueFields(
 
 
     return result.length ? result[0].conflictField : null;
+}
+
+export async function getCarrierByName(
+    conn: Connection,
+    carrierName: string
+): Promise<{ carrierId: number; carrierName: string } | null> {
+    const query = `
+    SELECT "carrierId", "carrierName"
+    FROM ${SCHEMA}."Carrier"
+    WHERE UPPER("carrierName") = UPPER(?)
+      AND UPPER("carrierStatus") IN ('ACTIVE', 'INCOMPLETE')
+    `;
+
+    const result = (await conn.query(query, [carrierName])) as any[];
+    return result.length > 0 ? result[0] : null;
 }

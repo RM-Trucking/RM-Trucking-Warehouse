@@ -61,3 +61,20 @@ export async function getDepartmentAndPersonnelEmails(
     const result = await conn.query(query, params) as any[];
     return result;
 }
+
+export async function getStationByRmAccountNumber(
+    conn: Connection,
+    rmAccountNumber: string
+): Promise<{ stationId: number; stationName: string; customerId: number; customerName: string } | null> {
+    const query = `
+    SELECT s."stationId", s."stationName", c."customerId", c."customerName"
+    FROM ${SCHEMA}."Station" s
+    JOIN ${SCHEMA}."Customer" c ON s."customerId" = c."customerId"
+    WHERE UPPER(s."rmAccountNumber") = UPPER(?)
+      AND s."activeStatus" = 'Y'
+      AND c."activeStatus" = 'Y'
+    `;
+
+    const result = (await conn.query(query, [rmAccountNumber])) as any[];
+    return result.length > 0 ? result[0] : null;
+}

@@ -173,20 +173,22 @@ export async function listVerifications(req: Request, res: Response, conn: Conne
         }
 
         // Search/Filter parameters (by names, not IDs)
-        const driverId = req.query.driverId ? parseInt(req.query.driverId as string) : undefined;
+        const verificationId = req.query.verificationId as string | undefined;
         const carrierName = req.query.carrierName as string | undefined;
         const customerName = req.query.customerName as string | undefined;
         const stationName = req.query.stationName as string | undefined;
         const driverName = req.query.driverName as string | undefined;
+        const verifyedByEmployee = req.query.verifiedByEmployee as string | undefined;
         const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
         const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
 
         const result = await idVerificationService.listVerificationService(conn, page, pageSize, {
-            driverId,
+            verificationId,
             carrierName,
             customerName,
             stationName,
             driverName,
+            verifyedByEmployee,
             startDate,
             endDate
         }, filterLogic);
@@ -202,6 +204,8 @@ export async function listVerifications(req: Request, res: Response, conn: Conne
             }
         });
     } catch (error: any) {
+        console.log(error);
+        
         logger.error("Error listing verifications", error);
         res.status(500).json({ success: false, message: error.message });
     }

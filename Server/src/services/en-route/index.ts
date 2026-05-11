@@ -21,9 +21,9 @@ export async function createEnrouteWithPros(
     try {
         await conn.beginTransaction();
 
-        // Validate: Check if any PRO already exists for this carrier
+        // Validate: Check if any PRO already exists for this carrier (regardless of status)
         for (const pro of payload.pros) {
-            const existingPro = await enrouteDB.verifyPro(
+            const existingPro = await enrouteDB.checkProExists(
                 conn,
                 payload.carrierId,
                 pro.proNumber

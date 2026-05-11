@@ -22,3 +22,20 @@ export const toUtcDate = (
     // Append Z to mark UTC
     return new Date(normalized + "Z");
 };
+
+/**
+ * FORMAT DATE FOR DB2
+ * Converts JavaScript Date to DB2 compatible format (YYYY-MM-DD HH:MM:SS)
+ * @param date - JavaScript Date object
+ * @returns Formatted string: "YYYY-MM-DD HH:MM:SS"
+ */
+export function formatDateForDB2(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}

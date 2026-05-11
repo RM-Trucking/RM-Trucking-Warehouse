@@ -199,11 +199,12 @@ export async function listVerificationService(
     page: number = 1,
     pageSize: number = 10,
     filters?: {
-        driverId?: number;
+        verificationId?: string;
         carrierName?: string;
         customerName?: string;
         stationName?: string;
         driverName?: string;
+        verifyedByEmployee?: string;
         startDate?: Date;
         endDate?: Date;
     },

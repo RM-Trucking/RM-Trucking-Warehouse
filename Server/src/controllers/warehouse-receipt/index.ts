@@ -483,3 +483,40 @@ export async function rejectWarehouseReceipt(req: Request, res: Response, conn: 
         res.status(500).json({ success: false, message: error.message });
     }
 }
+
+/**
+ * GET PRO HEADER DETAILS
+ * Endpoint: GET /warehouse-receipt/pro-detail/:proNumber
+ * Returns formatted PRO data for a given PRO number with duplicate checks
+ */
+export async function getProHeaderDetails(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const proNumber = Array.isArray(req.params.pro) ? req.params.pro[0] : req.params.pro;
+
+        if (!proNumber) {
+            res.status(400).json({ success: false, message: "PRO number is required" });
+            return;
+        }
+
+        const proDetails = await warehouseReceiptService.getProHeaderDetailsService(conn, proNumber);
+
+        res.status(200).json({
+            success: true,
+            data: proDetails
+        });
+    } catch (error: any) {
+        logger.error("Error fetching PRO header details", error);
+
+        console.log(error);
+
+
+        // Check if it's a duplicate error
+        if (error.message.includes("Duplicate")) {
+            res.status(409).json({ success: false, message: error.message });
+        } else if (error.message.includes("No PRO detail found")) {
+            res.status(404).json({ success: false, message: error.message });
+        } else {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+}
