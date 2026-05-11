@@ -89,6 +89,7 @@ ShipmentFormLayout.propTypes = {
     onSubmit: PropTypes.func.isRequired,
     onReset: PropTypes.func,
     showCancel: PropTypes.bool,
+    showSubmit: PropTypes.bool,
     submitLoading: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     children: PropTypes.node.isRequired,

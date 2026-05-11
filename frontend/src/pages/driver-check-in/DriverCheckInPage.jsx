@@ -748,6 +748,7 @@ const handleDriverNameFocus = () => {
     const freightForwarderName = typeof freightForwarder === 'string'
       ? freightForwarder
       : (freightForwarder?.customerName || '');
+    const stationName = typeof freightForwarder === 'object' ? (freightForwarder?.stationName || '') : '';
 
     if (!freightForwarderName || !pro) return;
     const groupId = freightForwarderName.toUpperCase().replace(/\s+/g, "_");
@@ -780,7 +781,7 @@ const handleDriverNameFocus = () => {
         ...prev,
         {
           id: groupId,
-          label: `Freight Forwarder - ${freightForwarderName} | Elk Grove Village | IL`,
+          label: stationName ? `${freightForwarderName} | ${stationName}` : freightForwarderName,
           emails: typeof freightForwarder === 'object' ? (freightForwarder?.emails || []) : [],
           entries: [newEntry],
         },
@@ -1659,7 +1660,7 @@ const handleDriverNameFocus = () => {
               sx={{ bgcolor: "#d9d9d9", px: 2, py: 0.75 }}
             >
               <Typography sx={{ fontWeight: 600, fontSize: "13px" }}>
-                {group.label}
+                Freight Forwarder - {group.label}
               </Typography>
               <Stack direction="row" alignItems="center">
                 <IconButton
