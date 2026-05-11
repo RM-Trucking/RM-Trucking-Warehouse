@@ -10,6 +10,7 @@ export default function ShipmentFormLayout({
     onSubmit,
     onReset,
     showCancel = true,
+    showSubmit = true,
     submitLoading = false,
     topInfoPanel,
     children
@@ -49,22 +50,24 @@ export default function ShipmentFormLayout({
                             Reset
                         </Button>
                     )}
-                    <Button
-                        variant="contained"
-                        onClick={onSubmit}
-                        disabled={submitLoading}
-                        size="small"
-                        sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, '&:disabled': { bgcolor: '#d0d0d0' } }}
-                    >
-                        {submitLoading ? (
-                            <>
-                                <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
-                                Submitting...
-                            </>
-                        ) : (
-                            'Submit'
-                        )}
-                    </Button>
+                    {showSubmit && (
+                        <Button
+                            variant="contained"
+                            onClick={onSubmit}
+                            disabled={submitLoading}
+                            size="small"
+                            sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, '&:disabled': { bgcolor: '#d0d0d0' } }}
+                        >
+                            {submitLoading ? (
+                                <>
+                                    <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
+                                    Submitting...
+                                </>
+                            ) : (
+                                'Submit'
+                            )}
+                        </Button>
+                    )}
                 </Stack>
             </Stack>
 
