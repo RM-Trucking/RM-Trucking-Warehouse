@@ -4,7 +4,7 @@ import {
   Alert,
   Box,
   Button,
-  Collapse,
+  Popover,
   IconButton,
   InputAdornment,
   MenuItem,
@@ -65,6 +65,14 @@ const getFilterParams = (filters) => filters.reduce((params, filter) => {
   return params;
 }, {});
 
+const getRequestFilterParams = (filterParams, verificationId) => {
+  const trimmedVerificationId = String(verificationId || '').trim();
+  return {
+    ...filterParams,
+    ...(trimmedVerificationId && { verificationId: trimmedVerificationId }),
+  };
+};
+
 export default function IdVerificationFormPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -72,7 +80,8 @@ export default function IdVerificationFormPage() {
   const isInitialMount = useRef(true);
 
   const [searchValue, setSearchValue] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [tempSearchValue, setTempSearchValue] = useState('');
+  const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [paginationModel, setPaginationModel] = useState({ pageSize: 10, page: 0 });
   const filterIdRef = useRef(1);
   const [filters, setFilters] = useState([createEmptyFilter(1)]);
@@ -89,12 +98,13 @@ export default function IdVerificationFormPage() {
   // Fetch data when pagination/pageSize changes
  // Fetch data when pagination/pageSize changes
   useEffect(() => {
+    const requestFilters = getRequestFilterParams(appliedFilterParams, searchValue);
+
     dispatch(getIdVerificationData({
       page: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
-      searchTerm: searchValue,
-      filters: appliedFilterParams,
-      filterLogic: Object.keys(appliedFilterParams).length ? appliedLogicOperator.toUpperCase() : '',
+      filters: requestFilters,
+      filterLogic: Object.keys(requestFilters).length ? appliedLogicOperator.toUpperCase() : '',
     }));
     // ❌ REMOVED: Do not set isInitialMount.current = false here.
   }, [paginationModel.page, paginationModel.pageSize, appliedFilterParams, appliedLogicOperator]);
@@ -107,12 +117,13 @@ export default function IdVerificationFormPage() {
     }
 
     const timer = setTimeout(() => {
+      const requestFilters = getRequestFilterParams(appliedFilterParams, searchValue);
+
       dispatch(getIdVerificationData({
         page: 1,
         pageSize: paginationModel.pageSize,
-        searchTerm: searchValue,
-        filters: appliedFilterParams,
-        filterLogic: Object.keys(appliedFilterParams).length ? appliedLogicOperator.toUpperCase() : '',
+        filters: requestFilters,
+        filterLogic: Object.keys(requestFilters).length ? appliedLogicOperator.toUpperCase() : '',
       }));
       // Reset to first page when searching
       if (paginationModel.page !== 0) {
@@ -147,15 +158,15 @@ export default function IdVerificationFormPage() {
 
   const handleApplyFilters = () => {
     const nextFilterParams = getFilterParams(filters);
+    const requestFilters = getRequestFilterParams(nextFilterParams, searchValue);
     setAppliedFilterParams(nextFilterParams);
     setAppliedLogicOperator(logicOperator);
-    setShowFilters(false);
+    setFilterAnchorEl(null);
     dispatch(getIdVerificationData({
       page: 1,
       pageSize: paginationModel.pageSize,
-      searchTerm: searchValue,
-      filters: nextFilterParams,
-      filterLogic: Object.keys(nextFilterParams).length ? logicOperator.toUpperCase() : '',
+      filters: requestFilters,
+      filterLogic: Object.keys(requestFilters).length ? logicOperator.toUpperCase() : '',
     }));
     if (paginationModel.page !== 0) {
       setPaginationModel(prev => ({ ...prev, page: 0 }));
@@ -171,7 +182,7 @@ export default function IdVerificationFormPage() {
     dispatch(getIdVerificationData({
       page: 1,
       pageSize: paginationModel.pageSize,
-      searchTerm: ''
+      filters: {},
     }));
     dispatch(setIdVerificationSearchTerm(''));
     setSearchValue('');
@@ -183,6 +194,11 @@ export default function IdVerificationFormPage() {
 
   const handleCloseError = () => {
     dispatch(clearIdVerificationError());
+  };
+
+  const handleSearch = () => {
+    setSearchValue(tempSearchValue);
+    setPaginationModel({ pageSize: 10, page: 0 });
   };
 
   const columns = [
@@ -250,12 +266,18 @@ export default function IdVerificationFormPage() {
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-          <Iconify
-            icon="mdi:eye"
-            width={20}
-            sx={{ cursor: 'pointer', color: '#555' }}
-            onClick={() => handleViewVerification(params.row)}
-          />
+          <IconButton
+            size="small"
+            aria-label={`View verification ${params.row.verificationId}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleViewVerification(params.row);
+            }}
+            sx={{ color: '#555' }}
+          >
+            <Iconify icon="mdi:eye" width={20} />
+          </IconButton>
         </Box>
       ),
     },
@@ -263,7 +285,7 @@ export default function IdVerificationFormPage() {
 
   const filterColumns = useMemo(
     () => [
-      ...columns.filter((column) => !['actions', 'proCount', 'createdAt'].includes(column.field)),
+      ...columns.filter((column) => !['actions', 'proCount', 'createdAt', 'doorNo'].includes(column.field)),
       { field: 'startDate', headerName: 'Start Date' },
       { field: 'endDate', headerName: 'End Date' },
     ],
@@ -285,10 +307,10 @@ export default function IdVerificationFormPage() {
             <TextField
               size="small"
               variant="outlined"
-              placeholder="Search..."
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              // onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Search verification ID..."
+              value={tempSearchValue}
+              onChange={(e) => setTempSearchValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               sx={{
                 width: 250,
                 '& .MuiOutlinedInput-root': {
@@ -304,156 +326,52 @@ export default function IdVerificationFormPage() {
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
+                      gap: 0.5,
                       pr: 1,
-                      cursor: 'pointer',
                     }}
-                    // onClick={handleSearch}
                   >
-                    <Iconify icon="eva:search-fill" width={20} sx={{ color: '#999' }} />
+                    {tempSearchValue && (
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setTempSearchValue('');
+                          setSearchValue('');
+                          setPaginationModel({ pageSize: 10, page: 0 });
+                        }}
+                        edge="end"
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        <ClearIcon fontSize="small" sx={{ color: '#999' }} />
+                      </IconButton>
+                    )}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                      }}
+                      onClick={handleSearch}
+                    >
+                      <Iconify icon="eva:search-fill" width={20} sx={{ color: '#999' }} />
+                    </Box>
                   </Box>
                 ),
               }}
             />
             <IconButton
               size="small"
-              onClick={() => setShowFilters(!showFilters)}
+              onClick={(e) => setFilterAnchorEl(e.currentTarget)}
               sx={{
-                color: showFilters || hasAppliedFilters ? '#1976d2' : '#999',
+                color: hasAppliedFilters ? '#1976d2' : '#999',
                 bgcolor: hasAppliedFilters ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
                 '&:hover': {
-                  bgcolor: showFilters || hasAppliedFilters ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+                  bgcolor: hasAppliedFilters ? 'rgba(25, 118, 210, 0.12)' : 'rgba(0, 0, 0, 0.04)',
                 },
               }}
             >
               <FilterListIcon />
             </IconButton>
           </Stack>
-
-          {/* Filter Panel */}
-          <Box sx={{ position: 'relative' }}>
-          <Collapse
-            in={showFilters}
-            sx={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              zIndex: 10,
-              width: 520,
-              maxWidth: '100%',
-            }}
-          >
-            <Paper
-              sx={{
-                p: 1.5,
-                width: '100%',
-                border: '1px solid #e0e0e0',
-                boxShadow: 3,
-              }}
-            >
-              <Box>
-                <Typography variant="subtitle2" mb={1}>Logic Operator</Typography>
-                <StyledTextField
-                  select
-                  value={logicOperator}
-                  onChange={(e) => setLogicOperator(e.target.value)}
-                  size="small"
-                  sx={{ mb: 2, width: 150 }}
-                >
-                  <MenuItem value="and">And</MenuItem>
-                  <MenuItem value="or">Or</MenuItem>
-                </StyledTextField>
-
-                {filters.map((filter) => (
-                  <Box
-                    key={filter.id}
-                    sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
-                  >
-                    <StyledTextField
-                      select
-                      value={filter.field}
-                      onChange={(e) => updateFilter(filter.id, 'field', e.target.value)}
-                      size="small"
-                      displayEmpty
-                      sx={{ width: 170, flexShrink: 0 }}
-                    >
-                      <MenuItem value="" disabled>Select Column</MenuItem>
-                      {filterColumns.map((column) => (
-                        <MenuItem key={column.field} value={column.field}>
-                          {column.headerName || column.field}
-                        </MenuItem>
-                      ))}
-                    </StyledTextField>
-
-                    {['startDate', 'endDate'].includes(filter.field) ? (
-                      <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <DatePicker
-                          format="MM/DD/YYYY"
-                          value={filter.value ? dayjs(filter.value) : null}
-                          onChange={(newValue) => {
-                            updateFilter(
-                              filter.id,
-                              'value',
-                              newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : ''
-                            );
-                          }}
-                          slotProps={{
-                            textField: {
-                              size: 'small',
-                              placeholder: 'Select date...',
-                              sx: { width: 260 },
-                            },
-                          }}
-                        />
-                      </LocalizationProvider>
-                    ) : (
-                      <StyledTextField
-                        size="small"
-                        placeholder="Filter value..."
-                        value={filter.value}
-                        onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
-                        sx={{ width: 260 }}
-                        InputProps={{
-                          endAdornment: filter.value ? (
-                            <InputAdornment position="end">
-                              <IconButton
-                                size="small"
-                                onClick={() => updateFilter(filter.id, 'value', '')}
-                                edge="end"
-                              >
-                                <ClearIcon fontSize="small" />
-                              </IconButton>
-                            </InputAdornment>
-                          ) : null,
-                        }}
-                      />
-                    )}
-
-                    <IconButton
-                      onClick={() => removeFilter(filter.id)}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                ))}
-
-                <Button size="small" onClick={addFilter} sx={{ mt: 1 }}>
-                  + Add Filter Condition
-                </Button>
-
-                <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
-                  <Button variant="outlined" onClick={handleClearFilters}>
-                    Clear
-                  </Button>
-                  <Button variant="contained" onClick={handleApplyFilters}>
-                    Apply Filter
-                  </Button>
-                </Box>
-              </Box>
-            </Paper>
-          </Collapse>
-          </Box>
 
           {/* Error Alert */}
           {error && (
@@ -478,6 +396,8 @@ export default function IdVerificationFormPage() {
           sx={{
             '& .MuiDataGrid-root': { border: 'none' },
             '& .MuiDataGrid-cell': { borderBottom: '1px solid #e0e0e0' },
+            '& .MuiDataGrid-columnHeaders': { fontWeight: 'bold !important', fontSize: '14px !important' },
+            '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 'bold', fontSize: '14px' },
           }}
         />
 
@@ -489,6 +409,130 @@ export default function IdVerificationFormPage() {
             </Typography>
           </Box>
         )}
+
+        {/* Filter Popover */}
+        <Popover
+          open={Boolean(filterAnchorEl)}
+          anchorEl={filterAnchorEl}
+          onClose={() => setFilterAnchorEl(null)}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+        >
+          <Paper sx={{ p: 2, width: 520, maxWidth: '90vw' }}>
+            <Box>
+              <Typography variant="subtitle2" mb={1}>Logic Operator</Typography>
+              <StyledTextField
+                select
+                value={logicOperator}
+                onChange={(e) => setLogicOperator(e.target.value)}
+                size="small"
+                sx={{ mb: 2, width: 150 }}
+                SelectProps={{ MenuProps: { disablePortal: true } }}
+              >
+                <MenuItem value="and">And</MenuItem>
+                <MenuItem value="or">Or</MenuItem>
+              </StyledTextField>
+
+              {filters.map((filter) => (
+                <Box
+                  key={filter.id}
+                  sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}
+                >
+                  <StyledTextField
+                    select
+                    value={filter.field}
+                    onChange={(e) => updateFilter(filter.id, 'field', e.target.value)}
+                    size="small"
+                    displayEmpty
+                    sx={{ width: 170, flexShrink: 0 }}
+                    SelectProps={{ MenuProps: { disablePortal: true } }}
+                  >
+                    <MenuItem value="" disabled>Select Column</MenuItem>
+                    {filterColumns.map((column) => (
+                      <MenuItem key={column.field} value={column.field}>
+                        {column.headerName || column.field}
+                      </MenuItem>
+                    ))}
+                  </StyledTextField>
+
+                  {['startDate', 'endDate'].includes(filter.field) ? (
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                      <DatePicker
+                        format="MM/DD/YYYY"
+                        value={filter.value ? dayjs(filter.value) : null}
+                        onChange={(newValue) => {
+                          updateFilter(
+                            filter.id,
+                            'value',
+                            newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : ''
+                          );
+                        }}
+                        slotProps={{
+                          textField: {
+                            size: 'small',
+                            placeholder: 'Select date...',
+                            sx: { width: 260 },
+                          },
+                          popper: {
+                            disablePortal: true,
+                          },
+                        }}
+                      />
+                    </LocalizationProvider>
+                  ) : (
+                    <StyledTextField
+                      size="small"
+                      placeholder="Filter value..."
+                      value={filter.value}
+                      onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+                      sx={{ width: 260 }}
+                      InputProps={{
+                        endAdornment: filter.value ? (
+                          <InputAdornment position="end">
+                            <IconButton
+                              size="small"
+                              onClick={() => updateFilter(filter.id, 'value', '')}
+                              edge="end"
+                            >
+                              <ClearIcon fontSize="small" />
+                            </IconButton>
+                          </InputAdornment>
+                        ) : null,
+                      }}
+                    />
+                  )}
+
+                  <IconButton
+                    onClick={() => removeFilter(filter.id)}
+                    color="error"
+                    size="small"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+
+              <Button size="small" onClick={addFilter} sx={{ mt: 1 }}>
+                + Add Filter Condition
+              </Button>
+
+              <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+                <Button variant="outlined" onClick={handleClearFilters}>
+                  Clear
+                </Button>
+                <Button variant="contained" onClick={handleApplyFilters}>
+                  Apply Filter
+                </Button>
+              </Box>
+            </Box>
+          </Paper>
+        </Popover>
       </Stack>
     </ShipmentFormLayout>
   );

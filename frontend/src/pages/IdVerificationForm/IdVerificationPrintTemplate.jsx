@@ -159,7 +159,7 @@ export default function IdVerificationPrintTemplate({ data }) {
         { label: 'ID Verification No :', value: data.verificationId },
         { label: 'Date :', value: data.date },
         { label: 'Delivering Carrier :', value: data.carrier },
-        { label: 'Freight Forwarder :', value: data.freightForwarder }
+        { label: 'Freight Forwarder :', value: data.stationName ? `${data.customerName || 'N/A'} | ${data.stationName}` : data.freightForwarder }
       ].map((row, index) => (
         <Box 
           key={index} 
@@ -231,10 +231,10 @@ export default function IdVerificationPrintTemplate({ data }) {
 </Box>
 
             {/* --- FREIGHT FORWARDER TABLE --- */}
-            <Box sx={{ mb: 1.5, border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
+            <Box sx={{ mb: 1, border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
               <div style={{ backgroundColor: '#d9d9d9', padding: '8px 16px', borderBottom: '1px solid #ccc' }}>
                 <Typography sx={{ fontSize: '11px', fontWeight: 700 }}>
-                  Freight Forwarder - {data.freightForwarder}
+                  Freight Forwarder - {data.stationName ? `${data.customerName || 'N/A'} | ${data.stationName}` : data.freightForwarder}
                 </Typography>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', textAlign: 'left' }}>
@@ -250,7 +250,7 @@ export default function IdVerificationPrintTemplate({ data }) {
                 <tbody>
                   {pageRows.map((row, idx) => (
                     <tr key={idx} style={{ borderBottom: idx === 9 ? 'none' : '1px solid #e0e0e0', height: '28px' }}>
-                      <td style={{ padding: '2px 16px' }}>{!row.isEmpty ? String(idx + 1).padStart(2, '0') : ''}</td>
+                      <td style={{ padding: '2px 16px' }}>{!row.isEmpty ? String(pageIndex * ROWS_PER_PAGE + idx + 1).padStart(2, '0') : ''}</td>
                       <td style={{ padding: '2px 16px', fontWeight: 700 }}>{!row.isEmpty ? row.pro : ''}</td>
                       <td style={{ padding: '2px 16px' }}>{!row.isEmpty ? row.pieces : ''}</td>
                       <td style={{ padding: '2px 16px' }}>{!row.isEmpty ? row.weight : ''}</td>

@@ -49,6 +49,8 @@ export default function IdVerificationViewPage() {
           firstIdMatch: data.firstIdPhotoMatch === 'Y' || data.firstIdPhotoMatch === true,
           secondIdType: data.secondIdType,
           secondIdMatch: data.secondIdPhotoMatch === 'N' || data.secondIdPhotoMatch === false ? false : true,
+          customerName: data.customerName || '',
+          stationName: data.stationName || '',
           shipperCompany: data.stationName || data.customerName || '',
           verifiedBy: data.verifiedByEmployee,
           toEmails: data.toEmails || [],
@@ -355,7 +357,7 @@ export default function IdVerificationViewPage() {
             sx={{ bgcolor: "#b3b3b3", px: 2, py: 1 }}
           >
             <Typography sx={{ fontWeight: 700, fontSize: "14px", color: '#000' }}>
-              Freight Forwarder - {verificationRecord?.shipperCompany || 'N/A'}
+              Freight Forwarder - {verificationRecord?.stationName ? `${verificationRecord?.customerName || 'N/A'} | ${verificationRecord?.stationName}` : verificationRecord?.shipperCompany || 'N/A'}
             </Typography>
             <Stack direction="row" alignItems="center">
               <IconButton
@@ -388,7 +390,9 @@ export default function IdVerificationViewPage() {
                     borderBottom: '1px solid #ccc'
                   },
                   "& .MuiDataGrid-cell": {
-                    borderBottom: '1px solid #e0e0e0'
+                    borderBottom: '1px solid #e0e0e0',
+                    display: 'flex',
+                    alignItems: 'center',
                   }
                 }}
               />
@@ -475,6 +479,8 @@ export default function IdVerificationViewPage() {
             date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }),
             carrier: verificationRecord.carrier,
             freightForwarder: verificationRecord.shipperCompany,
+            customerName: verificationRecord.customerName,
+            stationName: verificationRecord.stationName,
             door: verificationRecord.door,
             driverName: verificationRecord.driverName,
             signature: verificationRecord.driverSignature,

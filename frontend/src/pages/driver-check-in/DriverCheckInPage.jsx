@@ -1654,7 +1654,7 @@ const handleDriverNameFocus = () => {
               sx={{ bgcolor: "#d9d9d9", px: 2, py: 0.75 }}
             >
               <Typography sx={{ fontWeight: 600, fontSize: "13px" }}>
-                {group.label}
+                Freight Forwarder - {group.label}
               </Typography>
               <Stack direction="row" alignItems="center">
                 <IconButton
