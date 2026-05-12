@@ -215,6 +215,12 @@ export default function IdVerificationFormPage() {
     }
   };
 
+  const getSelectedFields = (currentFilterId) => {
+    return filters
+      .filter((f) => f.id !== currentFilterId && f.field)
+      .map((f) => f.field);
+  };
+
   const handleCloseError = () => {
     dispatch(clearIdVerificationError());
   };
@@ -473,11 +479,15 @@ export default function IdVerificationFormPage() {
                     SelectProps={{ MenuProps: { disablePortal: true } }}
                   >
                     <MenuItem value="" disabled>Select Column</MenuItem>
-                    {filterColumns.map((column) => (
-                      <MenuItem key={column.field} value={column.field}>
-                        {column.headerName || column.field}
-                      </MenuItem>
-                    ))}
+                    {filterColumns.map((column) => {
+                      const selectedFields = getSelectedFields(filter.id);
+                      const isDisabled = selectedFields.includes(column.field);
+                      return (
+                        <MenuItem key={column.field} value={column.field} disabled={isDisabled} sx={{ opacity: isDisabled ? 0.5 : 1 }}>
+                          {column.headerName || column.field}
+                        </MenuItem>
+                      );
+                    })}
                   </StyledTextField>
 
                   {['startDate', 'endDate'].includes(filter.field) ? (
