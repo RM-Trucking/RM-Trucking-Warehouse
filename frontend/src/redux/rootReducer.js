@@ -18,7 +18,7 @@ const rootPersistConfig = {
   key: 'root',
   storage,
   keyPrefix: 'redux-',
-  whitelist: [],
+  whitelist: ['idVerificationdata'],
 };
 
 const rootReducer = combineReducers({

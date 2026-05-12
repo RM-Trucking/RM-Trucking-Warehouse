@@ -13,6 +13,13 @@ const initialState = {
     totalPages: 0,
   },
   searchTerm: '',
+  // Filter state
+  appliedFilterParams: {},
+  appliedLogicOperator: 'and',
+  filters: [{ id: 1, field: '', value: '' }],
+  logicOperator: 'and',
+  tempSearchValue: '',
+  searchValue: '',
 };
 
 const slice = createSlice({
@@ -47,6 +54,33 @@ const slice = createSlice({
     // Set search term
     setSearchTerm(state, action) {
       state.searchTerm = action.payload;
+    },
+    // Filter state actions
+    setAppliedFilterParams(state, action) {
+      state.appliedFilterParams = action.payload;
+    },
+    setAppliedLogicOperator(state, action) {
+      state.appliedLogicOperator = action.payload;
+    },
+    setFilters(state, action) {
+      state.filters = action.payload;
+    },
+    setLogicOperator(state, action) {
+      state.logicOperator = action.payload;
+    },
+    setTempSearchValue(state, action) {
+      state.tempSearchValue = action.payload;
+    },
+    setSearchValue(state, action) {
+      state.searchValue = action.payload;
+    },
+    clearAllFilters(state) {
+      state.appliedFilterParams = {};
+      state.appliedLogicOperator = 'and';
+      state.filters = [{ id: 1, field: '', value: '' }];
+      state.logicOperator = 'and';
+      state.tempSearchValue = '';
+      state.searchValue = '';
     },
   },
 });
@@ -105,3 +139,32 @@ export function setIdVerificationSearchTerm(searchTerm) {
     dispatch(slice.actions.setSearchTerm(searchTerm));
   };
 }
+
+// Filter-related action exports
+export const setAppliedFilterParams = (payload) => (dispatch) => {
+  dispatch(slice.actions.setAppliedFilterParams(payload));
+};
+
+export const setAppliedLogicOperator = (payload) => (dispatch) => {
+  dispatch(slice.actions.setAppliedLogicOperator(payload));
+};
+
+export const setFilters = (payload) => (dispatch) => {
+  dispatch(slice.actions.setFilters(payload));
+};
+
+export const setLogicOperator = (payload) => (dispatch) => {
+  dispatch(slice.actions.setLogicOperator(payload));
+};
+
+export const setTempSearchValue = (payload) => (dispatch) => {
+  dispatch(slice.actions.setTempSearchValue(payload));
+};
+
+export const setSearchValue = (payload) => (dispatch) => {
+  dispatch(slice.actions.setSearchValue(payload));
+};
+
+export const clearAllFilters = () => (dispatch) => {
+  dispatch(slice.actions.clearAllFilters());
+};
