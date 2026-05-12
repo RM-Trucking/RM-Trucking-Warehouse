@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
+import { GridOverlay } from '@mui/x-data-grid';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -81,6 +82,16 @@ const getRequestFilterParams = (filterParams, verificationId) => {
     ...(trimmedVerificationId && { verificationId: trimmedVerificationId }),
   };
 };
+
+const CustomNoRowsOverlay = () => (
+  <GridOverlay>
+    <Box sx={{ textAlign: 'center', py: 5 }}>
+      <Typography sx={{ color: '#999', fontSize: 14 }}>
+        No records found
+      </Typography>
+    </Box>
+  </GridOverlay>
+);
 
 export default function IdVerificationFormPage() {
   const dispatch = useDispatch();
@@ -202,6 +213,12 @@ export default function IdVerificationFormPage() {
     if (paginationModel.page !== 0) {
       setPaginationModel(prev => ({ ...prev, page: 0 }));
     }
+  };
+
+  const getSelectedFields = (currentFilterId) => {
+    return filters
+      .filter((f) => f.id !== currentFilterId && f.field)
+      .map((f) => f.field);
   };
 
   const handleCloseError = () => {
@@ -405,6 +422,9 @@ export default function IdVerificationFormPage() {
           paginationMode="server"
           loading={isLoading}
           disableRowSelectionOnClick
+          slots={{
+            noRowsOverlay: CustomNoRowsOverlay,
+          }}
           sx={{
             '& .MuiDataGrid-root': { border: 'none' },
             '& .MuiDataGrid-cell': { borderBottom: '1px solid #e0e0e0' },
@@ -413,14 +433,7 @@ export default function IdVerificationFormPage() {
           }}
         />
 
-        {/* Empty State */}
-        {!isLoading && idVerificationData.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 5 }}>
-            <Typography sx={{ color: '#999', fontSize: 14 }}>
-              No records found
-            </Typography>
-          </Box>
-        )}
+        {/* Empty State - REMOVED: Custom "No records found" message is now inside the DataGrid */}
 
         {/* Filter Popover */}
         <Popover
@@ -466,11 +479,15 @@ export default function IdVerificationFormPage() {
                     SelectProps={{ MenuProps: { disablePortal: true } }}
                   >
                     <MenuItem value="" disabled>Select Column</MenuItem>
-                    {filterColumns.map((column) => (
-                      <MenuItem key={column.field} value={column.field}>
-                        {column.headerName || column.field}
-                      </MenuItem>
-                    ))}
+                    {filterColumns.map((column) => {
+                      const selectedFields = getSelectedFields(filter.id);
+                      const isDisabled = selectedFields.includes(column.field);
+                      return (
+                        <MenuItem key={column.field} value={column.field} disabled={isDisabled} sx={{ opacity: isDisabled ? 0.5 : 1 }}>
+                          {column.headerName || column.field}
+                        </MenuItem>
+                      );
+                    })}
                   </StyledTextField>
 
                   {['startDate', 'endDate'].includes(filter.field) ? (
