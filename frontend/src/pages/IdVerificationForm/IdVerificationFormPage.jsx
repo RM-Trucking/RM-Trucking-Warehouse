@@ -26,6 +26,15 @@ import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import Iconify from '../../components/iconify';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import { getIdVerificationData, clearIdVerificationError, setIdVerificationSearchTerm } from '../../redux/slices/idVerification';
+import {
+  setAppliedFilterParams,
+  setAppliedLogicOperator,
+  setFilters,
+  setLogicOperator,
+  setTempSearchValue,
+  setSearchValue,
+  clearAllFilters
+} from '../../redux/slices/idVerification';
 
 const createEmptyFilter = (id) => ({ id, field: '', value: '' });
 
@@ -79,15 +88,17 @@ export default function IdVerificationFormPage() {
   const { idVerificationData, isLoading, error, pagination } = useSelector((state) => state.idVerificationdata);
   const isInitialMount = useRef(true);
 
-  const [searchValue, setSearchValue] = useState('');
-  const [tempSearchValue, setTempSearchValue] = useState('');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [paginationModel, setPaginationModel] = useState({ pageSize: 10, page: 0 });
+
+  // Redux selectors for filter state
+  const appliedFilterParams = useSelector((state) => state.idVerificationdata.appliedFilterParams);
+  const appliedLogicOperator = useSelector((state) => state.idVerificationdata.appliedLogicOperator);
+  const filters = useSelector((state) => state.idVerificationdata.filters);
+  const logicOperator = useSelector((state) => state.idVerificationdata.logicOperator);
+  const tempSearchValue = useSelector((state) => state.idVerificationdata.tempSearchValue);
+  const searchValue = useSelector((state) => state.idVerificationdata.searchValue);
   const filterIdRef = useRef(1);
-  const [filters, setFilters] = useState([createEmptyFilter(1)]);
-  const [appliedFilterParams, setAppliedFilterParams] = useState({});
-  const [logicOperator, setLogicOperator] = useState('and');
-  const [appliedLogicOperator, setAppliedLogicOperator] = useState('and');
   const hasAppliedFilters = Object.keys(appliedFilterParams).length > 0;
 
   const handleViewVerification = (row) => {
@@ -107,7 +118,7 @@ export default function IdVerificationFormPage() {
       filterLogic: Object.keys(requestFilters).length ? appliedLogicOperator.toUpperCase() : '',
     }));
     // ❌ REMOVED: Do not set isInitialMount.current = false here.
-  }, [paginationModel.page, paginationModel.pageSize, appliedFilterParams, appliedLogicOperator]);
+  }, [paginationModel.page, paginationModel.pageSize, appliedFilterParams, appliedLogicOperator, searchValue]);
 
   // Debounced search effect - skip on initial mount
   useEffect(() => {
@@ -139,28 +150,29 @@ export default function IdVerificationFormPage() {
   };
 
   const updateFilter = (filterId, key, value) => {
-    setFilters((prev) => prev.map((filter) => (
+    const updatedFilters = filters.map((filter) => (
       filter.id === filterId ? { ...filter, [key]: value, ...(key === 'field' ? { value: '' } : {}) } : filter
-    )));
+    ));
+    dispatch(setFilters(updatedFilters));
   };
 
   const addFilter = () => {
     filterIdRef.current += 1;
-    setFilters((prev) => [...prev, createEmptyFilter(filterIdRef.current)]);
+    const newFilters = [...filters, createEmptyFilter(filterIdRef.current)];
+    dispatch(setFilters(newFilters));
   };
 
   const removeFilter = (filterId) => {
-    setFilters((prev) => {
-      const nextFilters = prev.filter((filter) => filter.id !== filterId);
-      return nextFilters.length ? nextFilters : [createEmptyFilter(filterIdRef.current)];
-    });
+    const nextFilters = filters.filter((filter) => filter.id !== filterId);
+    const finalFilters = nextFilters.length ? nextFilters : [createEmptyFilter(filterIdRef.current)];
+    dispatch(setFilters(finalFilters));
   };
 
   const handleApplyFilters = () => {
     const nextFilterParams = getFilterParams(filters);
     const requestFilters = getRequestFilterParams(nextFilterParams, searchValue);
-    setAppliedFilterParams(nextFilterParams);
-    setAppliedLogicOperator(logicOperator);
+    dispatch(setAppliedFilterParams(nextFilterParams));
+    dispatch(setAppliedLogicOperator(logicOperator));
     setFilterAnchorEl(null);
     dispatch(getIdVerificationData({
       page: 1,
@@ -175,10 +187,10 @@ export default function IdVerificationFormPage() {
 
   const handleClearFilters = () => {
     filterIdRef.current += 1;
-    setFilters([createEmptyFilter(filterIdRef.current)]);
-    setAppliedFilterParams({});
-    setLogicOperator('and');
-    setAppliedLogicOperator('and');
+    dispatch(setFilters([createEmptyFilter(filterIdRef.current)]));
+    dispatch(setAppliedFilterParams({}));
+    dispatch(setLogicOperator('and'));
+    dispatch(setAppliedLogicOperator('and'));
     dispatch(getIdVerificationData({
       page: 1,
       pageSize: paginationModel.pageSize,
@@ -197,7 +209,7 @@ export default function IdVerificationFormPage() {
   };
 
   const handleSearch = () => {
-    setSearchValue(tempSearchValue);
+    dispatch(setSearchValue(tempSearchValue));
     setPaginationModel({ pageSize: 10, page: 0 });
   };
 
@@ -309,7 +321,7 @@ export default function IdVerificationFormPage() {
               variant="outlined"
               placeholder="Search verification ID..."
               value={tempSearchValue}
-              onChange={(e) => setTempSearchValue(e.target.value)}
+              onChange={(e) => dispatch(setTempSearchValue(e.target.value))}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               sx={{
                 width: 250,
@@ -334,8 +346,8 @@ export default function IdVerificationFormPage() {
                       <IconButton
                         size="small"
                         onClick={() => {
-                          setTempSearchValue('');
-                          setSearchValue('');
+                          dispatch(setTempSearchValue(''));
+                          dispatch(setSearchValue(''));
                           setPaginationModel({ pageSize: 10, page: 0 });
                         }}
                         edge="end"
@@ -430,7 +442,7 @@ export default function IdVerificationFormPage() {
               <StyledTextField
                 select
                 value={logicOperator}
-                onChange={(e) => setLogicOperator(e.target.value)}
+                onChange={(e) => dispatch(setLogicOperator(e.target.value))}
                 size="small"
                 sx={{ mb: 2, width: 150 }}
                 SelectProps={{ MenuProps: { disablePortal: true } }}

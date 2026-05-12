@@ -303,8 +303,8 @@ export default function IdVerificationPrintTemplate({ data }) {
   >
     {/* ROW 1: Driver Name & Signature */}
     <Box>
-      <Typography sx={{ fontSize: '10px', color: '#d32f2f', fontWeight: 600, mb: 0.5 }}>
-        Driver Name *
+      <Typography sx={{ fontSize: '10px', fontWeight: 600, mb: 0.5 }}>
+        Driver Name
       </Typography>
       <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '12px', fontWeight: 600, minHeight: '18px' }}>
         {data.driverName}
@@ -337,7 +337,7 @@ export default function IdVerificationPrintTemplate({ data }) {
       Type of First ID Reviewed. (Government Issued ID or Company Issued)
     </Typography>
     <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
-      {data.firstIdType || 'IL_DL'}
+      {data.firstIdType || 'NA'}
     </Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 0.5 }}>
       <Box sx={{ width: 14, height: 14, border: '2px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px' }}>
@@ -351,7 +351,7 @@ export default function IdVerificationPrintTemplate({ data }) {
       Type of Second ID Reviewed (If the first id was not a photo id issued by a government authority or is not a company id)
     </Typography>
     <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
-      {data.secondIdType || 'NA'}
+      {'NA'}
     </Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 0.5 }}>
       <Box sx={{ width: 14, height: 14, border: '2px solid #000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px' }}>
@@ -365,7 +365,7 @@ export default function IdVerificationPrintTemplate({ data }) {
       Shipper's Company Name (Where Applicable)
     </Typography>
     <Box sx={{ borderBottom: '1px solid #666', pb: 0.5, fontSize: '11px', fontWeight: 600, minHeight: '18px' }}>
-      {data.shipperCompany || 'Seacoast Logistics'}
+      {'Listed Above'}
     </Box>
     <Box /> {/* Empty 3rd column for Row 4 */}
 

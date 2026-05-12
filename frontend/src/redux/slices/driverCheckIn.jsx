@@ -143,6 +143,7 @@ export function submitDriverCheckIn(checkInData) {
                     firstIdPhotoMatch: checkInData.firstIdPhotoMatch ? 'Y' : 'N',
                     secondIdType: 'NA',
                     secondIdPhotoMatch: 'N',
+                    shipperCompanyName: 'Listed Above',
                     driverName: checkInData.driverName,
                     driverSignature: checkInData.driverSignature,
                     verifiedByEmployee: checkInData.verifiedByEmployee
