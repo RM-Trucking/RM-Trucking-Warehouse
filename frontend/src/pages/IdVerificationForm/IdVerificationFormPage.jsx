@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
+import { GridOverlay } from '@mui/x-data-grid';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -81,6 +82,16 @@ const getRequestFilterParams = (filterParams, verificationId) => {
     ...(trimmedVerificationId && { verificationId: trimmedVerificationId }),
   };
 };
+
+const CustomNoRowsOverlay = () => (
+  <GridOverlay>
+    <Box sx={{ textAlign: 'center', py: 5 }}>
+      <Typography sx={{ color: '#999', fontSize: 14 }}>
+        No records found
+      </Typography>
+    </Box>
+  </GridOverlay>
+);
 
 export default function IdVerificationFormPage() {
   const dispatch = useDispatch();
@@ -405,6 +416,9 @@ export default function IdVerificationFormPage() {
           paginationMode="server"
           loading={isLoading}
           disableRowSelectionOnClick
+          slots={{
+            noRowsOverlay: CustomNoRowsOverlay,
+          }}
           sx={{
             '& .MuiDataGrid-root': { border: 'none' },
             '& .MuiDataGrid-cell': { borderBottom: '1px solid #e0e0e0' },
@@ -413,14 +427,7 @@ export default function IdVerificationFormPage() {
           }}
         />
 
-        {/* Empty State */}
-        {!isLoading && idVerificationData.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 5 }}>
-            <Typography sx={{ color: '#999', fontSize: 14 }}>
-              No records found
-            </Typography>
-          </Box>
-        )}
+        {/* Empty State - REMOVED: Custom "No records found" message is now inside the DataGrid */}
 
         {/* Filter Popover */}
         <Popover

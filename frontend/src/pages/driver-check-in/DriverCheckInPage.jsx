@@ -63,6 +63,8 @@ const DUMMY_PROS = {
   }
 };
 
+const normalizeProNumber = (pro) => String(pro || '').trim().toUpperCase();
+
 export default function DriverCheckInPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -86,6 +88,10 @@ export default function DriverCheckInPage() {
   });
   const [addCarrierLoading, setAddCarrierLoading] = useState(false);
   const [addCarrierError, setAddCarrierError] = useState(null);
+  const [addCarrierFieldErrors, setAddCarrierFieldErrors] = useState({
+    name: '',
+    phone: ''
+  });
   const [submitLoading, setSubmitLoading] = useState(false);
   const [signature, setSignature] = useState(true);
   const [doorValue, setDoorValue] = useState("");
@@ -207,11 +213,13 @@ export default function DriverCheckInPage() {
   const handleCloseAddCarrierModal = () => {
     setOpenAddCarrierModal(false);
     setAddCarrierError(null);
+    setAddCarrierFieldErrors({ name: '', phone: '' });
     setNewCarrierForm({ name: "", phone: "" });
   };
 
   const handleResetAddCarrierForm = () => {
     setNewCarrierForm({ name: "", phone: "" });
+    setAddCarrierFieldErrors({ name: '', phone: '' });
   };
 
   const validatePhoneNumber = (phone) => {
@@ -390,6 +398,12 @@ const handleDriverNameFocus = () => {
       weight: false,
       shipper: false
     });
+    // Reset mail selection states
+    setSelectedEmails({});
+    setConfirmedEmailIds({});
+    setConfirmedEmailsByGroup({});
+    setCurrentFormEmails([]);
+    setConfirmedEmailCount(0);
     dispatch(clearProVerification());
   };
 
@@ -502,8 +516,15 @@ const handleDriverNameFocus = () => {
       return;
     }
 
-    if (!formValues.pro.trim()) {
+    const proNumber = formValues.pro.trim();
+
+    if (!proNumber) {
       setProValidationError('Please enter a PRO number');
+      return;
+    }
+
+    if (hasDuplicateProInCurrentCheckIn(proNumber)) {
+      setProValidationError('This PRO number is already added for the selected carrier');
       return;
     }
 
@@ -511,7 +532,7 @@ const handleDriverNameFocus = () => {
     setProValidationError(null);
 
     try {
-      const proData = await dispatch(verifyProNumber(selectedCarrier.carrierId, formValues.pro));
+      const proData = await dispatch(verifyProNumber(selectedCarrier.carrierId, proNumber));
 
       if (proData?.error) {
         // Check the error message type
@@ -675,20 +696,37 @@ const handleDriverNameFocus = () => {
     return errors;
   };
 
+  const hasDuplicateProInCurrentCheckIn = (pro, excludedEntryId = null) => {
+    const normalizedPro = normalizeProNumber(pro);
+    if (!normalizedPro) return false;
+
+    return proGroups.some((group) => (
+      group.entries.some((entry) => (
+        entry.id !== excludedEntryId && normalizeProNumber(entry.pro) === normalizedPro
+      ))
+    ));
+  };
+
   const handleAddCarrierSubmit = async () => {
+    const errors = { name: '', phone: '' };
+
     if (!newCarrierForm.name.trim()) {
-      setAddCarrierError('Delivering Carrier name is required');
-      return;
+      errors.name = 'Delivering Carrier name is required';
     }
 
     const phoneError = validatePhoneNumber(newCarrierForm.phone);
     if (phoneError) {
-      setAddCarrierError(phoneError);
+      errors.phone = phoneError;
+    }
+
+    if (errors.name || errors.phone) {
+      setAddCarrierFieldErrors(errors);
       return;
     }
 
     setAddCarrierLoading(true);
     setAddCarrierError(null);
+    setAddCarrierFieldErrors({ name: '', phone: '' });
 
     try {
       const result = await dispatch(addNewCarrier(newCarrierForm.name, newCarrierForm.phone));
@@ -782,6 +820,7 @@ const handleDriverNameFocus = () => {
         {
           id: groupId,
           label: stationName ? `${freightForwarderName} | ${stationName}` : freightForwarderName,
+          carrierId: selectedCarrier?.carrierId || null,
           emails: typeof freightForwarder === 'object' ? (freightForwarder?.emails || []) : [],
           entries: [newEntry],
         },
@@ -803,6 +842,12 @@ const handleDriverNameFocus = () => {
     }
 
     const { freightForwarder, pro, pieces, weight, shipper, proDetailId } = formValues;
+
+    if (hasDuplicateProInCurrentCheckIn(pro)) {
+      setProValidationError('This PRO number is already added for the selected carrier');
+      return;
+    }
+
     console.log('Adding entry with proDetailId:', proDetailId);
     addEntry(freightForwarder, pro, pieces, weight, shipper, proDetailId);
 
@@ -866,6 +911,12 @@ const handleDriverNameFocus = () => {
   };
 
   const handleSaveEdit = (groupId, entryId) => {
+    if (hasDuplicateProInCurrentCheckIn(editingValues.pro, entryId)) {
+      setApiErrorMessage('This PRO number is already added for the selected carrier');
+      setOpenApiErrorDialog(true);
+      return;
+    }
+
     setProGroups((prev) =>
       prev.map((g) =>
         g.id === groupId
@@ -1181,6 +1232,7 @@ const handleDriverNameFocus = () => {
                   error={formErrors.selectedCarrier}
                   helperText={formErrors.selectedCarrier ? 'Delivering Carrier is required' : ' '}
                   InputLabelProps={{ shrink: true }}
+                  inputProps={{ ...params.inputProps, maxLength: 100 }}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -1208,6 +1260,7 @@ const handleDriverNameFocus = () => {
               }}
               error={formErrors.doorValue}
               helperText={formErrors.doorValue ? 'Door is required' : ' '}
+              inputProps={{ maxLength: 50 }}
               sx={{ width: { xs: "100%", md: "23%" } }}
             />
             <Button
@@ -1476,7 +1529,11 @@ const handleDriverNameFocus = () => {
               required
               label="Pro"
               value={formValues.pro}
-              onChange={handleFormChange("pro")}
+              onChange={(e) => {
+                handleFormChange("pro")(e);
+                setProValidationError(null);
+              }}
+              inputProps={{ maxLength: 50 }}
               sx={{ width: { xs: "100%", lg: "30%" } }}
               disabled={proValidated}
             />
@@ -1768,19 +1825,34 @@ const handleDriverNameFocus = () => {
                 variant="standard"
                 placeholder=""
                 value={newCarrierForm.name}
-                onChange={(e) =>
+                onChange={(e) => {
                   setNewCarrierForm((prev) => ({
                     ...prev,
                     name: e.target.value,
-                  }))
-                }
+                  }));
+                  if (addCarrierFieldErrors.name) {
+                    setAddCarrierFieldErrors((prev) => ({
+                      ...prev,
+                      name: '',
+                    }));
+                  }
+                }}
+                error={!!addCarrierFieldErrors.name}
                 sx={{
                   "& .MuiInputBase-input::placeholder": {
                     color: "#999",
                     opacity: 0.7,
                   },
+                  "& .MuiInputBase-root.Mui-error:after": {
+                    borderBottomColor: "#d32f2f",
+                  },
                 }}
               />
+              {addCarrierFieldErrors.name && (
+                <Typography variant="caption" sx={{ color: "#d32f2f", display: "block", mt: 0.5 }}>
+                  {addCarrierFieldErrors.name}
+                </Typography>
+              )}
             </Box>
 
             <Box sx={{ flex: 1 }}>
@@ -1798,8 +1870,25 @@ const handleDriverNameFocus = () => {
                     ...prev,
                     phone: formatted,
                   }));
+                  if (addCarrierFieldErrors.phone) {
+                    setAddCarrierFieldErrors((prev) => ({
+                      ...prev,
+                      phone: '',
+                    }));
+                  }
+                }}
+                error={!!addCarrierFieldErrors.phone}
+                sx={{
+                  "& .MuiInputBase-root.Mui-error:after": {
+                    borderBottomColor: "#d32f2f",
+                  },
                 }}
               />
+              {addCarrierFieldErrors.phone && (
+                <Typography variant="caption" sx={{ color: "#d32f2f", display: "block", mt: 0.5 }}>
+                  {addCarrierFieldErrors.phone}
+                </Typography>
+              )}
             </Box>
           </Box>
 
