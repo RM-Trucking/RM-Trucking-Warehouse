@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -8,6 +8,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControlLabel,
   IconButton,
   MenuItem,
@@ -26,9 +27,8 @@ import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
-import { searchWarehouseReceipt, clearReceiptSearch } from '../../redux/slices/warehouse';
+import { searchWarehouseReceipt, clearReceiptSearch, createTempWarehouseReceipt } from '../../redux/slices/warehouse';
 import axios from '../../utils/axios';
-import { useEffect } from 'react';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -46,8 +46,60 @@ const SEARCH_BY_OPTIONS = ['PRO', 'ID'];
 const FREIGHT_TYPE_OPTIONS = ['Skid', 'Crate', 'Drum', 'Pail', 'Bundle', 'Bag','Basket','Box','Carton','Jerrican','Package','Pallet','Cylinder','Tote','Roll','Reel','Tube'];
 
 // ─── Helpers to create blank form / item ────────────────────────────
-const createItem = (id) => ({ id, pieces: '', type: 'Skid', length: '', width: '', height: '', weight: '' });
+const createItem = (id) => ({ id, pieces: '', type: 'Skid', length: '', width: '', height: '', weight: '', images: [] });
 const createForm = (id) => ({ id, collapsed: false, items: [createItem(1)] });
+
+const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
+  <Box
+    sx={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      bgcolor: '#f5f5f5',
+      border: '1px solid #e0e0e0',
+      borderRadius: 1,
+      p: '4px 8px',
+      mb: 1,
+      width: '100%',
+    }}
+  >
+    <Stack direction="row" alignItems="center" spacing={1}>
+      <IconButton size="small" onClick={onView} sx={{ bgcolor: '#dbdbdb', borderRadius: 0.5, p: '4px', color: '#000' }}>
+        <Iconify icon="mdi:eye" width={16} color="#000" />
+      </IconButton>
+      <Typography sx={{ fontSize: 12 }}>{filename}</Typography>
+    </Stack>
+    {!hideRemove && (
+      <IconButton size="small" onClick={onRemove} sx={{ p: '2px', color: '#000' }}>
+        <Iconify icon="carbon:close-filled" width={16} />
+      </IconButton>
+    )}
+  </Box>
+);
+
+const getRowValue = (row, fields, fallback = '') => {
+  const fieldList = Array.isArray(fields) ? fields : [fields];
+  const field = fieldList.find((name) => row?.[name] !== undefined && row?.[name] !== null && row?.[name] !== '');
+  return field ? row[field] : fallback;
+};
+
+const buildTempReceiptPayload = (receipt) => {
+  const { row, proNumber, receivedBy, location } = receipt;
+
+  return {
+    verificationId: getRowValue(row, 'verificationId', 0),
+    shipper: getRowValue(row, ['shipper', 'shipperName', 'shipperCompany'], ''),
+    customerId: getRowValue(row, 'customerId', 0),
+    stationId: getRowValue(row, 'stationId', 0),
+    carrierId: getRowValue(row, 'carrierId', 0),
+    status: 'INITIATE',
+    receivedBy: receivedBy || '',
+    location: location || '',
+    destination: getRowValue(row, ['destination', 'finalDestination'], 0),
+    proNumber: getRowValue(row, 'proNumber', proNumber),
+    packageId: getRowValue(row, ['packageId', 'packageNumber'], 0),
+  };
+};
 
 // ─── Dummy data keyed by PRO number ─────────────────────────────────
 const DUMMY_DATA = {
@@ -66,6 +118,7 @@ const DUMMY_DATA = {
 export default function WarehouseCheckInPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const fileInputRef = useRef(null);
   const { warehouseReceiptSearch } = useSelector((state) => state.warehousedata);
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
@@ -81,6 +134,11 @@ export default function WarehouseCheckInPage() {
   const [noDataDialogOpen, setNoDataDialogOpen] = useState(false);
   const [snackbar, setSnackbar]         = useState({ open: false, message: '', severity: 'success' });
   const [isSearchDisabled, setIsSearchDisabled] = useState(false);
+  const [tempReceiptLoading, setTempReceiptLoading] = useState({});
+  const [receiptErrors, setReceiptErrors] = useState({});
+  const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+  const [stagedFiles, setStagedFiles] = useState([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
@@ -127,8 +185,41 @@ export default function WarehouseCheckInPage() {
     setSavedResults(null);
   };
 
-  const addForm = (key) =>
-    updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1)] }));
+  const addForm = async (key) => {
+    const receipt = proceededReceipts.find((p) => p.key === key);
+    if (!receipt) return;
+
+    if (!receipt.receivedBy.trim()) {
+      setReceiptErrors((prev) => ({ ...prev, [key]: { receivedBy: 'Received By is mandatory' } }));
+      return;
+    }
+
+    setReceiptErrors((prev) => ({ ...prev, [key]: { ...prev[key], receivedBy: '' } }));
+    setTempReceiptLoading((prev) => ({ ...prev, [key]: true }));
+
+    try {
+      const payload = buildTempReceiptPayload(receipt);
+      const response = await dispatch(createTempWarehouseReceipt(payload));
+
+      if (response?.error || response?.success === false) {
+        setSnackbar({
+          open: true,
+          message: response?.message || 'Failed to create temporary warehouse receipt',
+          severity: 'error'
+        });
+        return;
+      }
+
+      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1)] }));
+      setSnackbar({
+        open: true,
+        message: 'Temporary warehouse receipt created successfully',
+        severity: 'success'
+      });
+    } finally {
+      setTempReceiptLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
 
   const removeForm = (key, formId) =>
     updateReceipt(key, (p) => ({ forms: p.forms.filter((f) => f.id !== formId) }));
@@ -152,18 +243,6 @@ export default function WarehouseCheckInPage() {
       ),
     }));
 
-  const duplicateItem = (key, formId, itemId) =>
-    updateReceipt(key, (p) => ({
-      forms: p.forms.map((f) => {
-        if (f.id !== formId) return f;
-        const idx = f.items.findIndex((i) => i.id === itemId);
-        const newItem = { ...f.items[idx], id: Date.now() };
-        const items = [...f.items];
-        items.splice(idx + 1, 0, newItem);
-        return { ...f, items };
-      }),
-    }));
-
   const updateItem = (key, formId, itemId, field, value) =>
     updateReceipt(key, (p) => ({
       forms: p.forms.map((f) =>
@@ -172,6 +251,73 @@ export default function WarehouseCheckInPage() {
           : f
       ),
     }));
+
+  const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload') => {
+    setUploadDialog({ open: true, mode, key, formId, itemId });
+    setStagedFiles(existingFiles);
+    setIsDraggingFiles(false);
+  };
+
+  const handleCloseImageUpload = () => {
+    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+    setStagedFiles([]);
+    setIsDraggingFiles(false);
+  };
+
+  const handleBrowseFiles = () => {
+    fileInputRef.current?.click();
+  };
+
+  const addFilesToStage = (files) => {
+    const selectedFiles = Array.from(files || []);
+
+    if (selectedFiles.length > 0) {
+      setStagedFiles((prev) => [...prev, ...selectedFiles]);
+    }
+  };
+
+  const handleFileSelection = (event) => {
+    addFilesToStage(event.target.files);
+    event.target.value = '';
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragLeave = (event) => {
+    event.preventDefault();
+    setIsDraggingFiles(false);
+  };
+
+  const handleFileDrop = (event) => {
+    event.preventDefault();
+    setIsDraggingFiles(false);
+    addFilesToStage(event.dataTransfer.files);
+  };
+
+  const handleRemoveStagedFile = (index) => {
+    setStagedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleViewStagedFile = (file) => {
+    if (!file) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+
+    setTimeout(() => {
+      URL.revokeObjectURL(previewUrl);
+    }, 1000);
+  };
+
+  const handleUploadImages = () => {
+    if (!uploadDialog.key || !uploadDialog.formId || !uploadDialog.itemId) return;
+
+    updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, 'images', stagedFiles);
+    handleCloseImageUpload();
+  };
 
   const handleRejectOpen = (row) => {
     setRejectRow(row);
@@ -519,7 +665,14 @@ export default function WarehouseCheckInPage() {
                           variant="standard"
                           size="small"
                           value={pr.receivedBy}
-                          onChange={(e) => updateReceipt(pr.key, () => ({ receivedBy: e.target.value }))}
+                          onChange={(e) => {
+                            updateReceipt(pr.key, () => ({ receivedBy: e.target.value }));
+                            if (e.target.value.trim()) {
+                              setReceiptErrors((prev) => ({ ...prev, [pr.key]: { ...prev[pr.key], receivedBy: '' } }));
+                            }
+                          }}
+                          error={!!receiptErrors[pr.key]?.receivedBy}
+                          helperText={receiptErrors[pr.key]?.receivedBy || ' '}
                           sx={{ minWidth: 200 }}
                         />
                       </Stack>
@@ -654,29 +807,65 @@ export default function WarehouseCheckInPage() {
                                 ))}
 
                                 {/* Action icons */}
-                                <Stack direction="row" spacing={0.5} sx={{ pb: 0.5 }}>
+                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pb: 0.5 }}>
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}
                                     disabled={form.items.length === 1}
                                     title="Delete item"
+                                    sx={{ p: 0.4 }}
                                   >
                                     <Iconify
-                                      icon="mdi:trash-can-outline"
-                                      width={18}
-                                      sx={{ color: form.items.length === 1 ? '#ccc' : '#A22' }}
+                                      icon="mdi:trash-can"
+                                      width={24}
+                                      sx={{ color: form.items.length === 1 ? '#9e9e9e' : '#8c8c8c' }}
                                     />
                                   </IconButton>
                                   <IconButton
                                     size="small"
-                                    onClick={() => duplicateItem(pr.key, form.id, item.id)}
-                                    title="Duplicate item"
+                                    title="Package details"
+                                    sx={{ p: 0.4 }}
                                   >
-                                    <Iconify icon="mdi:content-copy" width={18} sx={{ color: '#555' }} />
+                                    <Iconify icon="mdi:cube" width={28} sx={{ color: '#000' }} />
                                   </IconButton>
-                                  <IconButton size="small" title="Upload image">
-                                    <Iconify icon="mdi:camera-outline" width={18} sx={{ color: '#555' }} />
+                                  <IconButton
+                                    size="small"
+                                    title="Upload image"
+                                    onClick={() => handleOpenImageUpload(pr.key, form.id, item.id, item.images || [])}
+                                    sx={{ p: 0.4 }}
+                                  >
+                                    <Iconify icon="mdi:image-plus" width={28} sx={{ color: '#000' }} />
                                   </IconButton>
+                                  {(item.images?.length || 0) > 0 && (
+                                    <IconButton
+                                      size="small"
+                                      title="View images"
+                                      onClick={() => handleOpenImageUpload(pr.key, form.id, item.id, item.images || [], 'view')}
+                                      sx={{ p: 0.4, position: 'relative' }}
+                                    >
+                                      <Iconify icon="mdi:image-multiple" width={30} sx={{ color: '#000' }} />
+                                      <Box
+                                        sx={{
+                                          position: 'absolute',
+                                          top: -5,
+                                          right: -3,
+                                          width: 22,
+                                          height: 22,
+                                          borderRadius: '50%',
+                                          bgcolor: '#102a63',
+                                          color: '#fff',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          fontSize: 14,
+                                          fontWeight: 700,
+                                          lineHeight: 1,
+                                        }}
+                                      >
+                                        {item.images.length}
+                                      </Box>
+                                    </IconButton>
+                                  )}
                                 </Stack>
                               </Stack>
                             ))}
@@ -702,9 +891,17 @@ export default function WarehouseCheckInPage() {
                       variant="contained"
                       size="small"
                       onClick={() => addForm(pr.key)}
+                      disabled={!!tempReceiptLoading[pr.key]}
                       sx={{ ...actionBtnSx, minWidth: 110, height: 32 }}
                     >
-                      Add New Form
+                      {tempReceiptLoading[pr.key] ? (
+                        <>
+                          <CircularProgress size={14} sx={{ color: 'white', mr: 1 }} />
+                          Adding...
+                        </>
+                      ) : (
+                        'Add New Form'
+                      )}
                     </Button>
                   </Box>
                 </Box>
@@ -805,6 +1002,121 @@ export default function WarehouseCheckInPage() {
           >
             OK
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Image Upload Dialog */}
+      <Dialog open={uploadDialog.open} onClose={handleCloseImageUpload} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          {uploadDialog.mode === 'view' ? 'Uploaded Images' : 'Image Upload'}
+          <IconButton
+            onClick={handleCloseImageUpload}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.jif"
+            style={{ display: 'none' }}
+            onChange={handleFileSelection}
+          />
+
+          <Stack spacing={2}>
+            {uploadDialog.mode !== 'view' && (
+              <Typography sx={{ fontSize: 14, fontWeight: 600 }}>File Upload</Typography>
+            )}
+            <Stack direction={{ xs: 'column', md: 'row' }} sx={{ border: '1px dashed #a0a0a0', borderRadius: 2, p: 2 }}>
+              {uploadDialog.mode !== 'view' && (
+                <Stack
+                  sx={{
+                    width: { xs: '100%', md: '50%' },
+                    borderRight: { xs: 'none', md: '1px solid #e0e0e0' },
+                    borderBottom: { xs: '1px solid #e0e0e0', md: 'none' },
+                    pr: { xs: 0, md: 2 },
+                    pb: { xs: 2, md: 0 },
+                    mb: { xs: 2, md: 0 },
+                    bgcolor: isDraggingFiles ? '#fff3f3' : 'transparent',
+                    borderRadius: 1,
+                    transition: 'background-color 0.2s ease',
+                    minHeight: 180,
+                  }}
+                  alignItems="center"
+                  justifyContent="center"
+                  spacing={1}
+                  onDragOver={handleDragOver}
+                  onDragEnter={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleFileDrop}
+                >
+                  <Iconify icon="mdi:tray-arrow-up" width={32} color="#A22" />
+                  <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Drag & Drop File</Typography>
+                  <Typography sx={{ fontSize: 11, color: '#777' }}>File Supported: Image, JIF</Typography>
+                  <Typography sx={{ fontSize: 14, fontWeight: 600, my: 0.5 }}>OR</Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleBrowseFiles}
+                    sx={{ ...actionBtnSx, height: 32 }}
+                  >
+                    Browse Files
+                  </Button>
+                </Stack>
+              )}
+
+              <Stack sx={{ width: uploadDialog.mode === 'view' ? '100%' : { xs: '100%', md: '50%' }, pl: uploadDialog.mode === 'view' ? 0 : { xs: 0, md: 2 } }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: 13 }}>Uploaded Files</Typography>
+                  <Typography sx={{ fontSize: 12, color: '#555' }}>{stagedFiles.length} file(s)</Typography>
+                </Stack>
+                <Divider sx={{ mb: 1 }} />
+
+                {stagedFiles.length === 0 ? (
+                  <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 140, opacity: 0.5 }} spacing={1}>
+                    <Iconify icon="mdi:file-document-multiple" width={32} />
+                    <Typography sx={{ fontSize: 12 }}>No Files</Typography>
+                  </Stack>
+                ) : (
+                  <Box sx={{ maxHeight: 180, overflowY: 'auto', pr: 1 }}>
+                    {stagedFiles.map((file, idx) => (
+                      <FileItem
+                        key={`${file.name}-${file.lastModified || idx}-${idx}`}
+                        filename={file.name}
+                        onView={() => handleViewStagedFile(file)}
+                        onRemove={uploadDialog.mode === 'view' ? undefined : () => handleRemoveStagedFile(idx)}
+                        hideRemove={uploadDialog.mode === 'view'}
+                      />
+                    ))}
+                  </Box>
+                )}
+              </Stack>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCloseImageUpload}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            Cancel
+          </Button>
+          {uploadDialog.mode !== 'view' && (
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleUploadImages}
+              sx={{ ...actionBtnSx, height: 32 }}
+            >
+              Upload
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

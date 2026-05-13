@@ -151,6 +151,20 @@ export function searchWarehouseReceipt(searchValue, searchBy) {
     };
 }
 
+// Create temporary Warehouse Receipt
+export function createTempWarehouseReceipt(payload) {
+    return async () => {
+        try {
+            const response = await axios.post('/warehouse-receipt/temp', payload);
+            return response.data;
+        } catch (error) {
+            console.error('Error creating temporary warehouse receipt:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'Error creating temporary warehouse receipt';
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
 // Clear search state
 export function clearReceiptSearch() {
     return async () => {
