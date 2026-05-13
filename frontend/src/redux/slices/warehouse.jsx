@@ -109,6 +109,15 @@ export function searchWarehouseReceipt(searchValue, searchBy) {
                     console.log('Final transformed data:', transformedData);
                     dispatch(slice.actions.receiptSearchSuccess(transformedData));
                     return transformedData;
+                } else if (Array.isArray(receipts) && receipts.length === 0) {
+                    // Handle empty results - still consider it a successful search
+                    console.log('Empty results - no rows found');
+                    const transformedData = {
+                        proNumber: searchValue,
+                        rows: []
+                    };
+                    dispatch(slice.actions.receiptSearchSuccess(transformedData));
+                    return transformedData;
                 } else {
                     console.log('No rows found or not an array');
                     dispatch(slice.actions.receiptSearchNotFound());

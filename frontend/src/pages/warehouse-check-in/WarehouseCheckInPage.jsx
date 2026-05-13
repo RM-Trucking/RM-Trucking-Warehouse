@@ -28,6 +28,7 @@ import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchWarehouseReceipt, clearReceiptSearch } from '../../redux/slices/warehouse';
 import axios from '../../utils/axios';
+import { useEffect } from 'react';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -42,7 +43,7 @@ const actionBtnSx = {
 };
 
 const SEARCH_BY_OPTIONS = ['PRO', 'ID'];
-const FREIGHT_TYPE_OPTIONS = ['Skid', 'Pallet', 'Box', 'Crate', 'Bundle', 'Drum'];
+const FREIGHT_TYPE_OPTIONS = ['Skid', 'Crate', 'Drum', 'Pail', 'Bundle', 'Bag','Basket','Box','Carton','Jerrican','Package','Pallet','Cylinder','Tote','Roll','Reel','Tube'];
 
 // ─── Helpers to create blank form / item ────────────────────────────
 const createItem = (id) => ({ id, pieces: '', type: 'Skid', length: '', width: '', height: '', weight: '' });
@@ -76,10 +77,28 @@ export default function WarehouseCheckInPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectRow, setRejectRow]       = useState(null);
   const [rejectLoading, setRejectLoading] = useState(false);
+  const [rejectedRowIds, setRejectedRowIds] = useState([]);
+  const [noDataDialogOpen, setNoDataDialogOpen] = useState(false);
   const [snackbar, setSnackbar]         = useState({ open: false, message: '', severity: 'success' });
+  const [isSearchDisabled, setIsSearchDisabled] = useState(false);
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
+
+  // Show no data dialog when search returns empty results
+  useEffect(() => {
+    const { loading, found, data } = warehouseReceiptSearch;
+
+    if (!loading && found && data) {
+      // Check if data.rows exists and is empty
+      const isEmpty = (data.rows && Array.isArray(data.rows) && data.rows.length === 0) ||
+                      (Array.isArray(data) && data.length === 0);
+
+      if (isEmpty) {
+        setNoDataDialogOpen(true);
+      }
+    }
+  }, [warehouseReceiptSearch.loading, warehouseReceiptSearch.found, warehouseReceiptSearch.data]);
 
   const handleProceed = (row) => {
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
@@ -87,8 +106,9 @@ export default function WarehouseCheckInPage() {
     setSavedResults(warehouseReceiptSearch.data);
     setProceededReceipts((prev) => [
       ...prev,
-      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: '', sectionCollapsed: false, forms: [createForm(1)] },
+      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1)] },
     ]);
+    setIsSearchDisabled(true);
     // Clear search results
     dispatch(clearReceiptSearch());
   };
@@ -98,6 +118,8 @@ export default function WarehouseCheckInPage() {
 
   const removeReceipt = (key) => {
     setProceededReceipts((prev) => prev.filter((p) => p.key !== key));
+    setIsSearchDisabled(false);
+    setSearchValue('');
     if (savedResults) {
       // Restore the previous search results
       // Note: This is a simple restoration from saved state
@@ -185,18 +207,14 @@ export default function WarehouseCheckInPage() {
       });
 
       if (response.data?.success) {
-        // Remove the rejected receipt from the table by clearing and re-searching
-        // Or we can manually update the rows in state
         setSnackbar({
           open: true,
           message: 'Receipt rejected successfully',
           severity: 'success'
         });
 
-        // Clear the search results to refresh
-        setTimeout(() => {
-          dispatch(clearReceiptSearch());
-        }, 1500);
+        // Remove only the rejected row from the display
+        setRejectedRowIds((prev) => [...prev, rejectRow.id]);
 
         handleRejectClose();
       } else {
@@ -228,6 +246,7 @@ export default function WarehouseCheckInPage() {
     if (!searchValue.trim()) {
       return;
     }
+    setNoDataDialogOpen(false);
     dispatch(searchWarehouseReceipt(searchValue.trim(), searchBy.toLowerCase()));
     setCollapsed({});
   };
@@ -290,16 +309,19 @@ export default function WarehouseCheckInPage() {
           >
             <FormControlLabel
               value="pro"
+              disabled={isSearchDisabled}
               control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
               label={<Typography sx={{ fontSize: 13 }}>Search By PRO#</Typography>}
             />
             <FormControlLabel
               value="rmDriver"
+              disabled={isSearchDisabled}
               control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
               label={<Typography sx={{ fontSize: 13 }}>RM Driver</Typography>}
             />
             <FormControlLabel
               value="parcel"
+              disabled={isSearchDisabled}
               control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
               label={<Typography sx={{ fontSize: 13 }}>Parcel</Typography>}
             />
@@ -318,6 +340,7 @@ export default function WarehouseCheckInPage() {
                 size="small"
                 value={searchBy}
                 onChange={(e) => setSearchBy(e.target.value)}
+                disabled={isSearchDisabled}
                 sx={{ minWidth: 160 }}
               >
                 {SEARCH_BY_OPTIONS.map((opt) => (
@@ -335,6 +358,7 @@ export default function WarehouseCheckInPage() {
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              disabled={isSearchDisabled}
               sx={{ minWidth: 200 }}
             />
 
@@ -342,6 +366,7 @@ export default function WarehouseCheckInPage() {
               variant="contained"
               size="small"
               onClick={handleSearch}
+              disabled={isSearchDisabled}
               sx={{ ...actionBtnSx, minWidth: 90, height: 36 }}
             >
               Search
@@ -364,11 +389,7 @@ export default function WarehouseCheckInPage() {
 
         {!warehouseReceiptSearch.loading && warehouseReceiptSearch.found && warehouseReceiptSearch.data && (
           <Box>
-            {!warehouseReceiptSearch.data.rows || warehouseReceiptSearch.data.rows.length === 0 ? (
-              <Typography sx={{ color: '#777', fontSize: 14 }}>
-                No records found for <strong>{warehouseReceiptSearch.data.proNumber}</strong>.
-              </Typography>
-            ) : (
+            {!warehouseReceiptSearch.data.rows || warehouseReceiptSearch.data.rows.length === 0 ? null : (
               <Box sx={{ border: '1px solid #ddd', borderRadius: 1, overflow: 'hidden' }}>
                 {/* Group header */}
                 <Stack
@@ -392,7 +413,7 @@ export default function WarehouseCheckInPage() {
                 {/* Table */}
                 <Collapse in={!collapsed[warehouseReceiptSearch.data.proNumber]} timeout="auto">
                   <DataGrid
-                    rows={warehouseReceiptSearch.data.rows}
+                    rows={warehouseReceiptSearch.data.rows?.filter((row) => !rejectedRowIds.includes(row.id)) || []}
                     columns={columns}
                     autoHeight
                     disableRowSelectionOnClick
@@ -529,7 +550,7 @@ export default function WarehouseCheckInPage() {
                         <legend>
                           <Stack direction="row" alignItems="center" spacing={0.5}>
                             <Typography variant="subtitle2" sx={{ fontWeight: 600, px: 1 }}>
-                              New Form {fIdx + 1}
+                              New Form {fIdx + 1} - {pr.row.receiptNumber}
                             </Typography>
                             <IconButton
                               size="small"
@@ -745,6 +766,44 @@ export default function WarehouseCheckInPage() {
             ) : (
               'Reject'
             )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* No Data Dialog */}
+      <Dialog open={noDataDialogOpen} onClose={() => {
+        setNoDataDialogOpen(false);
+        dispatch(clearReceiptSearch());
+      }} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          No Data Available
+          <IconButton
+            onClick={() => {
+              setNoDataDialogOpen(false);
+              dispatch(clearReceiptSearch());
+            }}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 14 }}>
+            No data available for PRO number <strong>{warehouseReceiptSearch.data?.proNumber}</strong>.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => {
+              setNoDataDialogOpen(false);
+              dispatch(clearReceiptSearch());
+            }}
+            sx={{ ...actionBtnSx, height: 32 }}
+          >
+            OK
           </Button>
         </DialogActions>
       </Dialog>
