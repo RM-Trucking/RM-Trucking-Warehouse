@@ -13,6 +13,7 @@ import shipmentReducer from './slices/shipment';
 import enrouteReducer from './slices/enroute';
 import idVerificationReducer from './slices/idVerification';
 import warehouseReducer from './slices/warehouse';
+import warehouseReducer from './slices/warehouse';
 // ----------------------------------------------------------------------
 
 const rootPersistConfig = {
@@ -36,6 +37,7 @@ const rootReducer = combineReducers({
   enroutedata: enrouteReducer,
   warehousedata: warehouseReducer,
   idVerificationdata: idVerificationReducer,
+  warehousedata: warehouseReducer,
 });
 
 export { rootPersistConfig, rootReducer };
