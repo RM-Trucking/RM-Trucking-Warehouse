@@ -12,6 +12,7 @@ import {
   Dialog,
   DialogContent,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import { DataGrid } from '@mui/x-data-grid';
 import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import IdVerificationPrintTemplate from './IdVerificationPrintTemplate';
@@ -418,7 +419,16 @@ export default function IdVerificationViewPage() {
       >
         <Box sx={{ p: 2, bgcolor: '#a22', color: 'white', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Mail List</span>
-          <span sx={{ fontSize: '12px' }}>(Read Only)</span>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <span sx={{ fontSize: '12px' }}>(Read Only)</span>
+            <IconButton
+              size="small"
+              onClick={handleCloseMailDialog}
+              sx={{ color: 'white', p: 0 }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Stack>
         </Box>
         <DialogContent sx={{ p: 2, minHeight: '300px' }}>
           {emailList && emailList.length > 0 ? (

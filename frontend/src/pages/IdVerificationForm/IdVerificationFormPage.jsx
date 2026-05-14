@@ -20,6 +20,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import ClearIcon from '@mui/icons-material/Clear';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CloseIcon from '@mui/icons-material/Close';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import dayjs from 'dayjs';
 import { useDispatch, useSelector } from 'react-redux';
@@ -422,6 +423,7 @@ export default function IdVerificationFormPage() {
           paginationMode="server"
           loading={isLoading}
           disableRowSelectionOnClick
+          disableColumnFilter
           slots={{
             noRowsOverlay: CustomNoRowsOverlay,
           }}
@@ -451,7 +453,16 @@ export default function IdVerificationFormPage() {
         >
           <Paper sx={{ p: 2, width: 520, maxWidth: '90vw' }}>
             <Box>
-              <Typography variant="subtitle2" mb={1}>Logic Operator</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2">Logic Operator</Typography>
+                <IconButton
+                  size="small"
+                  onClick={() => setFilterAnchorEl(null)}
+                  sx={{ p: 0 }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
               <StyledTextField
                 select
                 value={logicOperator}
