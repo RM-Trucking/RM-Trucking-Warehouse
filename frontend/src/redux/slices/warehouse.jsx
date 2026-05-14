@@ -8,7 +8,19 @@ const initialState = {
         data: null,
         error: null,
         found: false
+    },
+    cargoApiDropdown: {
+        loading: false,
+        data: [],
+        error: null
     }
+};
+
+const normalizeDropdownOptions = (payload) => {
+    const source = payload?.data?.data || payload?.data?.results || payload?.data || payload?.results || payload;
+    const options = Array.isArray(source) ? source : source?.items || source?.options || source?.data || [];
+
+    return Array.isArray(options) ? options : [];
 };
 
 const slice = createSlice({
@@ -45,6 +57,25 @@ const slice = createSlice({
             state.warehouseReceiptSearch.data = null;
             state.warehouseReceiptSearch.error = null;
             state.warehouseReceiptSearch.found = false;
+        },
+        startCargoApiDropdown(state) {
+            state.cargoApiDropdown.loading = true;
+            state.cargoApiDropdown.error = null;
+        },
+        cargoApiDropdownSuccess(state, action) {
+            state.cargoApiDropdown.loading = false;
+            state.cargoApiDropdown.data = action.payload;
+            state.cargoApiDropdown.error = null;
+        },
+        cargoApiDropdownError(state, action) {
+            state.cargoApiDropdown.loading = false;
+            state.cargoApiDropdown.data = [];
+            state.cargoApiDropdown.error = action.payload || 'Failed to load package details';
+        },
+        clearCargoApiDropdown(state) {
+            state.cargoApiDropdown.loading = false;
+            state.cargoApiDropdown.data = [];
+            state.cargoApiDropdown.error = null;
         }
     }
 });
@@ -165,9 +196,33 @@ export function createTempWarehouseReceipt(payload) {
     };
 }
 
+// Fetch Cargo API dropdown values
+export function fetchCargoApiDropdown() {
+    return async () => {
+        dispatch(slice.actions.startCargoApiDropdown());
+        try {
+            const response = await axios.get('/maintenance/devices/cargo-api-dropdown');
+            const options = normalizeDropdownOptions(response);
+            dispatch(slice.actions.cargoApiDropdownSuccess(options));
+            return options;
+        } catch (error) {
+            console.error('Error fetching cargo API dropdown:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load package details';
+            dispatch(slice.actions.cargoApiDropdownError(errorMessage));
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
 // Clear search state
 export function clearReceiptSearch() {
     return async () => {
         dispatch(slice.actions.clearReceiptSearch());
+    };
+}
+
+export function clearCargoApiDropdown() {
+    return async () => {
+        dispatch(slice.actions.clearCargoApiDropdown());
     };
 }
