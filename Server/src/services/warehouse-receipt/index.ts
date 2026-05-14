@@ -2,6 +2,7 @@ import { Connection } from "odbc";
 import fs from "fs";
 import path from "path";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
+import * as idVerificationDB from "../../database/id-verification";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as customerDB from "../../database/maintanance/customer";
@@ -345,6 +346,9 @@ export async function createWarehouseReceiptWithFreightService(
 
 /**
  * BATCH PROCESS WAREHOUSE RECEIPTS
+ * - Auto-creates ID verification if verificationId not provided
+ * - Uses driver name from receipt payload
+ * - Uses PRO number from header receipt
  * - Updates reference receipt with provided updates
  * - Creates multiple new warehouse receipts with freight info
  * - Returns updated reference receipt and all newly created receipts
@@ -361,10 +365,45 @@ export async function batchProcessWarehouseReceiptsService(
 
         // Process each receipt in the array
         for (const item of receipts) {
-            const { receipt, freightDetails } = item;
+            let { receipt, freightDetails } = item;
 
             if (!receipt || !Array.isArray(freightDetails)) {
                 throw new Error("Each item must have receipt object and freightDetails array");
+            }
+
+            // Auto-create ID verification if verificationId not provided
+            if (!receipt.verificationId || receipt.verificationId === 0 || receipt.verificationId === null || receipt.verificationId === undefined) {
+
+                if (!receipt.driverName) {
+                    throw new Error("Driver name is required to create ID verification");
+                }
+
+                console.log(`Creating new ID verification for driver: ${receipt.driverName}`);
+
+                // Create driver with just driver name (no signature)
+                const driverId = await idVerificationDB.createDriver(conn, {
+                    driverName: receipt.driverName,
+                    driverSignature: null
+                });
+
+                // Create ID verification
+                const verificationId = await idVerificationDB.createIDVerification(conn, {
+                    carrierId: receipt.carrierId,
+                    customerId: receipt.customerId,
+                    stationId: receipt.stationId,
+                    driverId: driverId,
+                    doorNo: receipt.doorNo || "0",
+                    firstIdType: receipt.firstIdType || "UNKNOWN",
+                    secondIdType: receipt.secondIdType || "NA",
+                    firstIdPhotoMatch: receipt.firstIdPhotoMatch ? 'Y' : 'N',
+                    secondIdPhotoMatch: receipt.secondIdPhotoMatch ? 'Y' : 'N',
+                    shipperCompanyName: receipt.shipperCompanyName || "Listed Above",
+                    verifiedByEmployee: "System Auto-Verification",
+                    createdBy: userId
+                });
+
+                console.log(`Created ID verification ID ${verificationId} for driver: ${receipt.driverName}`);
+                receipt.verificationId = verificationId;
             }
 
             // Check if this is an update (receipt has receiptId) or create (doesn't have receiptId)
@@ -518,6 +557,18 @@ export async function rejectWarehouseReceiptService(conn: Connection, receiptId:
             rejectionReason: reason,
             updatedBy: userId
         });
+
+        // emitAuditLog({
+        //     receiptNumber,
+        //     receiptId,
+        //     proNumber: detail.proNumber,
+        //     userId: userId,
+        //     status: "INITIATE",
+        //     description: `Receipt created for verification ID ${verificationId}`,
+        //     level: "INFO"
+        // });
+        // console.log(`📝 Audit log queued for receipt #${receiptNumber}`);
+
         await conn.commit();
     } catch (err) {
         await conn.rollback();

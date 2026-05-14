@@ -55,6 +55,8 @@ export async function getWarehouseReceipt(req: Request, res: Response, conn: Con
 
         res.status(200).json({ success: true, data });
     } catch (error: any) {
+        console.log(error);
+
         logger.error("Error fetching warehouse receipt", error);
         res.status(500).json({ success: false, message: error.message });
     }
@@ -222,7 +224,7 @@ export async function createTemporaryWarehouseReceipt(req: Request, res: Respons
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
         // Validate required fields
-        const requiredFields = ['verificationId', 'customerId', 'stationId', 'carrierId', 'status', 'shipper', 'receivedBy', 'location', 'destination', 'proNumber', 'packageId'];
+        const requiredFields = ['customerId', 'stationId', 'carrierId', 'status', 'shipper', 'receivedBy', 'location', 'proNumber'];
         const missingFields = requiredFields.filter(field => !tempData[field]);
 
         if (missingFields.length > 0) {

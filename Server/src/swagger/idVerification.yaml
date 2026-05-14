@@ -427,6 +427,11 @@ components:
           enum: [Y, N]
           example: "N"
           description: Whether photo matches on second ID (typically false/0)
+        shipperCompanyName:
+          type: string
+          nullable: true
+          example: "ABC Logistics"
+          description: Optional shipper company name for additional context
         driverName:
           type: string
           example: "John Doe"
@@ -536,6 +541,9 @@ components:
           type: string
         verifiedByEmployee:
           type: string
+        shipperCompanyName:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time

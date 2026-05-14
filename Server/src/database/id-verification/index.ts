@@ -38,7 +38,7 @@ export async function getDriverById(
  */
 export async function createIDVerification(
     conn: Connection,
-    data: CreateIDVerification,
+    data: Omit<CreateIDVerification, "driverName" | "driverSignature">,
 ): Promise<number> {
 
     const query = `
@@ -47,8 +47,8 @@ export async function createIDVerification(
       INSERT INTO ${SCHEMA}."ID_Verification"
         ("carrierId","customerId","stationId","doorNo","firstIdType","firstIdPhotoMatch",
          "secondIdType","secondIdPhotoMatch","driverId",
-         "verifiedByEmployee","toEmails","createdAt","createdBy")
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?)
+         "verifiedByEmployee","toEmails","createdAt","createdBy", "shipperCompanyName")
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?)
     )
   `;
 
@@ -64,7 +64,8 @@ export async function createIDVerification(
         Number(data.driverId),
         data.verifiedByEmployee ?? null,
         data.toEmails ? JSON.stringify(data.toEmails) : null,
-        Number(data.createdBy)
+        Number(data.createdBy),
+        data.shipperCompanyName ?? null
     ];
 
     const result = await conn.query(query, params as any[]) as any[];

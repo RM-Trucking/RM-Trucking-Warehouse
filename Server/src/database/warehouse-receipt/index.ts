@@ -556,9 +556,13 @@ export async function getWarehouseReceiptByReceiptNumber(
     receiptNumber: number
 ): Promise<WarehouseReceipt | null> {
     const query = `
-        SELECT * 
-        FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "receiptNumber" = ? AND "status" = 'INITIATED'
+        SELECT w.*, c."carrierName", cu."customerName", s."stationName"
+        FROM ${SCHEMA}."Warehouse_Receipt" w
+        LEFT JOIN ${SCHEMA}."Carrier" c ON w."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON w."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON w."stationId" = s."stationId"
+        WHERE w."receiptNumber" = ? AND w."status" = 'INITIATED'
+        ORDER BY w."receiptId" DESC
     `;
     const result = await conn.query(query, [Number(receiptNumber)]) as any[];
 
@@ -575,6 +579,7 @@ export async function getWarehouseReceiptByReceiptNumber(
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
     };
 }
 
@@ -649,9 +654,13 @@ export async function getWarehouseReceiptsByProNumber(
     proNumber: string
 ): Promise<WarehouseReceipt[]> {
     const query = `
-        SELECT * FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "proNumber" = ? AND "status" = 'INITIATE'
-        ORDER BY "receiptId" DESC 
+        SELECT wr.*, c."carrierName", cu."customerName", s."stationName"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        LEFT JOIN ${SCHEMA}."Carrier" c ON wr."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON wr."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON wr."stationId" = s."stationId"
+        WHERE wr."proNumber" = ? AND wr."status" = 'INITIATE'
+        ORDER BY wr."receiptId" DESC 
     `;
     const result = await conn.query(query, [proNumber]) as any[];
     if (!result || result.length === 0) {
@@ -666,6 +675,7 @@ export async function getWarehouseReceiptsByProNumber(
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
     }));
 }
 

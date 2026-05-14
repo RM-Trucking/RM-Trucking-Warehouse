@@ -1,7 +1,7 @@
 export interface Driver {
     driverId: number;
     driverName: string;
-    driverSignature?: string;
+    driverSignature?: string | null;
 }
 
 /**
@@ -31,12 +31,13 @@ export interface IDVerification {
     firstIdPhotoMatch: 'Y' | 'N';
     secondIdType?: string;
     secondIdPhotoMatch: 'Y' | 'N';
+    shipperCompanyName?: string;
     driverId: number;
     verifiedByEmployee: string;
     createdAt: Date;
     createdBy: number;
     toEmails: string[];
-   
+
 }
 
 /**
@@ -48,9 +49,9 @@ export interface CreateIDVerification {
     stationId: number;
     doorNo?: string;
     firstIdType: string;
-    firstIdPhotoMatch: boolean;
+    firstIdPhotoMatch: 'Y' | 'N';
     secondIdType?: string;
-    secondIdPhotoMatch: boolean;
+    secondIdPhotoMatch: 'Y' | 'N';
     driverId: number;
     driverName: string;
     driverSignature: string;

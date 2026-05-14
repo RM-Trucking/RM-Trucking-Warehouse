@@ -85,11 +85,10 @@ export async function createVerificationService(
                 firstIdPhotoMatch: header.firstIdPhotoMatch,
                 secondIdType: header.secondIdType,
                 secondIdPhotoMatch: header.secondIdPhotoMatch,
+                shipperCompanyName: header.shipperCompanyName,
                 driverId,
                 verifiedByEmployee: header.verifiedByEmployee,
                 createdBy: userId,
-                driverName: header.driverName,
-                driverSignature: header.driverSignature,
                 toEmails,
             });
             verificationIds.push(verificationId);

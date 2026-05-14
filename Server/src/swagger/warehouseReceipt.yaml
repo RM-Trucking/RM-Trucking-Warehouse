@@ -1065,7 +1065,7 @@ components:
               example: 5000
             status:
               type: string
-              enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+              enum: [INITIATE, ON-HAND, REJECTED, HOLD]
               example: "INITIATE"
             entityId:
               type: integer
@@ -1170,7 +1170,7 @@ components:
           example: 5000
         status:
           type: string
-          enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+          enum: [INITIATE, ON-HAND, REJECTED, HOLD]
           example: "INITIATE"
         createdAt:
           type: string
@@ -1243,8 +1243,8 @@ components:
           example: 5050
         status:
           type: string
-          enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
-          example: "IN_PROGRESS"
+          enum: [INITIATE, ON-HAND, REJECTED, HOLD]
+          example: "ON-HAND"
         updatedBy:
           type: integer
           example: 1
@@ -1372,7 +1372,7 @@ components:
                     nullable: true
                   status:
                     type: string
-                    enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+                    enum: [INITIATE, ON-HAND, REJECTED, HOLD]
                     example: "INITIATE"
                   withSkid:
                     type: string
@@ -1402,6 +1402,10 @@ components:
                     type: integer
                     nullable: true
                     example: 0
+                  driverName:
+                    type: string
+                    nullable: true
+                    example: "John Doe"
               freightDetails:
                 type: array
                 minItems: 1

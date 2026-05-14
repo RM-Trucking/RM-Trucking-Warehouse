@@ -1,0 +1,146 @@
+openapi: 3.0.0
+info:
+  title: Devices API
+  version: 1.0.0
+  description: API documentation for Devices dropdown endpoints
+
+tags:
+  - name: Devices
+    description: Operations related to devices data
+
+paths:
+  /api/maintenance/devices/cargo-api-dropdown:
+    get:
+      tags:
+        - Devices
+      summary: Get Cargo API Dropdown Data
+      description: Returns a list of devices for Cargo API dropdown, filtered by search term.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Successful response with Cargo API dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        apiId:
+                          type: integer
+                          example: 1
+                        apiName:
+                          type: string
+                          example: "Device A"
+        "400":
+          description: Failed to fetch Cargo API dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Error fetching Cargo API dropdown data"
+
+  /api/maintenance/devices/cargo-api-dimensions:
+    get:
+      tags:
+        - Devices
+      summary: Get Cargo API Dimensions Data
+      description: Returns a list of dimensions for Cargo API, filtered by search term.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: apiId
+          schema:
+            type: number
+          required: true
+          description: ID of the Cargo API to fetch dimensions for.
+      responses:
+        "200":
+          description: Successful response with Cargo API dimensions data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+
+        "400":
+          description: Failed to fetch Cargo API dimensions data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Error fetching Cargo API dimensions data"
+
+  /api/maintenance/devices/printers-dropdown:
+    get:
+      tags:
+        - Devices
+      summary: Get Printers Dropdown Data
+      description: Returns a list of printers for dropdown, filtered by search term.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Successful response with Printers dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        printerId:
+                          type: integer
+                          example: 1
+                        printerName:
+                          type: string
+                          example: "Printer A"
+                        printerIP:
+                          type: string
+                          example: "192.168.1.100"
+                        printerPort:
+                          type: number
+                          example: 9100
+        "400":
+          description: Failed to fetch Printers dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Error fetching Printers dropdown data"
