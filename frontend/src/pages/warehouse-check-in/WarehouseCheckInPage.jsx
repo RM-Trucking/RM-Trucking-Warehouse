@@ -46,8 +46,8 @@ const SEARCH_BY_OPTIONS = ['PRO', 'ID'];
 const FREIGHT_TYPE_OPTIONS = ['Skid', 'Crate', 'Drum', 'Pail', 'Bundle', 'Bag','Basket','Box','Carton','Jerrican','Package','Pallet','Cylinder','Tote','Roll','Reel','Tube'];
 
 // ─── Helpers to create blank form / item ────────────────────────────
-const createItem = (id) => ({ id, pieces: '', type: 'Skid', length: '', width: '', height: '', weight: '', images: [] });
-const createForm = (id) => ({ id, collapsed: false, items: [createItem(1)] });
+const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
+const createForm = (id, receiptNumber = null) => ({ id, collapsed: false, items: [createItem(1)], receiptNumber });
 
 const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
   <Box
@@ -210,7 +210,8 @@ export default function WarehouseCheckInPage() {
         return;
       }
 
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1)] }));
+      const receiptNumber = response?.data?.receiptNumber;
+      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1, receiptNumber)] }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -238,9 +239,20 @@ export default function WarehouseCheckInPage() {
 
   const removeItem = (key, formId, itemId) =>
     updateReceipt(key, (p) => ({
-      forms: p.forms.map((f) =>
-        f.id === formId ? { ...f, items: f.items.filter((i) => i.id !== itemId) } : f
-      ),
+      forms: p.forms.map((f) => {
+        if (f.id !== formId) return f;
+        // If this is the last item, clear values instead of removing
+        if (f.items.length === 1) {
+          return {
+            ...f,
+            items: f.items.map((i) =>
+              i.id === itemId ? { ...createItem(i.id) } : i
+            ),
+          };
+        }
+        // Otherwise, remove the item
+        return { ...f, items: f.items.filter((i) => i.id !== itemId) };
+      }),
     }));
 
   const updateItem = (key, formId, itemId, field, value) =>
@@ -703,7 +715,7 @@ export default function WarehouseCheckInPage() {
                         <legend>
                           <Stack direction="row" alignItems="center" spacing={0.5}>
                             <Typography variant="subtitle2" sx={{ fontWeight: 600, px: 1 }}>
-                              New Form {fIdx + 1} - {pr.row.receiptNumber}
+                              New Form {fIdx + 1} - {form.receiptNumber || pr.row.receiptNumber}
                             </Typography>
                             <IconButton
                               size="small"
@@ -811,14 +823,13 @@ export default function WarehouseCheckInPage() {
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}
-                                    disabled={form.items.length === 1}
                                     title="Delete item"
                                     sx={{ p: 0.4 }}
                                   >
                                     <Iconify
                                       icon="mdi:trash-can"
                                       width={24}
-                                      sx={{ color: form.items.length === 1 ? '#9e9e9e' : '#8c8c8c' }}
+                                      sx={{ color: '#000' }}
                                     />
                                   </IconButton>
                                   <IconButton
