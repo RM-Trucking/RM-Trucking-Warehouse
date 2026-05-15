@@ -34,6 +34,17 @@ router.post("/batch", authenticateJWT, upload.any(), async (req: Request, res: R
     }
 });
 
+// Batch process V2 (Hybrid Image Uploads): Update reference receipt and create multiple new receipts
+// Supports standard JSON, multipart/form-data with actual file images, and Base64 strings sent as text fields
+router.post("/batch-v2", authenticateJWT, upload.any(), async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.batchProcessWarehouseReceiptsV2(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 // Create warehouse receipt with freight info
 router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();

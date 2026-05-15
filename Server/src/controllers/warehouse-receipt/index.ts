@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { Connection } from "odbc";
 import * as warehouseReceiptService from "../../services/warehouse-receipt";
 import { Logger } from "../../utils/logger";
+import fs from "fs/promises";
+import path from "path";
 
 const logger = new Logger("WarehouseReceiptController");
 
@@ -444,6 +446,68 @@ export async function batchProcessWarehouseReceiptsWithImages(
     } catch (error: any) {
         console.log(error);
         logger.error("Error in batch process warehouse receipts with images", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+/**
+ * BATCH PROCESS WAREHOUSE RECEIPTS V2 (HYBRID)
+ * Handles Base64 string interception from body, converting them to physical files,
+ * then routes to either standard batch processing or batch with images.
+ */
+export async function batchProcessWarehouseReceiptsV2(
+    req: Request,
+    res: Response,
+    conn: Connection
+): Promise<void> {
+    try {
+        if (!(req as any).files) {
+            (req as any).files = [];
+        }
+
+        // HYBRID HANDLING: Process Base64 strings sent as text fields in FormData
+        const uploadDir = path.join(process.cwd(), 'uploads', 'freight-images');
+        let dirCreated = false;
+
+        for (const [key, value] of Object.entries(req.body || {})) {
+            if (typeof value === 'string' && (value.startsWith('data:image/') || value.startsWith('base64,'))) {
+                if (!dirCreated) {
+                    await fs.mkdir(uploadDir, { recursive: true });
+                    dirCreated = true;
+                }
+
+                // Strip out data URL prefix if it exists
+                const base64Data = value.replace(/^(data:image\/\w+;base64,|base64,)/, "");
+                const buffer = Buffer.from(base64Data, 'base64');
+                const fileName = `base64-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
+                const filePath = path.join(uploadDir, fileName);
+                
+                await fs.writeFile(filePath, buffer);
+                
+                // Inject mock Multer file into req.files so downstream logic handles it naturally
+                ((req as any).files).push({
+                    fieldname: key,
+                    originalname: fileName,
+                    filename: fileName,
+                    path: filePath,
+                    size: buffer.length,
+                    mimetype: 'image/jpeg'
+                });
+                
+                delete req.body[key]; // Keep body clean for JSON parsing downstream
+            }
+        }
+
+        // Check if any images are present (either standard files or converted Base64)
+        const hasImages = (req as any).files && (req as any).files.length > 0;
+        if (hasImages) {
+            await batchProcessWarehouseReceiptsWithImages(req, res, conn);
+        } else {
+            await batchProcessWarehouseReceipts(req, res, conn);
+        }
+    } catch (error: any) {
+        console.log(error);
+        logger.error("Error in batch process V2", error);
         res.status(500).json({ success: false, message: error.message });
     }
 }
