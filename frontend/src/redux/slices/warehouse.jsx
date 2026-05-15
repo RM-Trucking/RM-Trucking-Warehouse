@@ -13,7 +13,14 @@ const initialState = {
         loading: false,
         data: [],
         error: null
-    }
+    },
+    cargoApiDimensions: {
+        loading: false,
+        data: null,
+        error: null,
+        selectedApiId: null
+    },
+    warehouseCheckInDraft: null
 };
 
 const normalizeDropdownOptions = (payload) => {
@@ -21,6 +28,19 @@ const normalizeDropdownOptions = (payload) => {
     const options = Array.isArray(source) ? source : source?.items || source?.options || source?.data || [];
 
     return Array.isArray(options) ? options : [];
+};
+
+const getCargoApiDimensionsMessage = (responseData) =>
+    responseData?.message ||
+    responseData?.data?.Responses?.Dimension?.description ||
+    responseData?.data?.responses?.dimension?.description ||
+    responseData?.Responses?.Dimension?.description ||
+    responseData?.responses?.dimension?.description ||
+    '';
+
+const isCargoApiDimensionWarning = (responseData) => {
+    const dimension = responseData?.data?.Responses?.Dimension || responseData?.Responses?.Dimension;
+    return Boolean(dimension?.code && !dimension?.value);
 };
 
 const slice = createSlice({
@@ -76,6 +96,27 @@ const slice = createSlice({
             state.cargoApiDropdown.loading = false;
             state.cargoApiDropdown.data = [];
             state.cargoApiDropdown.error = null;
+        },
+        startCargoApiDimensions(state, action) {
+            state.cargoApiDimensions.loading = true;
+            state.cargoApiDimensions.error = null;
+            state.cargoApiDimensions.selectedApiId = action.payload;
+        },
+        cargoApiDimensionsSuccess(state, action) {
+            state.cargoApiDimensions.loading = false;
+            state.cargoApiDimensions.data = action.payload;
+            state.cargoApiDimensions.error = null;
+        },
+        cargoApiDimensionsError(state, action) {
+            state.cargoApiDimensions.loading = false;
+            state.cargoApiDimensions.data = null;
+            state.cargoApiDimensions.error = action.payload || 'Failed to load cargo dimensions';
+        },
+        setWarehouseCheckInDraft(state, action) {
+            state.warehouseCheckInDraft = action.payload;
+        },
+        clearWarehouseCheckInDraft(state) {
+            state.warehouseCheckInDraft = null;
         }
     }
 });
@@ -214,6 +255,37 @@ export function fetchCargoApiDropdown() {
     };
 }
 
+// Fetch dimensions for selected Cargo API option
+export function fetchCargoApiDimensions(apiId) {
+    return async () => {
+        dispatch(slice.actions.startCargoApiDimensions(apiId));
+        try {
+            const response = await axios.get(`/maintenance/devices/cargo-api-dimensions?apiId=${apiId}`);
+            const responseData = response.data || {};
+            const dimensions = responseData.data || responseData;
+
+            if (responseData.success === false) {
+                const errorMessage = getCargoApiDimensionsMessage(responseData) || 'Failed to load cargo dimensions';
+                dispatch(slice.actions.cargoApiDimensionsError(errorMessage));
+                return { error: true, message: errorMessage, data: dimensions };
+            }
+
+            dispatch(slice.actions.cargoApiDimensionsSuccess(dimensions));
+            return {
+                success: responseData.success,
+                message: getCargoApiDimensionsMessage(responseData),
+                warning: isCargoApiDimensionWarning(responseData),
+                data: dimensions
+            };
+        } catch (error) {
+            console.error('Error fetching cargo API dimensions:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load cargo dimensions';
+            dispatch(slice.actions.cargoApiDimensionsError(errorMessage));
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
 // Clear search state
 export function clearReceiptSearch() {
     return async () => {
@@ -224,5 +296,17 @@ export function clearReceiptSearch() {
 export function clearCargoApiDropdown() {
     return async () => {
         dispatch(slice.actions.clearCargoApiDropdown());
+    };
+}
+
+export function setWarehouseCheckInDraft(draft) {
+    return async () => {
+        dispatch(slice.actions.setWarehouseCheckInDraft(draft));
+    };
+}
+
+export function clearWarehouseCheckInDraft() {
+    return async () => {
+        dispatch(slice.actions.clearWarehouseCheckInDraft());
     };
 }

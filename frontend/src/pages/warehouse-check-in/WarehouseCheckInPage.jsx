@@ -34,7 +34,9 @@ import {
   clearReceiptSearch,
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
-  clearCargoApiDropdown,
+  fetchCargoApiDimensions,
+  setWarehouseCheckInDraft,
+  clearWarehouseCheckInDraft,
 } from '../../redux/slices/warehouse';
 import axios from '../../utils/axios';
 import { PATH_DASHBOARD } from '../../routes/paths';
@@ -155,7 +157,8 @@ export default function WarehouseCheckInPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
-  const { warehouseReceiptSearch, cargoApiDropdown } = useSelector((state) => state.warehousedata);
+  const draftRestoredRef = useRef(false);
+  const { warehouseReceiptSearch, cargoApiDropdown, warehouseCheckInDraft } = useSelector((state) => state.warehousedata);
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
@@ -176,9 +179,29 @@ export default function WarehouseCheckInPage() {
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
+  const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
+
+  useEffect(() => {
+    dispatch(fetchCargoApiDropdown());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (!warehouseCheckInDraft || draftRestoredRef.current) return;
+
+    draftRestoredRef.current = true;
+    setSearchType(warehouseCheckInDraft.searchType || 'pro');
+    setSearchBy(warehouseCheckInDraft.searchBy || 'PRO');
+    setSearchValue(warehouseCheckInDraft.searchValue || '');
+    setSavedResults(warehouseCheckInDraft.savedResults || null);
+    setCollapsed(warehouseCheckInDraft.collapsed || {});
+    setRejectedRowIds(warehouseCheckInDraft.rejectedRowIds || []);
+    setIsSearchDisabled(Boolean(warehouseCheckInDraft.isSearchDisabled));
+    setReceiptErrors(warehouseCheckInDraft.receiptErrors || {});
+    setProceededReceipts(warehouseCheckInDraft.proceededReceipts || []);
+  }, [warehouseCheckInDraft]);
 
   // Show no data dialog when search returns empty results
   useEffect(() => {
@@ -387,13 +410,67 @@ export default function WarehouseCheckInPage() {
     handleCloseImageUpload();
   };
 
-  const handlePackageDetailsClick = async (event) => {
+  const getDimensionValue = (dimensions, fields) => {
+    const data = Array.isArray(dimensions) ? dimensions[0] : dimensions;
+    const field = fields.find((name) => data?.[name] !== undefined && data?.[name] !== null && data?.[name] !== '');
+    return field ? data[field] : null;
+  };
+
+  const applyCargoDimensions = (dimensionsResponse) => {
+    const { key, formId, itemId } = packageDropdownContext;
+    const dimensions = dimensionsResponse?.data || dimensionsResponse;
+
+    if (!key || !formId || !itemId || !dimensions || dimensionsResponse?.error) return;
+
+    const fieldMap = {
+      length: ['length', 'cargoLength', 'apiLength'],
+      width: ['width', 'cargoWidth', 'apiWidth'],
+      height: ['height', 'cargoHeight', 'apiHeight'],
+      weight: ['weight', 'cargoWeight', 'apiWeight', 'weightLbs'],
+    };
+
+    Object.entries(fieldMap).forEach(([field, fieldNames]) => {
+      const value = getDimensionValue(dimensions, fieldNames);
+      if (value !== null) {
+        updateItem(key, formId, itemId, field, String(value));
+        clearItemError(key, formId, itemId, field, String(value));
+      }
+    });
+  };
+
+  const handlePackageDetailsClick = (event, key, formId, itemId) => {
     setPackageDropdownAnchor(event.currentTarget);
-    dispatch(fetchCargoApiDropdown());
+    setPackageDropdownContext({ key, formId, itemId });
   };
 
   const handleClosePackageDropdown = () => {
     setPackageDropdownAnchor(null);
+  };
+
+  const handlePackageOptionSelect = async (option) => {
+    const apiId = option?.apiId || option?.id || option?.value;
+
+    if (!apiId) {
+      handleClosePackageDropdown();
+      return;
+    }
+
+    const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
+    applyCargoDimensions(dimensionsResponse);
+
+    if (dimensionsResponse?.message) {
+      setSnackbar({
+        open: true,
+        message: dimensionsResponse.message,
+        severity: dimensionsResponse.error || dimensionsResponse.success === false
+          ? 'error'
+          : dimensionsResponse.warning
+            ? 'warning'
+            : 'success',
+      });
+    }
+
+    handleClosePackageDropdown();
   };
 
   const handleRejectOpen = (row) => {
@@ -465,6 +542,7 @@ export default function WarehouseCheckInPage() {
   };
 
   const handleCancel = () => {
+    dispatch(clearWarehouseCheckInDraft());
     setSearchType('pro');
     setSearchBy('PRO');
     setSearchValue('');
@@ -484,9 +562,9 @@ export default function WarehouseCheckInPage() {
     setStagedFiles([]);
     setIsDraggingFiles(false);
     setPackageDropdownAnchor(null);
+    setPackageDropdownContext({ key: null, formId: null, itemId: null });
     setProceededReceipts([]);
     dispatch(clearReceiptSearch());
-    dispatch(clearCargoApiDropdown());
   };
 
   const handleNext = () => {
@@ -547,6 +625,18 @@ export default function WarehouseCheckInPage() {
       setSnackbar({ open: true, message: 'Please fill all mandatory fields before continuing', severity: 'error' });
       return;
     }
+
+    dispatch(setWarehouseCheckInDraft({
+      searchType,
+      searchBy,
+      searchValue,
+      savedResults,
+      collapsed,
+      rejectedRowIds,
+      isSearchDisabled,
+      receiptErrors: nextErrors,
+      proceededReceipts,
+    }));
 
     navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts } });
   };
@@ -1002,7 +1092,7 @@ export default function WarehouseCheckInPage() {
                                   <IconButton
                                     size="small"
                                     title="Package details"
-                                    onClick={handlePackageDetailsClick}
+                                    onClick={(event) => handlePackageDetailsClick(event, pr.key, form.id, item.id)}
                                     sx={{ p: 0.4 }}
                                   >
                                     <Iconify icon="mdi:cube" width={28} sx={{ color: '#000' }} />
@@ -1330,7 +1420,7 @@ export default function WarehouseCheckInPage() {
             {cargoApiDropdown.data.map((option, index) => (
               <MenuItem
                 key={option?.apiId || option?.id || option?.value || option?.code || index}
-                onClick={handleClosePackageDropdown}
+                onClick={() => handlePackageOptionSelect(option)}
                 sx={{ fontSize: 12, minHeight: 30 }}
               >
                 {getDropdownOptionLabel(option)}
