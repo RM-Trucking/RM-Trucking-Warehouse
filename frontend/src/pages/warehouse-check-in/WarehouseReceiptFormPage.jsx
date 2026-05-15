@@ -33,7 +33,7 @@ const actionBtnSx = {
 };
 
 const fieldSx = {
-  '& .MuiInputBase-input': { fontSize: 11, py: 0.2 },
+  '& .MuiInputBase-input': { fontSize: 13, py: 0.2 },
   '& .MuiFormHelperText-root': { display: 'none' },
 };
 
@@ -92,9 +92,9 @@ const getFormsFromState = (receipts = []) =>
 
 function Section({ title, children, sx }) {
   return (
-    <fieldset style={{ border: '1px solid #8f8f8f', borderRadius: 2, padding: '10px 12px', margin: 0, ...sx }}>
+    <fieldset style={{ border: '1px solid #8f8f8f', borderRadius: 2, padding: '10px 12px', margin: 0, minWidth: 0, boxSizing: 'border-box', ...sx }}>
       <legend>
-        <Typography sx={{ fontSize: 11, fontWeight: 700, px: 0.6 }}>{title}</Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 700, px: 0.6 }}>{title}</Typography>
       </legend>
       {children}
     </fieldset>
@@ -103,8 +103,8 @@ function Section({ title, children, sx }) {
 
 function DisplayField({ label, value, required = false, width = '100%' }) {
   return (
-    <Stack spacing={0.1} sx={{ width }}>
-      <Typography sx={{ color: '#555', fontSize: 10 }}>
+    <Stack spacing={0.1} sx={{ width, minWidth: 0 }}>
+      <Typography sx={{ color: '#555', fontSize: 12 }}>
         {label} {required && <span style={{ color: '#b01818' }}>*</span>}
       </Typography>
       <StyledTextField value={value || ''} variant="standard" size="small" fullWidth disabled sx={fieldSx} />
@@ -124,13 +124,37 @@ function HazmatPill({ label }) {
         border: '1px solid #9db6d8',
         borderRadius: 1,
         bgcolor: '#eaf3ff',
-        fontSize: 10,
+        fontSize: 12,
         lineHeight: 1,
       }}
     >
       {label}
       <Iconify icon="mdi:close-circle" width={12} sx={{ color: '#0c243f' }} />
     </Box>
+  );
+}
+
+function ReceiptInfoRow({ label, value }) {
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={1}
+      sx={{ py: 0.65, borderBottom: '1px solid #adadad' }}
+    >
+      <Typography sx={{ width: 130, fontSize: 15, color: '#111' }}>{label} :</Typography>
+      <TextField
+        value={value || ''}
+        size="small"
+        fullWidth
+        InputProps={{ readOnly: true }}
+        sx={{
+          '& .MuiInputBase-root': { height: 30, bgcolor: '#fff', borderRadius: 0.8 },
+          '& .MuiInputBase-input': { py: 0, fontSize: 15, fontWeight: 700 },
+          '& fieldset': { borderColor: '#d6d6d6' },
+        }}
+      />
+    </Stack>
   );
 }
 
@@ -149,12 +173,12 @@ export default function WarehouseReceiptFormPage() {
   const row = activeForm.row || {};
 
   return (
-    <Box sx={{ bgcolor: '#dcdcdc', minHeight: '100vh' }}>
+    <Box sx={{ bgcolor: '#dcdcdc', minHeight: '100vh', width: '100%', overflowX: 'hidden', boxSizing: 'border-box' }}>
       <Stack
         direction="row"
         alignItems="center"
         justifyContent="space-between"
-        sx={{ px: 1, py: 0.6, borderBottom: '1px solid #bcbcbc', bgcolor: '#efefef' }}
+        sx={{ px: 1, pt: 1.5, pb: 0.6, bgcolor: '#efefef' }}
       >
         <Stack direction="row" alignItems="center" spacing={0.7} sx={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>
           <Iconify icon="eva:arrow-ios-back-fill" width={14} />
@@ -170,7 +194,7 @@ export default function WarehouseReceiptFormPage() {
         </Stack>
       </Stack>
 
-      <Box sx={{ px: 2, bgcolor: '#efefef', borderBottom: '1px solid #bcbcbc' }}>
+      <Box sx={{ px: 2, bgcolor: '#efefef', boxSizing: 'border-box' }}>
         <Tabs
           value={activeTab}
           onChange={(event, value) => setActiveTab(value)}
@@ -186,25 +210,38 @@ export default function WarehouseReceiptFormPage() {
         </Tabs>
       </Box>
 
-      <Box sx={{ p: 2 }}>
-        <Box sx={{ bgcolor: '#fff', border: '1px solid #c9c9c9', borderRadius: 1, p: 2, maxWidth: 1120, mx: 'auto' }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={2}>
+      <Box sx={{ p: 2, boxSizing: 'border-box', maxWidth: '100%' }}>
+        <Box sx={{ bgcolor: '#fff', border: '1px solid #c9c9c9', borderRadius: 1, px: 2, pt: 0.25, pb: 2, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems="center" spacing={2} sx={{ mb: 2, minWidth: 0 }}>
+            <Stack direction="row" alignItems="flex-end" spacing={2} sx={{ minWidth: 0, flexWrap: 'wrap' }}>
               <Box component="img" src={rmLogo} alt="RM Trucking Co." sx={{ width: 220, maxWidth: '36vw', objectFit: 'contain' }} />
-              <Typography sx={{ fontSize: 11, fontWeight: 700, lineHeight: 1.45 }}>
+              <Typography sx={{ fontSize: 14, fontWeight: 700, lineHeight: 1.35 }}>
                 840 E Green St STE 100,<br />
                 Bensenville, IL 60106<br />
                 PH# (847)616-1080 Fax# (847)616-8811
               </Typography>
             </Stack>
 
-            <Box sx={{ bgcolor: '#d8d8d8', borderRadius: 1, p: 1, minWidth: { xs: '100%', md: 330 } }}>
-              <Stack spacing={0.7}>
-                <DisplayField label="Receipt No" value={activeForm.receiptNumber} />
-                <DisplayField label="Date" value={formatDate()} />
-                <DisplayField label="Received By" value={activeForm.receivedBy} />
-                <DisplayField label="Location" value={activeForm.location} />
-                <DisplayField label="Label Count" value={activeForm.items.length} />
+            <Box
+              sx={{
+                bgcolor: '#d1d1d1',
+                borderRadius: 1.3,
+                px: 2,
+                pt: 1.4,
+                pb: 1.1,
+                mt: 1.5,
+                width: { xs: '100%', md: 450 },
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                flexShrink: 0,
+              }}
+            >
+              <Stack>
+                <ReceiptInfoRow label="Receipt No" value={activeForm.receiptNumber} />
+                <ReceiptInfoRow label="Date" value={formatDate()} />
+                <ReceiptInfoRow label="Received By" value={activeForm.receivedBy} />
+                <ReceiptInfoRow label="Location" value={activeForm.location} />
+                <ReceiptInfoRow label="Label Count" value={String(activeForm.items.length).padStart(2, '0')} />
               </Stack>
             </Box>
           </Stack>
@@ -241,13 +278,13 @@ export default function WarehouseReceiptFormPage() {
             </Section>
           </Box>
 
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ mt: 1.5 }}>
-            <Box sx={{ flex: 1.2, border: '1px solid #c6c6c6', borderRadius: 1, overflow: 'hidden' }}>
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ mt: 1.5, minWidth: 0 }}>
+            <Box sx={{ flex: 1.2, minWidth: 0, border: '1px solid #c6c6c6', borderRadius: 1, overflowX: 'auto' }}>
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
                     {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'Actions'].map((head) => (
-                      <TableCell key={head} sx={{ py: 0.6, px: 0.8, fontSize: 10, fontWeight: 700 }}>
+                      <TableCell key={head} sx={{ py: 0.6, px: 0.8, fontSize: 12, fontWeight: 700 }}>
                         {head}
                       </TableCell>
                     ))}
@@ -256,13 +293,13 @@ export default function WarehouseReceiptFormPage() {
                 <TableBody>
                   {activeForm.items.map((item, index) => (
                     <TableRow key={item.id || index}>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{String(index + 1).padStart(2, '0')}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{item.pieces}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{item.type}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{item.length}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{item.width}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{item.height}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 10 }}>{item.weight}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{String(index + 1).padStart(2, '0')}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.pieces}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.type}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.length}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.width}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.height}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.weight}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8 }}>
                         <Stack direction="row" spacing={0.5}>
                           <Iconify icon="mdi:pencil" width={13} />
@@ -276,30 +313,30 @@ export default function WarehouseReceiptFormPage() {
               </Table>
             </Box>
 
-            <Box sx={{ flex: 1 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
               <Section title="Freight Information" sx={{ height: '100%' }}>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <Stack sx={{ flex: 1 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ minWidth: 0 }}>
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
                     {['Banded Skid', 'Shrink Wrapped Skid', 'SHPT / PPC Skid', 'Plastic Skid', 'Document'].map((label) => (
                       <FormControlLabel
                         key={label}
                         control={<Checkbox defaultChecked size="small" sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }} />}
-                        label={<Typography sx={{ fontSize: 10 }}>{label}</Typography>}
+                        label={<Typography sx={{ fontSize: 12 }}>{label}</Typography>}
                       />
                     ))}
                   </Stack>
-                  <Stack sx={{ flex: 1.1 }} spacing={0.7}>
+                  <Stack sx={{ flex: 1.1, minWidth: 0 }} spacing={0.7}>
                     <FormControlLabel
                       control={<Checkbox defaultChecked size="small" sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }} />}
-                      label={<Typography sx={{ fontSize: 10 }}>Bad Freight Condition</Typography>}
+                      label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
                     />
-                    <Typography sx={{ fontSize: 10, fontWeight: 700 }}>Freight Condition</Typography>
+                    <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Freight Condition</Typography>
                     <TextField
                       multiline
                       rows={4}
                       defaultValue="The corner of the freight condition package was damaged."
                       size="small"
-                      sx={{ '& textarea': { fontSize: 10 } }}
+                      sx={{ '& textarea': { fontSize: 12 } }}
                     />
                   </Stack>
                 </Stack>
@@ -309,14 +346,14 @@ export default function WarehouseReceiptFormPage() {
 
           <Box sx={{ mt: 1.5 }}>
             <Section title="Hazardous Information">
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-                <Stack sx={{ flex: 1 }} spacing={1.2}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ minWidth: 0 }}>
+                <Stack sx={{ flex: 1, minWidth: 0 }} spacing={1.2}>
                   <Stack direction="row" spacing={2}>
-                    <FormControlLabel control={<Checkbox defaultChecked size="small" sx={{ p: 0.4 }} />} label={<Typography sx={{ fontSize: 10 }}>Haz Mat</Typography>} />
-                    <FormControlLabel control={<Checkbox size="small" sx={{ p: 0.4 }} />} label={<Typography sx={{ fontSize: 10 }}>Original DGD</Typography>} />
+                    <FormControlLabel control={<Checkbox defaultChecked size="small" sx={{ p: 0.4 }} />} label={<Typography sx={{ fontSize: 12 }}>Haz Mat</Typography>} />
+                    <FormControlLabel control={<Checkbox size="small" sx={{ p: 0.4 }} />} label={<Typography sx={{ fontSize: 12 }}>Original DGD</Typography>} />
                   </Stack>
                   <Box>
-                    <Typography sx={{ fontSize: 10, mb: 0.6 }}>UN Number</Typography>
+                    <Typography sx={{ fontSize: 12, mb: 0.6 }}>UN Number</Typography>
                     <Stack direction="row" flexWrap="wrap" gap={0.7}>
                       {['UN05050599', 'UN05050599', 'UN05050599', 'UN05050599', 'UN05050599'].map((label, index) => (
                         <HazmatPill key={`${label}-${index}`} label={label} />
@@ -324,7 +361,7 @@ export default function WarehouseReceiptFormPage() {
                     </Stack>
                   </Box>
                   <Box>
-                    <Typography sx={{ fontSize: 10, mb: 0.6 }}>Hazmat Class</Typography>
+                    <Typography sx={{ fontSize: 12, mb: 0.6 }}>Hazmat Class</Typography>
                     <Stack direction="row" flexWrap="wrap" gap={0.6}>
                       {['2.3', '2.3', '2.3', '2.3', '2.3', '2.3', '2.3', '2.3', '2.3', '2.3'].map((label, index) => (
                         <HazmatPill key={`${label}-${index}`} label={label} />
@@ -332,20 +369,20 @@ export default function WarehouseReceiptFormPage() {
                     </Stack>
                   </Box>
                 </Stack>
-                <Stack sx={{ flex: 1 }} spacing={1}>
+                <Stack sx={{ flex: 1, minWidth: 0 }} spacing={1}>
                   <DisplayField label="Proper Shipping Name" value="" />
-                  <Typography sx={{ fontSize: 10 }}>Description</Typography>
-                  <TextField multiline rows={6} size="small" sx={{ '& textarea': { fontSize: 10 } }} />
+                  <Typography sx={{ fontSize: 12 }}>Description</Typography>
+                  <TextField multiline rows={6} size="small" sx={{ '& textarea': { fontSize: 12 } }} />
                 </Stack>
               </Stack>
             </Section>
           </Box>
 
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ mt: 1.5 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ mt: 1.5, minWidth: 0 }}>
             <DisplayField label="Destination" value={getRowValue(row, ['destination', 'finalDestination'], '')} />
-            <Stack sx={{ flex: 1 }} spacing={0.3}>
-              <Typography sx={{ fontSize: 10 }}>Notes</Typography>
-              <TextField multiline rows={3} size="small" sx={{ '& textarea': { fontSize: 10 } }} />
+            <Stack sx={{ flex: 1, minWidth: 0 }} spacing={0.3}>
+              <Typography sx={{ fontSize: 12 }}>Notes</Typography>
+              <TextField multiline rows={3} size="small" sx={{ '& textarea': { fontSize: 12 } }} />
             </Stack>
           </Stack>
         </Box>
