@@ -83,6 +83,51 @@ const toValueOrNull = (value) => {
 
 const toYesNo = (value) => (value ? 'Y' : 'N');
 
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+
+    if (typeof file === 'string') {
+      resolve(file.includes(',') ? file.split(',').pop() : file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.split(',').pop() : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+const getFileExtension = (file) => {
+  if (file?.name?.includes('.')) return file.name.split('.').pop();
+  if (file?.type?.includes('/')) return file.type.split('/').pop();
+  return 'jpg';
+};
+
+const toRenamedImageFile = async (image, fieldName) => {
+  if (image instanceof File) {
+    return new File([image], `${fieldName}.${getFileExtension(image)}`, {
+      type: image.type || 'image/jpeg',
+    });
+  }
+
+  if (typeof image === 'string' && image.startsWith('data:')) {
+    const response = await fetch(image);
+    const blob = await response.blob();
+    return new File([blob], `${fieldName}.${getFileExtension(blob)}`, {
+      type: blob.type || 'image/jpeg',
+    });
+  }
+
+  return image;
+};
+
 const getRowValue = (row, fields, fallback = '') => {
   const fieldList = Array.isArray(fields) ? fields : [fields];
   const field = fieldList.find((name) => row?.[name] !== undefined && row?.[name] !== null && row?.[name] !== '');
@@ -323,6 +368,7 @@ export default function WarehouseReceiptFormPage() {
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [successDialog, setSuccessDialog] = useState({ open: false, message: '' });
 
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
   const totalPieces = activeForm.items.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
@@ -561,8 +607,41 @@ export default function WarehouseReceiptFormPage() {
     }),
   });
 
-  const handleSubmit = async () => {
+  const hasFreightItemImages = () =>
+    receiptForms.some((form) => (form.items || []).some((item) => (item.images || []).length > 0));
+
+  const buildReceiptFormData = async () => {
     const payload = buildReceiptPayload();
+    const formData = new FormData();
+
+    formData.append('batchData', JSON.stringify(payload));
+    formData.append('receipts', JSON.stringify(payload.receipts));
+
+    await Promise.all(
+      receiptForms.flatMap((form, receiptIndex) =>
+        (form.items || []).flatMap((item, freightIndex) =>
+          (item.images || []).map(async (image, imageIndex) => {
+            const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
+            const renamedImage = await toRenamedImageFile(image, fieldName);
+            const base64Image = await fileToBase64(image);
+
+            if (renamedImage instanceof File || renamedImage instanceof Blob) {
+              formData.append(fieldName, renamedImage);
+            }
+
+            if (base64Image) {
+              formData.append(`${fieldName}-base64`, base64Image);
+            }
+          })
+        )
+      )
+    );
+
+    return formData;
+  };
+
+  const handleSubmit = async () => {
+    const payload = hasFreightItemImages() ? await buildReceiptFormData() : buildReceiptPayload();
     const response = await dispatch(submitWarehouseReceiptBatch(payload));
 
     if (response?.error || response?.success === false) {
@@ -574,15 +653,16 @@ export default function WarehouseReceiptFormPage() {
       return;
     }
 
-    setSnackbar({
+    setSuccessDialog({
       open: true,
       message: response?.message || 'Warehouse receipts submitted successfully',
-      severity: 'success',
     });
+  };
+
+  const handleSuccessDialogOk = () => {
+    setSuccessDialog({ open: false, message: '' });
     dispatch(clearWarehouseCheckInDraft());
-    setTimeout(() => {
-      navigate(PATH_DASHBOARD.warehouseCheckIn);
-    }, 1200);
+    navigate(PATH_DASHBOARD.warehouseCheckIn);
   };
 
   return (
@@ -1139,6 +1219,22 @@ export default function WarehouseReceiptFormPage() {
             sx={{ ...actionBtnSx, height: 32 }}
           >
             Capture
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={successDialog.open} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Success</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 14 }}>{successDialog.message}</Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleSuccessDialogOk}
+            sx={{ ...actionBtnSx, height: 32, minWidth: 70 }}
+          >
+            OK
           </Button>
         </DialogActions>
       </Dialog>
