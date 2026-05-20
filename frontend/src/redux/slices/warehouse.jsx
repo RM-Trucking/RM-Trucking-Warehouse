@@ -20,6 +20,11 @@ const initialState = {
         error: null,
         selectedApiId: null
     },
+    warehouseReceiptBatch: {
+        loading: false,
+        data: null,
+        error: null
+    },
     warehouseCheckInDraft: null
 };
 
@@ -111,6 +116,21 @@ const slice = createSlice({
             state.cargoApiDimensions.loading = false;
             state.cargoApiDimensions.data = null;
             state.cargoApiDimensions.error = action.payload || 'Failed to load cargo dimensions';
+        },
+        startWarehouseReceiptBatch(state) {
+            state.warehouseReceiptBatch.loading = true;
+            state.warehouseReceiptBatch.data = null;
+            state.warehouseReceiptBatch.error = null;
+        },
+        warehouseReceiptBatchSuccess(state, action) {
+            state.warehouseReceiptBatch.loading = false;
+            state.warehouseReceiptBatch.data = action.payload;
+            state.warehouseReceiptBatch.error = null;
+        },
+        warehouseReceiptBatchError(state, action) {
+            state.warehouseReceiptBatch.loading = false;
+            state.warehouseReceiptBatch.data = null;
+            state.warehouseReceiptBatch.error = action.payload || 'Failed to submit warehouse receipts';
         },
         setWarehouseCheckInDraft(state, action) {
             state.warehouseCheckInDraft = action.payload;
@@ -232,6 +252,23 @@ export function createTempWarehouseReceipt(payload) {
         } catch (error) {
             console.error('Error creating temporary warehouse receipt:', error);
             const errorMessage = error.response?.data?.message || error.message || 'Error creating temporary warehouse receipt';
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
+// Submit Warehouse Receipt batch
+export function submitWarehouseReceiptBatch(payload) {
+    return async () => {
+        dispatch(slice.actions.startWarehouseReceiptBatch());
+        try {
+            const response = await axios.post('/warehouse-receipt/batch', payload);
+            dispatch(slice.actions.warehouseReceiptBatchSuccess(response.data));
+            return response.data;
+        } catch (error) {
+            console.error('Error submitting warehouse receipt batch:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to submit warehouse receipts';
+            dispatch(slice.actions.warehouseReceiptBatchError(errorMessage));
             return { error: true, message: errorMessage };
         }
     };

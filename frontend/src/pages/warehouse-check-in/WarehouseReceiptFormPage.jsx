@@ -12,6 +12,8 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  Alert,
+  Snackbar,
   Stack,
   Tab,
   Table,
@@ -29,6 +31,8 @@ import StyledTextField from '../../sections/shared/StyledTextField';
 import rmLogo from '../../assets/RM.png';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchCustomers } from '../../redux/slices/enroute';
+import { clearWarehouseCheckInDraft, submitWarehouseReceiptBatch } from '../../redux/slices/warehouse';
+import { PATH_DASHBOARD } from '../../routes/paths';
 
 const actionBtnSx = {
   bgcolor: '#A22',
@@ -45,6 +49,39 @@ const fieldSx = {
   '& .MuiInputBase-input': { fontSize: 13, py: 0.2 },
   '& .MuiFormHelperText-root': { display: 'none' },
 };
+
+const FREIGHT_CONDITION_OPTIONS = ['Banded Skid', 'Shrink Wrapped Skid', 'SHPT / PPC Skid', 'Plastic Skid', 'Document'];
+
+const createFreightInfo = () => ({
+  conditions: {},
+  badFreightCondition: false,
+  freightConditionImages: [],
+  hazMat: false,
+  originalDgd: false,
+  unNumbers: [],
+  hazmatClasses: [],
+  unNumberInput: '',
+  hazmatClassInput: '',
+  properShippingName: '',
+  freightConditionDescription: '',
+  hazardousDescription: '',
+  notes: '',
+});
+
+const toNumberOrNull = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+
+  const numberValue = Number(value);
+  return Number.isNaN(numberValue) ? null : numberValue;
+};
+
+const toValueOrNull = (value) => {
+  if (value === undefined || value === null) return null;
+  const stringValue = String(value).trim();
+  return stringValue ? value : null;
+};
+
+const toYesNo = (value) => (value ? 'Y' : 'N');
 
 const getRowValue = (row, fields, fallback = '') => {
   const fieldList = Array.isArray(fields) ? fields : [fields];
@@ -86,6 +123,7 @@ const buildFallbackForms = () => [
       receivedBy: 'Chris',
       location: 'OH',
       customerSelection: { customerName: 'VENTANA SUPPLY LLC', stationName: 'Sweetwater' },
+      freightInfo: createFreightInfo(),
       row: {
       receiptNumber: '78297982897267',
       carrier: 'FEDEX',
@@ -119,6 +157,7 @@ const getFormsFromState = (receipts = []) =>
       receivedBy: receipt.receivedBy,
       location: receipt.location,
       customerSelection: buildCustomerSelection(receipt.row),
+      freightInfo: createFreightInfo(),
       row: receipt.row,
       items: form.items,
     }))
@@ -269,6 +308,7 @@ export default function WarehouseReceiptFormPage() {
   const dispatch = useDispatch();
   const { state } = useLocation();
   const { customerOptions, customerLoading } = useSelector((reduxState) => reduxState.enroutedata);
+  const { warehouseReceiptBatch } = useSelector((reduxState) => reduxState.warehousedata);
   const isSelectingCustomerRef = useRef(false);
   const freightCameraVideoRef = useRef(null);
   const freightCameraStreamRef = useRef(null);
@@ -281,14 +321,8 @@ export default function WarehouseReceiptFormPage() {
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
   const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '' });
   const [customerSearchValue, setCustomerSearchValue] = useState('');
-  const [badFreightCondition, setBadFreightCondition] = useState(false);
-  const [freightConditionImages, setFreightConditionImages] = useState([]);
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
-  const [hazMat, setHazMat] = useState(false);
-  const [unNumbers, setUnNumbers] = useState([]);
-  const [hazmatClasses, setHazmatClasses] = useState([]);
-  const [unNumberInput, setUnNumberInput] = useState('');
-  const [hazmatClassInput, setHazmatClassInput] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
   const totalPieces = activeForm.items.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
@@ -297,6 +331,7 @@ export default function WarehouseReceiptFormPage() {
     0
   );
   const row = activeForm.row || {};
+  const activeFreightInfo = { ...createFreightInfo(), ...(activeForm.freightInfo || {}) };
 
   useEffect(() => {
     if (isSelectingCustomerRef.current) {
@@ -330,6 +365,25 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
+  const updateActiveFreightInfo = (updater) => {
+    setReceiptForms((prev) =>
+      prev.map((form) => {
+        if (form.id !== activeTab) return form;
+
+        const currentFreightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
+        const nextFreightInfo = typeof updater === 'function' ? updater(currentFreightInfo) : updater;
+
+        return {
+          ...form,
+          freightInfo: {
+            ...currentFreightInfo,
+            ...nextFreightInfo,
+          },
+        };
+      })
+    );
+  };
+
   const handleCustomerChange = (newValue) => {
     updateActiveFormField('customerSelection', newValue);
 
@@ -354,7 +408,9 @@ export default function WarehouseReceiptFormPage() {
   const handleRemovePreviewImage = (index) => {
     if (imageDialog.itemLabel !== 'Bad Freight Condition') return;
 
-    setFreightConditionImages((prev) => prev.filter((_, imageIndex) => imageIndex !== index));
+    updateActiveFreightInfo((info) => ({
+      freightConditionImages: info.freightConditionImages.filter((_, imageIndex) => imageIndex !== index),
+    }));
     setImageDialog((prev) => ({
       ...prev,
       images: prev.images.filter((_, imageIndex) => imageIndex !== index),
@@ -411,27 +467,122 @@ export default function WarehouseReceiptFormPage() {
       if (!blob) return;
 
       const file = new File([blob], `bad-freight-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      setFreightConditionImages((prev) => [...prev, file]);
+      updateActiveFreightInfo((info) => ({ freightConditionImages: [...info.freightConditionImages, file] }));
       handleCloseFreightCamera();
     }, 'image/jpeg', 0.92);
   };
 
   const handleFreightCameraFileSelection = (event) => {
     const files = Array.from(event.target.files || []);
-    setFreightConditionImages((prev) => [...prev, ...files]);
+    updateActiveFreightInfo((info) => ({ freightConditionImages: [...info.freightConditionImages, ...files] }));
     event.target.value = '';
   };
 
-  const addTagValue = (value, setter, resetInput) => {
+  const addTagValue = (value, listField, inputField) => {
     const nextValue = value.replace(/,/g, '').trim();
     if (!nextValue) return;
 
-    setter((prev) => [...prev, nextValue]);
-    resetInput('');
+    updateActiveFreightInfo((info) => ({
+      [listField]: [...info[listField], nextValue],
+      [inputField]: '',
+    }));
   };
 
-  const removeTagValue = (index, setter) => {
-    setter((prev) => prev.filter((_, valueIndex) => valueIndex !== index));
+  const removeTagValue = (index, listField) => {
+    updateActiveFreightInfo((info) => ({
+      [listField]: info[listField].filter((_, valueIndex) => valueIndex !== index),
+    }));
+  };
+
+  const buildReceiptPayload = () => ({
+    receipts: receiptForms.map((form) => {
+      const formRow = form.row || {};
+      const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
+      const customerSelection = form.customerSelection || {};
+      const freightDetails = (form.items || []).map((item) => ({
+        pieces: toNumberOrNull(item.pieces),
+        type: toValueOrNull(item.type),
+        weight: toNumberOrNull(item.weight),
+        length: toNumberOrNull(item.length),
+        width: toNumberOrNull(item.width),
+        height: toNumberOrNull(item.height),
+      }));
+      const piecesInland = freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
+      const weightInland = freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+      const reWeight = freightDetails.reduce(
+        (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
+        0
+      );
+      const receiptId = toNumberOrNull(getRowValue(formRow, 'receiptId', null));
+
+      return {
+        receipt: {
+          ...(receiptId ? { receiptId } : {}),
+          receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(formRow, 'receiptNumber', null)),
+          receivedBy: toValueOrNull(form.receivedBy),
+          location: toValueOrNull(form.location),
+          shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
+          customerId: toNumberOrNull(customerSelection.customerId || formRow.customerId),
+          stationId: toNumberOrNull(customerSelection.stationId || formRow.stationId),
+          verificationId: toNumberOrNull(formRow.verificationId),
+          carrierId: toNumberOrNull(formRow.carrierId),
+          piecesInland,
+          weightInland,
+          reWeight,
+          proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
+          invoiceNumber: toValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], '')),
+          poNumber: toValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], '')),
+          customerRefNumber: toValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], '')),
+          freightCondition: freightInfo.badFreightCondition ? 'Y' : null,
+          handlingDescription: toValueOrNull(freightInfo.freightConditionDescription || freightInfo.notes),
+          destination: toValueOrNull(getRowValue(formRow, ['destination', 'finalDestination'], '')),
+          originalDgd: freightInfo.hazMat ? toYesNo(freightInfo.originalDgd) : null,
+          unNumber: freightInfo.hazMat ? toValueOrNull(freightInfo.unNumbers.join(',')) : null,
+          class: freightInfo.hazMat ? toValueOrNull(freightInfo.hazmatClasses.join(',')) : null,
+          packageId: toValueOrNull(getRowValue(formRow, ['packageId', 'packageNumber'], '')),
+          properShippingName: toValueOrNull(freightInfo.properShippingName),
+          hazardousDescription: toValueOrNull(freightInfo.hazardousDescription),
+          status: 'INITIATE',
+          withSkid: toYesNo(
+            freightInfo.conditions['Banded Skid'] ||
+              freightInfo.conditions['Shrink Wrapped Skid'] ||
+              freightInfo.conditions['SHPT / PPC Skid'] ||
+              freightInfo.conditions['Plastic Skid']
+          ),
+          bandedSkid: toYesNo(freightInfo.conditions['Banded Skid']),
+          shrinkWrappedSkid: toYesNo(freightInfo.conditions['Shrink Wrapped Skid']),
+          shtIppcSkid: toYesNo(freightInfo.conditions['SHPT / PPC Skid']),
+          plasticSkid: toYesNo(freightInfo.conditions['Plastic Skid']),
+          hazMat: toYesNo(freightInfo.hazMat),
+          labelCount: form.items?.length || 0,
+        },
+        freightDetails,
+      };
+    }),
+  });
+
+  const handleSubmit = async () => {
+    const payload = buildReceiptPayload();
+    const response = await dispatch(submitWarehouseReceiptBatch(payload));
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to submit warehouse receipts',
+        severity: 'error',
+      });
+      return;
+    }
+
+    setSnackbar({
+      open: true,
+      message: response?.message || 'Warehouse receipts submitted successfully',
+      severity: 'success',
+    });
+    dispatch(clearWarehouseCheckInDraft());
+    setTimeout(() => {
+      navigate(PATH_DASHBOARD.warehouseCheckIn);
+    }, 1200);
   };
 
   return (
@@ -450,8 +601,14 @@ export default function WarehouseReceiptFormPage() {
           <Button variant="outlined" size="small" onClick={() => navigate(-1)} sx={{ height: 24, fontSize: 11, color: '#111', borderColor: '#777', bgcolor: '#fff' }}>
             Back
           </Button>
-          <Button variant="contained" size="small" sx={{ ...actionBtnSx, height: 24, minWidth: 58 }}>
-            Submit
+          <Button
+            variant="contained"
+            size="small"
+            disabled={warehouseReceiptBatch.loading}
+            onClick={handleSubmit}
+            sx={{ ...actionBtnSx, height: 24, minWidth: 58 }}
+          >
+            {warehouseReceiptBatch.loading ? 'Submitting...' : 'Submit'}
           </Button>
         </Stack>
       </Stack>
@@ -608,7 +765,7 @@ export default function WarehouseReceiptFormPage() {
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
                   <DisplayField label="Pieces" value={totalPieces} required />
-                  <DisplayField label="Height" value={activeForm.items[0]?.height || ''} required />
+                  <DisplayField label="Weight" value={activeForm.items[0]?.height || ''} required />
                   <DisplayField label="RE Weight" value={totalWeight} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
@@ -663,10 +820,21 @@ export default function WarehouseReceiptFormPage() {
               <Section title="Freight Information" sx={{ height: '100%' }}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ minWidth: 0 }}>
                   <Stack sx={{ flex: 1, minWidth: 0 }}>
-                    {['Banded Skid', 'Shrink Wrapped Skid', 'SHPT / PPC Skid', 'Plastic Skid', 'Document'].map((label) => (
+                    {FREIGHT_CONDITION_OPTIONS.map((label) => (
                       <FormControlLabel
                         key={label}
-                        control={<Checkbox size="small" sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }} />}
+                        control={
+                          <Checkbox
+                            checked={Boolean(activeFreightInfo.conditions[label])}
+                            onChange={(event) =>
+                              updateActiveFreightInfo((info) => ({
+                                conditions: { ...info.conditions, [label]: event.target.checked },
+                              }))
+                            }
+                            size="small"
+                            sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
+                          />
+                        }
                         label={<Typography sx={{ fontSize: 12 }}>{label}</Typography>}
                       />
                     ))}
@@ -684,15 +852,15 @@ export default function WarehouseReceiptFormPage() {
                       <FormControlLabel
                         control={
                           <Checkbox
-                            checked={badFreightCondition}
-                            onChange={(event) => setBadFreightCondition(event.target.checked)}
+                            checked={activeFreightInfo.badFreightCondition}
+                            onChange={(event) => updateActiveFreightInfo({ badFreightCondition: event.target.checked })}
                             size="small"
                             sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
                           />
                         }
                         label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
                       />
-                      {badFreightCondition && (
+                      {activeFreightInfo.badFreightCondition && (
                         <IconButton
                           size="small"
                           title="Capture freight condition image"
@@ -710,9 +878,9 @@ export default function WarehouseReceiptFormPage() {
                         </IconButton>
                       )}
                     </Stack>
-                    {badFreightCondition && freightConditionImages.length > 0 && (
+                    {activeFreightInfo.badFreightCondition && activeFreightInfo.freightConditionImages.length > 0 && (
                       <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 0.5 }}>
-                        {freightConditionImages.map((file, index) => {
+                        {activeFreightInfo.freightConditionImages.map((file, index) => {
                           const imageUrl = getImageUrl(file);
                           return (
                             <Box
@@ -723,7 +891,7 @@ export default function WarehouseReceiptFormPage() {
                               onClick={() =>
                                 setImageDialog({
                                   open: true,
-                                  images: freightConditionImages,
+                                  images: activeFreightInfo.freightConditionImages,
                                   itemLabel: 'Bad Freight Condition',
                                 })
                               }
@@ -744,7 +912,10 @@ export default function WarehouseReceiptFormPage() {
                     <TextField
                       multiline
                       rows={4}
-                      defaultValue=""
+                      value={activeFreightInfo.freightConditionDescription}
+                      onChange={(event) =>
+                        updateActiveFreightInfo({ freightConditionDescription: event.target.value })
+                      }
                       size="small"
                       sx={{ '& textarea': { fontSize: 12 } }}
                     />
@@ -762,43 +933,65 @@ export default function WarehouseReceiptFormPage() {
                     <FormControlLabel
                       control={
                         <Checkbox
-                          checked={hazMat}
-                          onChange={(event) => setHazMat(event.target.checked)}
+                          checked={activeFreightInfo.hazMat}
+                          onChange={(event) => updateActiveFreightInfo({ hazMat: event.target.checked })}
                           size="small"
                           sx={{ p: 0.4 }}
                         />
                       }
                       label={<Typography sx={{ fontSize: 12 }}>Haz Mat</Typography>}
                     />
-                    {hazMat && (
-                      <FormControlLabel control={<Checkbox size="small" sx={{ p: 0.4 }} />} label={<Typography sx={{ fontSize: 12 }}>Original DGD</Typography>} />
+                    {activeFreightInfo.hazMat && (
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={activeFreightInfo.originalDgd}
+                            onChange={(event) => updateActiveFreightInfo({ originalDgd: event.target.checked })}
+                            size="small"
+                            sx={{ p: 0.4 }}
+                          />
+                        }
+                        label={<Typography sx={{ fontSize: 12 }}>Original DGD</Typography>}
+                      />
                     )}
                   </Stack>
-                  {hazMat && (
+                  {activeFreightInfo.hazMat && (
                     <>
                       <TagInputBox
                         label="UN Number"
-                        values={unNumbers}
-                        inputValue={unNumberInput}
-                        onInputChange={setUnNumberInput}
-                        onAdd={(value) => addTagValue(value, setUnNumbers, setUnNumberInput)}
-                        onRemove={(index) => removeTagValue(index, setUnNumbers)}
+                        values={activeFreightInfo.unNumbers}
+                        inputValue={activeFreightInfo.unNumberInput}
+                        onInputChange={(value) => updateActiveFreightInfo({ unNumberInput: value })}
+                        onAdd={(value) => addTagValue(value, 'unNumbers', 'unNumberInput')}
+                        onRemove={(index) => removeTagValue(index, 'unNumbers')}
                       />
                       <TagInputBox
                         label="Hazmat Class"
-                        values={hazmatClasses}
-                        inputValue={hazmatClassInput}
-                        onInputChange={setHazmatClassInput}
-                        onAdd={(value) => addTagValue(value, setHazmatClasses, setHazmatClassInput)}
-                        onRemove={(index) => removeTagValue(index, setHazmatClasses)}
+                        values={activeFreightInfo.hazmatClasses}
+                        inputValue={activeFreightInfo.hazmatClassInput}
+                        onInputChange={(value) => updateActiveFreightInfo({ hazmatClassInput: value })}
+                        onAdd={(value) => addTagValue(value, 'hazmatClasses', 'hazmatClassInput')}
+                        onRemove={(index) => removeTagValue(index, 'hazmatClasses')}
                       />
                     </>
                   )}
                 </Stack>
                 <Stack sx={{ flex: 1, minWidth: 0 }} spacing={1}>
-                  <DisplayField label="Proper Shipping Name" value="" />
+                  <DisplayField
+                    label="Proper Shipping Name"
+                    value={activeFreightInfo.properShippingName}
+                    editable
+                    onChange={(value) => updateActiveFreightInfo({ properShippingName: value })}
+                  />
                   <Typography sx={{ fontSize: 12 }}>Description</Typography>
-                  <TextField multiline rows={6} size="small" sx={{ '& textarea': { fontSize: 12 } }} />
+                  <TextField
+                    multiline
+                    rows={6}
+                    size="small"
+                    value={activeFreightInfo.hazardousDescription}
+                    onChange={(event) => updateActiveFreightInfo({ hazardousDescription: event.target.value })}
+                    sx={{ '& textarea': { fontSize: 12 } }}
+                  />
                 </Stack>
               </Stack>
             </Section>
@@ -806,11 +999,23 @@ export default function WarehouseReceiptFormPage() {
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ mt: 1.5, minWidth: 0 }}>
             <Stack sx={{ flex: 1, minWidth: 0 }}>
-              <DisplayField label="Destination" value={getRowValue(row, ['destination', 'finalDestination'], '')} />
+              <DisplayField
+                label="Destination"
+                value={getRowValue(row, ['destination', 'finalDestination'], '')}
+                editable
+                onChange={(value) => updateActiveRowField('destination', value)}
+              />
             </Stack>
             <Stack sx={{ flex: 1, minWidth: 0 }} spacing={0.3}>
               <Typography sx={{ fontSize: 12 }}>Notes</Typography>
-              <TextField multiline rows={6} size="small" sx={{ '& textarea': { fontSize: 12 } }} />
+              <TextField
+                multiline
+                rows={6}
+                size="small"
+                value={activeFreightInfo.notes}
+                onChange={(event) => updateActiveFreightInfo({ notes: event.target.value })}
+                sx={{ '& textarea': { fontSize: 12 } }}
+              />
             </Stack>
           </Stack>
         </Box>
@@ -937,6 +1142,20 @@ export default function WarehouseReceiptFormPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
       <Divider />
     </Box>
   );
