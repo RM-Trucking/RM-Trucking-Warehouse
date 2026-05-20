@@ -157,6 +157,9 @@ export default function WarehouseCheckInPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const cameraVideoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
   const draftRestoredRef = useRef(false);
   const { warehouseReceiptSearch, cargoApiDropdown, warehouseCheckInDraft } = useSelector((state) => state.warehousedata);
 
@@ -178,6 +181,7 @@ export default function WarehouseCheckInPage() {
   const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
   const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
 
@@ -187,6 +191,11 @@ export default function WarehouseCheckInPage() {
   useEffect(() => {
     dispatch(fetchCargoApiDropdown());
   }, [dispatch]);
+
+  useEffect(() => () => {
+    cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!warehouseCheckInDraft || draftRestoredRef.current) return;
@@ -245,12 +254,53 @@ export default function WarehouseCheckInPage() {
     setSavedResults(null);
   };
 
+  const getItemErrorKey = (formId, itemId, field) => `${formId}-${itemId}-${field}`;
+
   const addForm = async (key) => {
     const receipt = proceededReceipts.find((p) => p.key === key);
     if (!receipt) return;
 
+    const lastForm = receipt.forms[receipt.forms.length - 1];
+    const itemErrors = {};
+
     if (!receipt.receivedBy.trim()) {
-      setReceiptErrors((prev) => ({ ...prev, [key]: { receivedBy: 'Received By is mandatory' } }));
+      setReceiptErrors((prev) => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          receivedBy: 'Received By is mandatory',
+        },
+      }));
+      updateReceipt(key, () => ({ sectionCollapsed: false }));
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before adding a new form', severity: 'error' });
+      return;
+    }
+
+    lastForm.items.forEach((item) => {
+      REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
+        if (!String(item[field]).trim()) {
+          itemErrors[getItemErrorKey(lastForm.id, item.id, field)] = `${label} is mandatory`;
+        }
+      });
+    });
+
+    if (Object.keys(itemErrors).length > 0) {
+      setReceiptErrors((prev) => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          receivedBy: '',
+          items: {
+            ...(prev[key]?.items || {}),
+            ...itemErrors,
+          },
+        },
+      }));
+      updateReceipt(key, (p) => ({
+        sectionCollapsed: false,
+        forms: p.forms.map((form) => (form.id === lastForm.id ? { ...form, collapsed: false } : form)),
+      }));
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before adding a new form', severity: 'error' });
       return;
     }
 
@@ -324,8 +374,6 @@ export default function WarehouseCheckInPage() {
       ),
     }));
 
-  const getItemErrorKey = (formId, itemId, field) => `${formId}-${itemId}-${field}`;
-
   const clearItemError = (key, formId, itemId, field, value) => {
     if (!String(value).trim()) return;
 
@@ -353,10 +401,75 @@ export default function WarehouseCheckInPage() {
     setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
     setStagedFiles([]);
     setIsDraggingFiles(false);
+    handleCloseCamera();
   };
 
   const handleBrowseFiles = () => {
     fileInputRef.current?.click();
+  };
+
+  const stopCameraStream = () => {
+    cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+  };
+
+  const handleCaptureImage = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraInputRef.current?.click();
+      setSnackbar({
+        open: true,
+        message: 'Camera is not available in this browser. Please use file upload.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      setCameraDialogOpen(true);
+
+      setTimeout(() => {
+        if (cameraVideoRef.current) {
+          cameraVideoRef.current.srcObject = stream;
+          cameraVideoRef.current.play?.();
+        }
+      }, 0);
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error?.message || 'Unable to open camera',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleCloseCamera = () => {
+    stopCameraStream();
+    setCameraDialogOpen(false);
+  };
+
+  const handleTakePhoto = () => {
+    const video = cameraVideoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+
+      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      addFilesToStage([file]);
+      handleCloseCamera();
+    }, 'image/jpeg', 0.92);
   };
 
   const addFilesToStage = (files) => {
@@ -1295,6 +1408,14 @@ export default function WarehouseCheckInPage() {
             style={{ display: 'none' }}
             onChange={handleFileSelection}
           />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={handleFileSelection}
+          />
 
           <Stack spacing={2}>
             {uploadDialog.mode !== 'view' && (
@@ -1327,14 +1448,31 @@ export default function WarehouseCheckInPage() {
                   <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Drag & Drop File</Typography>
                   <Typography sx={{ fontSize: 11, color: '#777' }}>File Supported: Image, JIF</Typography>
                   <Typography sx={{ fontSize: 14, fontWeight: 600, my: 0.5 }}>OR</Typography>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={handleBrowseFiles}
-                    sx={{ ...actionBtnSx, height: 32 }}
-                  >
-                    Browse Files
-                  </Button>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <IconButton
+                      size="small"
+                      onClick={handleCaptureImage}
+                      title="Capture image"
+                      sx={{
+                        bgcolor: '#A22',
+                        color: '#fff',
+                        width: 32,
+                        height: 32,
+                        borderRadius: 1,
+                        '&:hover': { bgcolor: '#8b1c1c' },
+                      }}
+                    >
+                      <Iconify icon="mdi:camera" width={20} />
+                    </IconButton>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleBrowseFiles}
+                      sx={{ ...actionBtnSx, height: 32 }}
+                    >
+                      Browse Files
+                    </Button>
+                  </Stack>
                 </Stack>
               )}
 
@@ -1386,6 +1524,53 @@ export default function WarehouseCheckInPage() {
               Upload
             </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={cameraDialogOpen} onClose={handleCloseCamera} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          Capture Image
+          <IconButton
+            onClick={handleCloseCamera}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box
+            component="video"
+            ref={cameraVideoRef}
+            autoPlay
+            playsInline
+            muted
+            sx={{
+              width: '100%',
+              maxHeight: 420,
+              bgcolor: '#000',
+              borderRadius: 1,
+              objectFit: 'contain',
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCloseCamera}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleTakePhoto}
+            sx={{ ...actionBtnSx, height: 32 }}
+          >
+            Capture
+          </Button>
         </DialogActions>
       </Dialog>
 

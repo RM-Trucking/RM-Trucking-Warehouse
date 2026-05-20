@@ -4,8 +4,12 @@ import {
   Box,
   Button,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControlLabel,
+  IconButton,
   Stack,
   Tab,
   Table,
@@ -158,6 +162,21 @@ function ReceiptInfoRow({ label, value }) {
   );
 }
 
+const getImageUrl = (file) => {
+  if (!file) return '';
+  if (typeof file === 'string') return file;
+  if (file.url) return file.url;
+  if (file.preview) return file.preview;
+  if (file instanceof File) return URL.createObjectURL(file);
+  return '';
+};
+
+const getImageName = (file, index) => {
+  if (!file) return `Image ${index + 1}`;
+  if (typeof file === 'string') return file.split('/').pop() || `Image ${index + 1}`;
+  return file.name || file.filename || `Image ${index + 1}`;
+};
+
 export default function WarehouseReceiptFormPage() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -166,11 +185,24 @@ export default function WarehouseReceiptFormPage() {
     return forms.length ? forms : buildFallbackForms();
   }, [state?.receipts]);
   const [activeTab, setActiveTab] = useState(receiptForms[0]?.id || '');
+  const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '' });
 
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
   const totalPieces = activeForm.items.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
   const totalWeight = activeForm.items.reduce((sum, item) => sum + Number(item.weight || 0), 0);
   const row = activeForm.row || {};
+
+  const handleOpenImages = (item, index) => {
+    setImageDialog({
+      open: true,
+      images: item.images || [],
+      itemLabel: `Item ${String(index + 1).padStart(2, '0')}`,
+    });
+  };
+
+  const handleCloseImages = () => {
+    setImageDialog({ open: false, images: [], itemLabel: '' });
+  };
 
   return (
     <Box sx={{ bgcolor: '#dcdcdc', minHeight: '100vh', width: '100%', overflowX: 'hidden', boxSizing: 'border-box' }}>
@@ -301,11 +333,19 @@ export default function WarehouseReceiptFormPage() {
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.height}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.weight}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8 }}>
-                        <Stack direction="row" spacing={0.5}>
-                          <Iconify icon="mdi:pencil" width={13} />
-                          <Iconify icon="mdi:printer" width={13} />
-                          <Iconify icon="mdi:magnify-plus" width={13} color="#0a4a8f" />
-                        </Stack>
+                        <IconButton
+                          size="small"
+                          title="View uploaded images"
+                          disabled={(item.images?.length || 0) === 0}
+                          onClick={() => handleOpenImages(item, index)}
+                          sx={{ p: 0.2 }}
+                        >
+                          <Iconify
+                            icon="mdi:image-multiple"
+                            width={20}
+                            sx={{ color: (item.images?.length || 0) > 0 ? '#0a4a8f' : '#9e9e9e' }}
+                          />
+                        </IconButton>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -387,6 +427,55 @@ export default function WarehouseReceiptFormPage() {
           </Stack>
         </Box>
       </Box>
+      <Dialog open={imageDialog.open} onClose={handleCloseImages} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>
+          Uploaded Images - {imageDialog.itemLabel}
+        </DialogTitle>
+        <DialogContent dividers>
+          {imageDialog.images.length === 0 ? (
+            <Typography sx={{ fontSize: 13 }}>No uploaded images available.</Typography>
+          ) : (
+            <Stack direction="row" flexWrap="wrap" gap={2}>
+              {imageDialog.images.map((file, index) => {
+                const imageUrl = getImageUrl(file);
+                return (
+                  <Stack
+                    key={`${getImageName(file, index)}-${index}`}
+                    spacing={0.8}
+                    sx={{ width: 160, minWidth: 0 }}
+                  >
+                    {imageUrl ? (
+                      <Box
+                        component="img"
+                        src={imageUrl}
+                        alt={getImageName(file, index)}
+                        sx={{
+                          width: 160,
+                          height: 120,
+                          objectFit: 'cover',
+                          border: '1px solid #d0d0d0',
+                          borderRadius: 1,
+                        }}
+                      />
+                    ) : (
+                      <Stack
+                        alignItems="center"
+                        justifyContent="center"
+                        sx={{ width: 160, height: 120, border: '1px solid #d0d0d0', borderRadius: 1 }}
+                      >
+                        <Iconify icon="mdi:image-off" width={28} />
+                      </Stack>
+                    )}
+                    <Typography sx={{ fontSize: 12, wordBreak: 'break-word' }}>
+                      {getImageName(file, index)}
+                    </Typography>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
       <Divider />
     </Box>
   );
