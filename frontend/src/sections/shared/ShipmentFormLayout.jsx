@@ -9,6 +9,9 @@ export default function ShipmentFormLayout({
     handleClose,
     onSubmit,
     onReset,
+    onCancel,
+    submitLabel = 'Submit',
+    submitLoadingLabel = 'Submitting...',
     showCancel = true,
     showSubmit = true,
     submitLoading = false,
@@ -27,7 +30,7 @@ export default function ShipmentFormLayout({
                     {showCancel && (
                         <Button
                             variant="outlined"
-                            onClick={handleClose}
+                            onClick={onCancel || handleClose}
                             size="small"
                             sx={{
                                 bgcolor: '#fff', color: '#000', borderColor: '#000',
@@ -61,10 +64,10 @@ export default function ShipmentFormLayout({
                             {submitLoading ? (
                                 <>
                                     <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
-                                    Submitting...
+                                    {submitLoadingLabel}
                                 </>
                             ) : (
-                                'Submit'
+                                submitLabel
                             )}
                         </Button>
                     )}
@@ -91,6 +94,9 @@ ShipmentFormLayout.propTypes = {
     handleClose: PropTypes.func.isRequired,
     onSubmit: PropTypes.func.isRequired,
     onReset: PropTypes.func,
+    onCancel: PropTypes.func,
+    submitLabel: PropTypes.string,
+    submitLoadingLabel: PropTypes.string,
     showCancel: PropTypes.bool,
     showSubmit: PropTypes.bool,
     submitLoading: PropTypes.bool,

@@ -12,6 +12,8 @@ import {
   FormControlLabel,
   IconButton,
   MenuItem,
+  MenuList,
+  Popover,
   Radio,
   RadioGroup,
   Stack,
@@ -27,8 +29,17 @@ import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
-import { searchWarehouseReceipt, clearReceiptSearch, createTempWarehouseReceipt } from '../../redux/slices/warehouse';
+import {
+  searchWarehouseReceipt,
+  clearReceiptSearch,
+  createTempWarehouseReceipt,
+  fetchCargoApiDropdown,
+  fetchCargoApiDimensions,
+  setWarehouseCheckInDraft,
+  clearWarehouseCheckInDraft,
+} from '../../redux/slices/warehouse';
 import axios from '../../utils/axios';
+import { PATH_DASHBOARD } from '../../routes/paths';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -44,10 +55,37 @@ const actionBtnSx = {
 
 const SEARCH_BY_OPTIONS = ['PRO', 'ID'];
 const FREIGHT_TYPE_OPTIONS = ['Skid', 'Crate', 'Drum', 'Pail', 'Bundle', 'Bag','Basket','Box','Carton','Jerrican','Package','Pallet','Cylinder','Tote','Roll','Reel','Tube'];
+const REQUIRED_ITEM_FIELDS = [
+  { field: 'pieces', label: 'Pieces' },
+  { field: 'type', label: 'Type' },
+  { field: 'length', label: 'Length' },
+  { field: 'width', label: 'Width' },
+  { field: 'height', label: 'Height' },
+  { field: 'weight', label: 'Weight' },
+];
 
 // ─── Helpers to create blank form / item ────────────────────────────
-const createItem = (id) => ({ id, pieces: '', type: 'Skid', length: '', width: '', height: '', weight: '', images: [] });
-const createForm = (id) => ({ id, collapsed: false, items: [createItem(1)] });
+const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
+const createForm = (id, receiptNumber = null) => ({ id, collapsed: false, items: [createItem(1)], receiptNumber });
+
+const getDropdownOptionLabel = (option) => {
+  if (option === null || option === undefined) return '';
+  if (typeof option !== 'object') return String(option);
+
+  return (
+    option.label ||
+    option.name ||
+    option.value ||
+    option.description ||
+    option.deviceName ||
+    option.cargoApiName ||
+    option.apiName ||
+    option.code ||
+    option.apiId ||
+    option.id ||
+    ''
+  );
+};
 
 const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
   <Box
@@ -119,7 +157,11 @@ export default function WarehouseCheckInPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
-  const { warehouseReceiptSearch } = useSelector((state) => state.warehousedata);
+  const cameraInputRef = useRef(null);
+  const cameraVideoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const draftRestoredRef = useRef(false);
+  const { warehouseReceiptSearch, cargoApiDropdown, warehouseCheckInDraft } = useSelector((state) => state.warehousedata);
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
@@ -139,9 +181,36 @@ export default function WarehouseCheckInPage() {
   const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
+  const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
+  const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
+
+  useEffect(() => {
+    dispatch(fetchCargoApiDropdown());
+  }, [dispatch]);
+
+  useEffect(() => () => {
+    cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (!warehouseCheckInDraft || draftRestoredRef.current) return;
+
+    draftRestoredRef.current = true;
+    setSearchType(warehouseCheckInDraft.searchType || 'pro');
+    setSearchBy(warehouseCheckInDraft.searchBy || 'PRO');
+    setSearchValue(warehouseCheckInDraft.searchValue || '');
+    setSavedResults(warehouseCheckInDraft.savedResults || null);
+    setCollapsed(warehouseCheckInDraft.collapsed || {});
+    setRejectedRowIds(warehouseCheckInDraft.rejectedRowIds || []);
+    setIsSearchDisabled(Boolean(warehouseCheckInDraft.isSearchDisabled));
+    setReceiptErrors(warehouseCheckInDraft.receiptErrors || {});
+    setProceededReceipts(warehouseCheckInDraft.proceededReceipts || []);
+  }, [warehouseCheckInDraft]);
 
   // Show no data dialog when search returns empty results
   useEffect(() => {
@@ -185,12 +254,53 @@ export default function WarehouseCheckInPage() {
     setSavedResults(null);
   };
 
+  const getItemErrorKey = (formId, itemId, field) => `${formId}-${itemId}-${field}`;
+
   const addForm = async (key) => {
     const receipt = proceededReceipts.find((p) => p.key === key);
     if (!receipt) return;
 
+    const lastForm = receipt.forms[receipt.forms.length - 1];
+    const itemErrors = {};
+
     if (!receipt.receivedBy.trim()) {
-      setReceiptErrors((prev) => ({ ...prev, [key]: { receivedBy: 'Received By is mandatory' } }));
+      setReceiptErrors((prev) => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          receivedBy: 'Received By is mandatory',
+        },
+      }));
+      updateReceipt(key, () => ({ sectionCollapsed: false }));
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before adding a new form', severity: 'error' });
+      return;
+    }
+
+    lastForm.items.forEach((item) => {
+      REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
+        if (!String(item[field]).trim()) {
+          itemErrors[getItemErrorKey(lastForm.id, item.id, field)] = `${label} is mandatory`;
+        }
+      });
+    });
+
+    if (Object.keys(itemErrors).length > 0) {
+      setReceiptErrors((prev) => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          receivedBy: '',
+          items: {
+            ...(prev[key]?.items || {}),
+            ...itemErrors,
+          },
+        },
+      }));
+      updateReceipt(key, (p) => ({
+        sectionCollapsed: false,
+        forms: p.forms.map((form) => (form.id === lastForm.id ? { ...form, collapsed: false } : form)),
+      }));
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before adding a new form', severity: 'error' });
       return;
     }
 
@@ -210,7 +320,8 @@ export default function WarehouseCheckInPage() {
         return;
       }
 
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1)] }));
+      const receiptNumber = response?.data?.receiptNumber;
+      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1, receiptNumber)] }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -238,9 +349,20 @@ export default function WarehouseCheckInPage() {
 
   const removeItem = (key, formId, itemId) =>
     updateReceipt(key, (p) => ({
-      forms: p.forms.map((f) =>
-        f.id === formId ? { ...f, items: f.items.filter((i) => i.id !== itemId) } : f
-      ),
+      forms: p.forms.map((f) => {
+        if (f.id !== formId) return f;
+        // If this is the last item, clear values instead of removing
+        if (f.items.length === 1) {
+          return {
+            ...f,
+            items: f.items.map((i) =>
+              i.id === itemId ? { ...createItem(i.id) } : i
+            ),
+          };
+        }
+        // Otherwise, remove the item
+        return { ...f, items: f.items.filter((i) => i.id !== itemId) };
+      }),
     }));
 
   const updateItem = (key, formId, itemId, field, value) =>
@@ -252,6 +374,23 @@ export default function WarehouseCheckInPage() {
       ),
     }));
 
+  const clearItemError = (key, formId, itemId, field, value) => {
+    if (!String(value).trim()) return;
+
+    setReceiptErrors((prev) => {
+      const itemErrors = { ...(prev[key]?.items || {}) };
+      delete itemErrors[getItemErrorKey(formId, itemId, field)];
+
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          items: itemErrors,
+        },
+      };
+    });
+  };
+
   const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload') => {
     setUploadDialog({ open: true, mode, key, formId, itemId });
     setStagedFiles(existingFiles);
@@ -262,10 +401,75 @@ export default function WarehouseCheckInPage() {
     setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
     setStagedFiles([]);
     setIsDraggingFiles(false);
+    handleCloseCamera();
   };
 
   const handleBrowseFiles = () => {
     fileInputRef.current?.click();
+  };
+
+  const stopCameraStream = () => {
+    cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+  };
+
+  const handleCaptureImage = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      cameraInputRef.current?.click();
+      setSnackbar({
+        open: true,
+        message: 'Camera is not available in this browser. Please use file upload.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      setCameraDialogOpen(true);
+
+      setTimeout(() => {
+        if (cameraVideoRef.current) {
+          cameraVideoRef.current.srcObject = stream;
+          cameraVideoRef.current.play?.();
+        }
+      }, 0);
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error?.message || 'Unable to open camera',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleCloseCamera = () => {
+    stopCameraStream();
+    setCameraDialogOpen(false);
+  };
+
+  const handleTakePhoto = () => {
+    const video = cameraVideoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+
+      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      addFilesToStage([file]);
+      handleCloseCamera();
+    }, 'image/jpeg', 0.92);
   };
 
   const addFilesToStage = (files) => {
@@ -317,6 +521,69 @@ export default function WarehouseCheckInPage() {
 
     updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, 'images', stagedFiles);
     handleCloseImageUpload();
+  };
+
+  const getDimensionValue = (dimensions, fields) => {
+    const data = Array.isArray(dimensions) ? dimensions[0] : dimensions;
+    const field = fields.find((name) => data?.[name] !== undefined && data?.[name] !== null && data?.[name] !== '');
+    return field ? data[field] : null;
+  };
+
+  const applyCargoDimensions = (dimensionsResponse) => {
+    const { key, formId, itemId } = packageDropdownContext;
+    const dimensions = dimensionsResponse?.data || dimensionsResponse;
+
+    if (!key || !formId || !itemId || !dimensions || dimensionsResponse?.error) return;
+
+    const fieldMap = {
+      length: ['length', 'cargoLength', 'apiLength'],
+      width: ['width', 'cargoWidth', 'apiWidth'],
+      height: ['height', 'cargoHeight', 'apiHeight'],
+      weight: ['weight', 'cargoWeight', 'apiWeight', 'weightLbs'],
+    };
+
+    Object.entries(fieldMap).forEach(([field, fieldNames]) => {
+      const value = getDimensionValue(dimensions, fieldNames);
+      if (value !== null) {
+        updateItem(key, formId, itemId, field, String(value));
+        clearItemError(key, formId, itemId, field, String(value));
+      }
+    });
+  };
+
+  const handlePackageDetailsClick = (event, key, formId, itemId) => {
+    setPackageDropdownAnchor(event.currentTarget);
+    setPackageDropdownContext({ key, formId, itemId });
+  };
+
+  const handleClosePackageDropdown = () => {
+    setPackageDropdownAnchor(null);
+  };
+
+  const handlePackageOptionSelect = async (option) => {
+    const apiId = option?.apiId || option?.id || option?.value;
+
+    if (!apiId) {
+      handleClosePackageDropdown();
+      return;
+    }
+
+    const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
+    applyCargoDimensions(dimensionsResponse);
+
+    if (dimensionsResponse?.message) {
+      setSnackbar({
+        open: true,
+        message: dimensionsResponse.message,
+        severity: dimensionsResponse.error || dimensionsResponse.success === false
+          ? 'error'
+          : dimensionsResponse.warning
+            ? 'warning'
+            : 'success',
+      });
+    }
+
+    handleClosePackageDropdown();
   };
 
   const handleRejectOpen = (row) => {
@@ -387,6 +654,106 @@ export default function WarehouseCheckInPage() {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  const handleCancel = () => {
+    dispatch(clearWarehouseCheckInDraft());
+    setSearchType('pro');
+    setSearchBy('PRO');
+    setSearchValue('');
+    setSavedResults(null);
+    setCollapsed({});
+    setRejectOpen(false);
+    setRejectReason('');
+    setRejectRow(null);
+    setRejectLoading(false);
+    setRejectedRowIds([]);
+    setNoDataDialogOpen(false);
+    setSnackbar({ open: false, message: '', severity: 'success' });
+    setIsSearchDisabled(false);
+    setTempReceiptLoading({});
+    setReceiptErrors({});
+    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+    setStagedFiles([]);
+    setIsDraggingFiles(false);
+    setPackageDropdownAnchor(null);
+    setPackageDropdownContext({ key: null, formId: null, itemId: null });
+    setProceededReceipts([]);
+    dispatch(clearReceiptSearch());
+  };
+
+  const handleNext = () => {
+    if (proceededReceipts.length === 0) {
+      setSnackbar({ open: true, message: 'Please proceed with a warehouse receipt before continuing', severity: 'error' });
+      return;
+    }
+
+    const nextErrors = {};
+    let hasErrors = false;
+
+    proceededReceipts.forEach((receipt) => {
+      const receiptError = { items: {} };
+
+      if (!receipt.receivedBy.trim()) {
+        receiptError.receivedBy = 'Received By is mandatory';
+        hasErrors = true;
+      }
+
+      receipt.forms.forEach((form) => {
+        form.items.forEach((item) => {
+          REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
+            if (!String(item[field]).trim()) {
+              receiptError.items[getItemErrorKey(form.id, item.id, field)] = `${label} is mandatory`;
+              hasErrors = true;
+            }
+          });
+        });
+      });
+
+      if (receiptError.receivedBy || Object.keys(receiptError.items).length > 0) {
+        nextErrors[receipt.key] = receiptError;
+      }
+    });
+
+    setReceiptErrors(nextErrors);
+
+    if (hasErrors) {
+      setProceededReceipts((prev) =>
+        prev.map((receipt) => {
+          const receiptError = nextErrors[receipt.key];
+          if (!receiptError) return receipt;
+
+          return {
+            ...receipt,
+            sectionCollapsed: false,
+            forms: receipt.forms.map((form) => ({
+              ...form,
+              collapsed: form.items.some((item) =>
+                REQUIRED_ITEM_FIELDS.some(({ field }) => receiptError.items[getItemErrorKey(form.id, item.id, field)])
+              )
+                ? false
+                : form.collapsed,
+            })),
+          };
+        })
+      );
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before continuing', severity: 'error' });
+      return;
+    }
+
+    dispatch(setWarehouseCheckInDraft({
+      searchType,
+      searchBy,
+      searchValue,
+      savedResults,
+      collapsed,
+      rejectedRowIds,
+      isSearchDisabled,
+      receiptErrors: nextErrors,
+      proceededReceipts,
+    }));
+
+    navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts } });
+  };
+
   // ── Search handler ─────────────────────────────────────────────────
   const handleSearch = () => {
     if (!searchValue.trim()) {
@@ -435,7 +802,9 @@ export default function WarehouseCheckInPage() {
     <ShipmentFormLayout
       title="Warehouse Check-In / Regular"
       handleClose={() => navigate(-1)}
-      onSubmit={() => {}}
+      onCancel={handleCancel}
+      onSubmit={handleNext}
+      submitLabel="Next"
     >
       <Stack spacing={3}>
         {/* Warehouse Receipt fieldset */}
@@ -703,7 +1072,7 @@ export default function WarehouseCheckInPage() {
                         <legend>
                           <Stack direction="row" alignItems="center" spacing={0.5}>
                             <Typography variant="subtitle2" sx={{ fontWeight: 600, px: 1 }}>
-                              New Form {fIdx + 1} - {pr.row.receiptNumber}
+                              New Form {fIdx + 1} - {form.receiptNumber || pr.row.receiptNumber}
                             </Typography>
                             <IconButton
                               size="small"
@@ -759,7 +1128,12 @@ export default function WarehouseCheckInPage() {
                                     variant="standard"
                                     size="small"
                                     value={item.pieces}
-                                    onChange={(e) => updateItem(pr.key, form.id, item.id, 'pieces', e.target.value)}
+                                    onChange={(e) => {
+                                      updateItem(pr.key, form.id, item.id, 'pieces', e.target.value);
+                                      clearItemError(pr.key, form.id, item.id, 'pieces', e.target.value);
+                                    }}
+                                    error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'pieces')]}
+                                    helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'pieces')] || ' '}
                                     inputProps={{ style: { fontSize: 13 } }}
                                   />
                                 </Stack>
@@ -774,7 +1148,12 @@ export default function WarehouseCheckInPage() {
                                     variant="standard"
                                     size="small"
                                     value={item.type}
-                                    onChange={(e) => updateItem(pr.key, form.id, item.id, 'type', e.target.value)}
+                                    onChange={(e) => {
+                                      updateItem(pr.key, form.id, item.id, 'type', e.target.value);
+                                      clearItemError(pr.key, form.id, item.id, 'type', e.target.value);
+                                    }}
+                                    error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'type')]}
+                                    helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'type')] || ' '}
                                     inputProps={{ style: { fontSize: 13 } }}
                                   >
                                     {FREIGHT_TYPE_OPTIONS.map((opt) => (
@@ -798,9 +1177,12 @@ export default function WarehouseCheckInPage() {
                                       variant="standard"
                                       size="small"
                                       value={item[field]}
-                                      onChange={(e) =>
-                                        updateItem(pr.key, form.id, item.id, field, e.target.value)
-                                      }
+                                      onChange={(e) => {
+                                        updateItem(pr.key, form.id, item.id, field, e.target.value);
+                                        clearItemError(pr.key, form.id, item.id, field, e.target.value);
+                                      }}
+                                      error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)]}
+                                      helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)] || ' '}
                                       inputProps={{ style: { fontSize: 13 } }}
                                     />
                                   </Stack>
@@ -811,19 +1193,19 @@ export default function WarehouseCheckInPage() {
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}
-                                    disabled={form.items.length === 1}
                                     title="Delete item"
                                     sx={{ p: 0.4 }}
                                   >
                                     <Iconify
                                       icon="mdi:trash-can"
                                       width={24}
-                                      sx={{ color: form.items.length === 1 ? '#9e9e9e' : '#8c8c8c' }}
+                                      sx={{ color: '#000' }}
                                     />
                                   </IconButton>
                                   <IconButton
                                     size="small"
                                     title="Package details"
+                                    onClick={(event) => handlePackageDetailsClick(event, pr.key, form.id, item.id)}
                                     sx={{ p: 0.4 }}
                                   >
                                     <Iconify icon="mdi:cube" width={28} sx={{ color: '#000' }} />
@@ -1026,6 +1408,14 @@ export default function WarehouseCheckInPage() {
             style={{ display: 'none' }}
             onChange={handleFileSelection}
           />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={handleFileSelection}
+          />
 
           <Stack spacing={2}>
             {uploadDialog.mode !== 'view' && (
@@ -1058,14 +1448,31 @@ export default function WarehouseCheckInPage() {
                   <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Drag & Drop File</Typography>
                   <Typography sx={{ fontSize: 11, color: '#777' }}>File Supported: Image, JIF</Typography>
                   <Typography sx={{ fontSize: 14, fontWeight: 600, my: 0.5 }}>OR</Typography>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={handleBrowseFiles}
-                    sx={{ ...actionBtnSx, height: 32 }}
-                  >
-                    Browse Files
-                  </Button>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <IconButton
+                      size="small"
+                      onClick={handleCaptureImage}
+                      title="Capture image"
+                      sx={{
+                        bgcolor: '#A22',
+                        color: '#fff',
+                        width: 32,
+                        height: 32,
+                        borderRadius: 1,
+                        '&:hover': { bgcolor: '#8b1c1c' },
+                      }}
+                    >
+                      <Iconify icon="mdi:camera" width={20} />
+                    </IconButton>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleBrowseFiles}
+                      sx={{ ...actionBtnSx, height: 32 }}
+                    >
+                      Browse Files
+                    </Button>
+                  </Stack>
                 </Stack>
               )}
 
@@ -1119,6 +1526,96 @@ export default function WarehouseCheckInPage() {
           )}
         </DialogActions>
       </Dialog>
+
+      <Dialog open={cameraDialogOpen} onClose={handleCloseCamera} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          Capture Image
+          <IconButton
+            onClick={handleCloseCamera}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box
+            component="video"
+            ref={cameraVideoRef}
+            autoPlay
+            playsInline
+            muted
+            sx={{
+              width: '100%',
+              maxHeight: 420,
+              bgcolor: '#000',
+              borderRadius: 1,
+              objectFit: 'contain',
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCloseCamera}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleTakePhoto}
+            sx={{ ...actionBtnSx, height: 32 }}
+          >
+            Capture
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Popover
+        open={Boolean(packageDropdownAnchor)}
+        anchorEl={packageDropdownAnchor}
+        onClose={handleClosePackageDropdown}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+        PaperProps={{
+          sx: {
+            mt: 0.5,
+            minWidth: 180,
+            maxWidth: 260,
+            maxHeight: 280,
+            border: '1px solid #d9d9d9',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+          },
+        }}
+      >
+        {cargoApiDropdown.loading ? (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5 }}>
+            <CircularProgress size={16} />
+            <Typography sx={{ fontSize: 12 }}>Loading...</Typography>
+          </Stack>
+        ) : cargoApiDropdown.error ? (
+          <Typography sx={{ px: 2, py: 1.5, fontSize: 12, color: 'error.main' }}>
+            {cargoApiDropdown.error}
+          </Typography>
+        ) : cargoApiDropdown.data.length > 0 ? (
+          <MenuList dense sx={{ py: 0.5 }}>
+            {cargoApiDropdown.data.map((option, index) => (
+              <MenuItem
+                key={option?.apiId || option?.id || option?.value || option?.code || index}
+                onClick={() => handlePackageOptionSelect(option)}
+                sx={{ fontSize: 12, minHeight: 30 }}
+              >
+                {getDropdownOptionLabel(option)}
+              </MenuItem>
+            ))}
+          </MenuList>
+        ) : (
+          <Typography sx={{ px: 2, py: 1.5, fontSize: 12 }}>No package details available</Typography>
+        )}
+      </Popover>
 
       {/* Snackbar for notifications */}
       <Snackbar
