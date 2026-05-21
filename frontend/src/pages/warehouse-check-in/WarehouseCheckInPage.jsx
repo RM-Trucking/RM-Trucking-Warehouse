@@ -31,6 +31,7 @@ import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
   searchWarehouseReceipt,
+  searchWarehouseReceiptProDetail,
   clearReceiptSearch,
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
@@ -906,7 +907,11 @@ export default function WarehouseCheckInPage({
       return;
     }
     setNoDataDialogOpen(false);
-    dispatch(searchWarehouseReceipt(searchValue.trim(), searchBy.toLowerCase()));
+    if (searchType === 'rmDriver') {
+      dispatch(searchWarehouseReceiptProDetail(searchValue.trim()));
+    } else {
+      dispatch(searchWarehouseReceipt(searchValue.trim(), searchBy.toLowerCase()));
+    }
     setCollapsed({});
   };
 
@@ -992,32 +997,33 @@ export default function WarehouseCheckInPage({
 
           {/* Search row */}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
-            {/* Search By dropdown */}
-            <Stack spacing={0.5} sx={{ minWidth: 160 }}>
-              <Typography sx={{ fontSize: 12, color: '#555' }}>
-                Search By <span style={{ color: 'red' }}>*</span>
-              </Typography>
-              <StyledTextField
-                select
-                variant="outlined"
-                size="small"
-                value={searchBy}
-                onChange={(e) => setSearchBy(e.target.value)}
-                disabled={isSearchDisabled}
-                sx={{ minWidth: 160 }}
-              >
-                {SEARCH_BY_OPTIONS.map((opt) => (
-                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                ))}
-              </StyledTextField>
-            </Stack>
+            {searchType !== 'rmDriver' && (
+              <Stack spacing={0.5} sx={{ minWidth: 160 }}>
+                <Typography sx={{ fontSize: 12, color: '#555' }}>
+                  Search By <span style={{ color: 'red' }}>*</span>
+                </Typography>
+                <StyledTextField
+                  select
+                  variant="standard"
+                  size="small"
+                  value={searchBy}
+                  onChange={(e) => setSearchBy(e.target.value)}
+                  disabled={isSearchDisabled}
+                  sx={{ minWidth: 160 }}
+                >
+                  {SEARCH_BY_OPTIONS.map((opt) => (
+                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                  ))}
+                </StyledTextField>
+              </Stack>
+            )}
 
             {/* PRO / value input */}
             <StyledTextField
-              variant="outlined"
+              variant="standard"
               size="small"
               required
-              label={searchBy}
+              label={searchType === 'rmDriver' ? 'Pro' : searchBy}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

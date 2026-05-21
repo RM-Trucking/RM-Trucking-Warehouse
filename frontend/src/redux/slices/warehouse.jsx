@@ -54,6 +54,39 @@ const isCargoApiDimensionWarning = (responseData) => {
     return Boolean(dimension?.code && !dimension?.value);
 };
 
+const transformWarehouseReceiptResponse = (receiptsData, searchValue) => {
+    let receipts = receiptsData;
+
+    if (!Array.isArray(receipts) && receipts) {
+        receipts = [receipts];
+    }
+
+    if (Array.isArray(receipts) && receipts.length > 0) {
+        const rows = receipts.map((receipt, index) => ({
+            id: receipt.receiptId || receipt.id || index,
+            sno: String(index + 1).padStart(2, '0'),
+            receiptNumber: receipt.receiptNumber,
+            carrier: receipt.carrierName || '-',
+            customer: receipt.customerName ? `${receipt.customerName} | ${receipt.stationName || '-'}` : '-',
+            ...receipt
+        }));
+
+        return {
+            proNumber: receipts[0]?.proNumber || searchValue,
+            rows
+        };
+    }
+
+    if (Array.isArray(receipts) && receipts.length === 0) {
+        return {
+            proNumber: searchValue,
+            rows: []
+        };
+    }
+
+    return null;
+};
+
 const slice = createSlice({
     name: 'warehouse',
     initialState,
@@ -196,57 +229,15 @@ export function searchWarehouseReceipt(searchValue, searchBy) {
             const response = await axios.get(`/warehouse-receipt/${searchValue}?searchBy=${searchByParam}`);
 
             if (response.data?.success && response.data?.data) {
-                // Transform the API response to the expected format
-                let receipts = response.data.data;
-                console.log('API Response receipts:', receipts);
-                console.log('Is array?', Array.isArray(receipts));
-                console.log('Length:', receipts?.length);
+                const transformedData = transformWarehouseReceiptResponse(response.data.data, searchValue);
 
-                // Handle case where data might be a single object instead of array
-                if (!Array.isArray(receipts) && receipts) {
-                    receipts = [receipts];
-                    console.log('Converted single object to array:', receipts);
-                }
-
-                if (Array.isArray(receipts) && receipts.length > 0) {
-                    // Map each receipt to the table row format
-                    const rows = receipts.map((receipt, index) => ({
-                        id: receipt.receiptId || receipt.id || index,
-                        sno: String(index + 1).padStart(2, '0'),
-                        receiptNumber: receipt.receiptNumber,
-                        carrier: receipt.carrierName || '-',
-                        customer: receipt.customerName ? `${receipt.customerName} | ${receipt.stationName || '-'}` : '-',
-                        // Include original data for proceed action
-                        ...receipt
-                    }));
-
-                    console.log('Transformed rows:', rows);
-
-                    // Group by PRO number (if there are multiple PROs, use the first one)
-                    const proNumber = receipts[0]?.proNumber || searchValue;
-
-                    const transformedData = {
-                        proNumber,
-                        rows
-                    };
-
-                    console.log('Final transformed data:', transformedData);
+                if (transformedData) {
                     dispatch(slice.actions.receiptSearchSuccess(transformedData));
                     return transformedData;
-                } else if (Array.isArray(receipts) && receipts.length === 0) {
-                    // Handle empty results - still consider it a successful search
-                    console.log('Empty results - no rows found');
-                    const transformedData = {
-                        proNumber: searchValue,
-                        rows: []
-                    };
-                    dispatch(slice.actions.receiptSearchSuccess(transformedData));
-                    return transformedData;
-                } else {
-                    console.log('No rows found or not an array');
-                    dispatch(slice.actions.receiptSearchNotFound());
-                    return null;
                 }
+
+                dispatch(slice.actions.receiptSearchNotFound());
+                return null;
             } else if (!response.data?.success && response.data?.message) {
                 const errorMessage = response.data.message;
                 dispatch(slice.actions.receiptSearchError(errorMessage));
@@ -271,6 +262,54 @@ export function searchWarehouseReceipt(searchValue, searchBy) {
                 dispatch(slice.actions.receiptSearchError(errorMessage));
                 return { error: true, message: errorMessage };
             }
+        }
+    };
+}
+
+// Search Warehouse Receipt PRO detail for RM Driver
+export function searchWarehouseReceiptProDetail(proNumber) {
+    return async () => {
+        dispatch(slice.actions.startReceiptSearch());
+        try {
+            if (!proNumber || !proNumber.trim()) {
+                dispatch(slice.actions.receiptSearchError('Please enter a PRO number'));
+                return;
+            }
+
+            const response = await axios.get(`/warehouse-receipt/pro-detail/${proNumber.trim()}`);
+
+            if (response.data?.success && response.data?.data) {
+                const transformedData = transformWarehouseReceiptResponse(response.data.data, proNumber);
+
+                if (transformedData) {
+                    dispatch(slice.actions.receiptSearchSuccess(transformedData));
+                    return transformedData;
+                }
+
+                dispatch(slice.actions.receiptSearchNotFound());
+                return null;
+            }
+
+            if (!response.data?.success && response.data?.message) {
+                const errorMessage = response.data.message;
+                dispatch(slice.actions.receiptSearchError(errorMessage));
+                return { error: true, message: errorMessage };
+            }
+
+            dispatch(slice.actions.receiptSearchNotFound());
+            return null;
+        } catch (error) {
+            console.error('Error searching warehouse receipt PRO detail:', error);
+            let errorMessage = 'Error searching warehouse receipt PRO detail';
+
+            if (error.response?.status === 404) {
+                dispatch(slice.actions.receiptSearchNotFound());
+                return null;
+            }
+
+            errorMessage = error.response?.data?.message || error.message || errorMessage;
+            dispatch(slice.actions.receiptSearchError(errorMessage));
+            return { error: true, message: errorMessage };
         }
     };
 }
