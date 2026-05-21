@@ -228,6 +228,34 @@ export default function WarehouseCheckInPage({
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
 
+  const resetCheckInState = () => {
+    setSearchType('pro');
+    setSearchBy('PRO');
+    setSearchValue('');
+    setSavedResults(null);
+    setCollapsed({});
+    setRejectOpen(false);
+    setRejectReason('');
+    setRejectRow(null);
+    setRejectLoading(false);
+    setRejectedRowIds([]);
+    setNoDataDialogOpen(false);
+    setSnackbar({ open: false, message: '', severity: 'success' });
+    setIsSearchDisabled(false);
+    setTempReceiptLoading({});
+    setReceiptErrors({});
+    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+    setStagedFiles([]);
+    setIsDraggingFiles(false);
+    setCameraDialogOpen(false);
+    setPackageDropdownAnchor(null);
+    setPackageDropdownContext({ key: null, formId: null, itemId: null });
+    setPrinterDialogOpen(false);
+    setSelectedPrinterId('');
+    setProceededReceipts([]);
+  };
+
   useEffect(() => {
     dispatch(fetchCargoApiDropdown());
   }, [dispatch]);
@@ -238,7 +266,19 @@ export default function WarehouseCheckInPage({
   }, []);
 
   useEffect(() => {
-    if (!warehouseCheckInDraft || draftRestoredRef.current) return;
+    draftRestoredRef.current = false;
+    resetCheckInState();
+    dispatch(clearReceiptSearch());
+  }, [draftKey, dispatch]);
+
+  useEffect(() => {
+    if (!warehouseCheckInDraft) {
+      draftRestoredRef.current = false;
+      resetCheckInState();
+      return;
+    }
+
+    if (draftRestoredRef.current) return;
 
     draftRestoredRef.current = true;
     setSearchType(warehouseCheckInDraft.searchType || 'pro');
@@ -288,6 +328,8 @@ export default function WarehouseCheckInPage({
     setProceededReceipts((prev) => prev.map((p) => (p.key === key ? { ...p, ...updater(p) } : p)));
 
   const removeReceipt = (key) => {
+    dispatch(clearWarehouseCheckInDraft(draftKey));
+    draftRestoredRef.current = false;
     setProceededReceipts((prev) => prev.filter((p) => p.key !== key));
     setIsSearchDisabled(false);
     setSearchValue('');
@@ -782,28 +824,9 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCancel = () => {
-    dispatch(clearWarehouseCheckInDraft(draftKey));
-    setSearchType('pro');
-    setSearchBy('PRO');
-    setSearchValue('');
-    setSavedResults(null);
-    setCollapsed({});
-    setRejectOpen(false);
-    setRejectReason('');
-    setRejectRow(null);
-    setRejectLoading(false);
-    setRejectedRowIds([]);
-    setNoDataDialogOpen(false);
-    setSnackbar({ open: false, message: '', severity: 'success' });
-    setIsSearchDisabled(false);
-    setTempReceiptLoading({});
-    setReceiptErrors({});
-    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
-    setStagedFiles([]);
-    setIsDraggingFiles(false);
-    setPackageDropdownAnchor(null);
-    setPackageDropdownContext({ key: null, formId: null, itemId: null });
-    setProceededReceipts([]);
+    dispatch(clearWarehouseCheckInDraft());
+    draftRestoredRef.current = false;
+    resetCheckInState();
     dispatch(clearReceiptSearch());
   };
 
