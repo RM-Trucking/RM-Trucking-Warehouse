@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, createElement, lazy } from 'react';
 // components
 import LoadingScreen from '../components/loading-screen';
 
@@ -7,7 +7,7 @@ import LoadingScreen from '../components/loading-screen';
 const Loadable = (Component) => (props) =>
   (
     <Suspense fallback={<LoadingScreen />}>
-      <Component {...props} />
+      {createElement(Component, props)}
     </Suspense>
   );
 
@@ -24,6 +24,7 @@ export const TrailerCheckInPage = Loadable(lazy(() => import('../pages/warehouse
 export const EnRoutePage = Loadable(lazy(() => import('../pages/en-route/EnRoutePage')));
 export const IdVerificationFormPage = Loadable(lazy(() => import('../pages/IdVerificationForm/IdVerificationFormPage')));
 export const IdVerificationViewPage = Loadable(lazy(() => import('../pages/IdVerificationForm/IdVerificationView')));
+export const WarehouseRecieptPage = Loadable(lazy(() => import('../pages/warehouse-receipt-form/WarehouseRecieptPage')));
 export const WarehouseReceiptFormPage = Loadable(lazy(() => import('../pages/warehouse-check-in/WarehouseReceiptFormPage')));
 export const ShipmentFormPage = Loadable(lazy(() => import('../pages/shipment/ShipmentFormPage')));
 
