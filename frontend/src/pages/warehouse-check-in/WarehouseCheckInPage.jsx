@@ -31,6 +31,7 @@ import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
   searchWarehouseReceipt,
+  searchWarehouseReceiptProDetail,
   clearReceiptSearch,
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
@@ -227,6 +228,34 @@ export default function WarehouseCheckInPage({
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
 
+  const resetCheckInState = () => {
+    setSearchType('pro');
+    setSearchBy('PRO');
+    setSearchValue('');
+    setSavedResults(null);
+    setCollapsed({});
+    setRejectOpen(false);
+    setRejectReason('');
+    setRejectRow(null);
+    setRejectLoading(false);
+    setRejectedRowIds([]);
+    setNoDataDialogOpen(false);
+    setSnackbar({ open: false, message: '', severity: 'success' });
+    setIsSearchDisabled(false);
+    setTempReceiptLoading({});
+    setReceiptErrors({});
+    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+    setStagedFiles([]);
+    setIsDraggingFiles(false);
+    setCameraDialogOpen(false);
+    setPackageDropdownAnchor(null);
+    setPackageDropdownContext({ key: null, formId: null, itemId: null });
+    setPrinterDialogOpen(false);
+    setSelectedPrinterId('');
+    setProceededReceipts([]);
+  };
+
   useEffect(() => {
     dispatch(fetchCargoApiDropdown());
   }, [dispatch]);
@@ -237,7 +266,19 @@ export default function WarehouseCheckInPage({
   }, []);
 
   useEffect(() => {
-    if (!warehouseCheckInDraft || draftRestoredRef.current) return;
+    draftRestoredRef.current = false;
+    resetCheckInState();
+    dispatch(clearReceiptSearch());
+  }, [draftKey, dispatch]);
+
+  useEffect(() => {
+    if (!warehouseCheckInDraft) {
+      draftRestoredRef.current = false;
+      resetCheckInState();
+      return;
+    }
+
+    if (draftRestoredRef.current) return;
 
     draftRestoredRef.current = true;
     setSearchType(warehouseCheckInDraft.searchType || 'pro');
@@ -287,6 +328,8 @@ export default function WarehouseCheckInPage({
     setProceededReceipts((prev) => prev.map((p) => (p.key === key ? { ...p, ...updater(p) } : p)));
 
   const removeReceipt = (key) => {
+    dispatch(clearWarehouseCheckInDraft(draftKey));
+    draftRestoredRef.current = false;
     setProceededReceipts((prev) => prev.filter((p) => p.key !== key));
     setIsSearchDisabled(false);
     setSearchValue('');
@@ -781,28 +824,9 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCancel = () => {
-    dispatch(clearWarehouseCheckInDraft(draftKey));
-    setSearchType('pro');
-    setSearchBy('PRO');
-    setSearchValue('');
-    setSavedResults(null);
-    setCollapsed({});
-    setRejectOpen(false);
-    setRejectReason('');
-    setRejectRow(null);
-    setRejectLoading(false);
-    setRejectedRowIds([]);
-    setNoDataDialogOpen(false);
-    setSnackbar({ open: false, message: '', severity: 'success' });
-    setIsSearchDisabled(false);
-    setTempReceiptLoading({});
-    setReceiptErrors({});
-    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
-    setStagedFiles([]);
-    setIsDraggingFiles(false);
-    setPackageDropdownAnchor(null);
-    setPackageDropdownContext({ key: null, formId: null, itemId: null });
-    setProceededReceipts([]);
+    dispatch(clearWarehouseCheckInDraft());
+    draftRestoredRef.current = false;
+    resetCheckInState();
     dispatch(clearReceiptSearch());
   };
 
@@ -906,7 +930,11 @@ export default function WarehouseCheckInPage({
       return;
     }
     setNoDataDialogOpen(false);
-    dispatch(searchWarehouseReceipt(searchValue.trim(), searchBy.toLowerCase()));
+    if (searchType === 'rmDriver') {
+      dispatch(searchWarehouseReceiptProDetail(searchValue.trim()));
+    } else {
+      dispatch(searchWarehouseReceipt(searchValue.trim(), searchBy.toLowerCase()));
+    }
     setCollapsed({});
   };
 
@@ -992,32 +1020,33 @@ export default function WarehouseCheckInPage({
 
           {/* Search row */}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
-            {/* Search By dropdown */}
-            <Stack spacing={0.5} sx={{ minWidth: 160 }}>
-              <Typography sx={{ fontSize: 12, color: '#555' }}>
-                Search By <span style={{ color: 'red' }}>*</span>
-              </Typography>
-              <StyledTextField
-                select
-                variant="outlined"
-                size="small"
-                value={searchBy}
-                onChange={(e) => setSearchBy(e.target.value)}
-                disabled={isSearchDisabled}
-                sx={{ minWidth: 160 }}
-              >
-                {SEARCH_BY_OPTIONS.map((opt) => (
-                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                ))}
-              </StyledTextField>
-            </Stack>
+            {searchType !== 'rmDriver' && (
+              <Stack spacing={0.5} sx={{ minWidth: 160 }}>
+                <Typography sx={{ fontSize: 12, color: '#555' }}>
+                  Search By <span style={{ color: 'red' }}>*</span>
+                </Typography>
+                <StyledTextField
+                  select
+                  variant="standard"
+                  size="small"
+                  value={searchBy}
+                  onChange={(e) => setSearchBy(e.target.value)}
+                  disabled={isSearchDisabled}
+                  sx={{ minWidth: 160 }}
+                >
+                  {SEARCH_BY_OPTIONS.map((opt) => (
+                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                  ))}
+                </StyledTextField>
+              </Stack>
+            )}
 
             {/* PRO / value input */}
             <StyledTextField
-              variant="outlined"
+              variant="standard"
               size="small"
               required
-              label={searchBy}
+              label={searchType === 'rmDriver' ? 'Pro' : searchBy}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
