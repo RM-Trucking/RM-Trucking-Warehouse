@@ -25,7 +25,8 @@ const initialState = {
         data: null,
         error: null
     },
-    warehouseCheckInDraft: null
+    warehouseCheckInDraft: null,
+    warehouseCheckInDrafts: {}
 };
 
 const normalizeDropdownOptions = (payload) => {
@@ -133,10 +134,22 @@ const slice = createSlice({
             state.warehouseReceiptBatch.error = action.payload || 'Failed to submit warehouse receipts';
         },
         setWarehouseCheckInDraft(state, action) {
+            const draftKey = action.payload?.draftKey || 'regular';
             state.warehouseCheckInDraft = action.payload;
+            state.warehouseCheckInDrafts[draftKey] = action.payload?.draft || action.payload;
         },
-        clearWarehouseCheckInDraft(state) {
+        clearWarehouseCheckInDraft(state, action) {
+            const draftKey = action.payload?.draftKey;
+            if (draftKey) {
+                delete state.warehouseCheckInDrafts[draftKey];
+                if (state.warehouseCheckInDraft?.draftKey === draftKey) {
+                    state.warehouseCheckInDraft = null;
+                }
+                return;
+            }
+
             state.warehouseCheckInDraft = null;
+            state.warehouseCheckInDrafts = {};
         }
     }
 });
@@ -336,14 +349,14 @@ export function clearCargoApiDropdown() {
     };
 }
 
-export function setWarehouseCheckInDraft(draft) {
+export function setWarehouseCheckInDraft(draft, draftKey = 'regular') {
     return async () => {
-        dispatch(slice.actions.setWarehouseCheckInDraft(draft));
+        dispatch(slice.actions.setWarehouseCheckInDraft({ draftKey, draft }));
     };
 }
 
-export function clearWarehouseCheckInDraft() {
+export function clearWarehouseCheckInDraft(draftKey) {
     return async () => {
-        dispatch(slice.actions.clearWarehouseCheckInDraft());
+        dispatch(slice.actions.clearWarehouseCheckInDraft({ draftKey }));
     };
 }

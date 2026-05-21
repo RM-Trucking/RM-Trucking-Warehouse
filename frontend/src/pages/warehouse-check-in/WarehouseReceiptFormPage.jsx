@@ -195,17 +195,27 @@ const buildFallbackForms = () => [
 
 const getFormsFromState = (receipts = []) =>
   receipts.flatMap((receipt, receiptIndex) =>
-    receipt.forms.map((form, formIndex) => ({
-      id: `${receipt.key || receiptIndex}-${form.id}`,
-      label: `Form ${formIndex + 1}`,
-      receiptNumber: form.receiptNumber || receipt.row?.receiptNumber || receipt.proNumber || '',
-      receivedBy: receipt.receivedBy,
-      location: receipt.location,
-      customerSelection: buildCustomerSelection(receipt.row),
-      freightInfo: createFreightInfo(),
-      row: receipt.row,
-      items: form.items,
-    }))
+    receipt.forms.map((form, formIndex) => {
+      const customerRefNoPackageId = String(form.customerRefNoPackageId || '').trim();
+      const destination = String(form.destination || '').trim();
+      const row = {
+        ...receipt.row,
+        ...(destination ? { destination } : {}),
+        ...(customerRefNoPackageId ? { packageId: customerRefNoPackageId } : {}),
+      };
+
+      return {
+        id: `${receipt.key || receiptIndex}-${form.id}`,
+        label: `Form ${formIndex + 1}`,
+        receiptNumber: form.receiptNumber || row.receiptNumber || receipt.proNumber || '',
+        receivedBy: receipt.receivedBy,
+        location: receipt.location,
+        customerSelection: buildCustomerSelection(row),
+        freightInfo: createFreightInfo(),
+        row,
+        items: form.items,
+      };
+    })
   );
 
 function Section({ title, children, sx }) {
@@ -369,6 +379,7 @@ export default function WarehouseReceiptFormPage() {
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [successDialog, setSuccessDialog] = useState({ open: false, message: '' });
+  const pageTitle = state?.title || 'Warehouse Check-In / Regular';
 
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
   const totalPieces = activeForm.items.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
@@ -661,7 +672,7 @@ export default function WarehouseReceiptFormPage() {
 
   const handleSuccessDialogOk = () => {
     setSuccessDialog({ open: false, message: '' });
-    dispatch(clearWarehouseCheckInDraft());
+    dispatch(clearWarehouseCheckInDraft(state?.draftKey));
     navigate(PATH_DASHBOARD.warehouseCheckIn);
   };
 
@@ -675,7 +686,7 @@ export default function WarehouseReceiptFormPage() {
       >
         <Stack direction="row" alignItems="center" spacing={0.7} sx={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>
           <Iconify icon="eva:arrow-ios-back-fill" width={14} />
-          <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Warehouse Check-In / Regular</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{pageTitle}</Typography>
         </Stack>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" size="small" onClick={() => navigate(-1)} sx={{ height: 24, fontSize: 11, color: '#111', borderColor: '#777', bgcolor: '#fff' }}>
