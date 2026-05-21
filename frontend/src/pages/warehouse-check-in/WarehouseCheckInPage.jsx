@@ -35,6 +35,7 @@ import {
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
+  fetchPrintersDropdown,
   setWarehouseCheckInDraft,
   clearWarehouseCheckInDraft,
 } from '../../redux/slices/warehouse';
@@ -188,7 +189,7 @@ export default function WarehouseCheckInPage({
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const draftRestoredRef = useRef(false);
-  const { warehouseReceiptSearch, cargoApiDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
+  const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
@@ -220,6 +221,8 @@ export default function WarehouseCheckInPage({
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
   const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
+  const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
+  const [selectedPrinterId, setSelectedPrinterId] = useState('');
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
@@ -682,6 +685,31 @@ export default function WarehouseCheckInPage({
     }
 
     handleClosePackageDropdown();
+  };
+
+  const handleOpenPrinterDialog = () => {
+    setPrinterDialogOpen(true);
+    setSelectedPrinterId('');
+    dispatch(fetchPrintersDropdown());
+  };
+
+  const handleClosePrinterDialog = () => {
+    setPrinterDialogOpen(false);
+    setSelectedPrinterId('');
+  };
+
+  const handlePrint = () => {
+    const printer = printersDropdown.data.find((item) => String(item.printerId) === String(selectedPrinterId));
+
+    setSnackbar({
+      open: true,
+      message: printer ? `Print requested for ${printer.printerName}` : 'Please select a printer',
+      severity: printer ? 'success' : 'error',
+    });
+
+    if (printer) {
+      handleClosePrinterDialog();
+    }
   };
 
   const handleRejectOpen = (row) => {
@@ -1277,7 +1305,7 @@ export default function WarehouseCheckInPage({
                                   variant="contained"
                                   size="small"
                                   startIcon={<Iconify icon="mdi:printer" width={16} />}
-                                  onClick={() => window.print()}
+                                  onClick={handleOpenPrinterDialog}
                                   sx={{ ...actionBtnSx, minWidth: 76, alignSelf: { xs: 'flex-end', md: 'flex-start' } }}
                                 >
                                   Print
@@ -1444,16 +1472,18 @@ export default function WarehouseCheckInPage({
                               </Stack>
                             ))}
 
-                            <Box>
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={() => addItem(pr.key, form.id)}
-                                sx={actionBtnSx}
-                              >
-                                Add Item
-                              </Button>
-                            </Box>
+                            {!showTrailerFreightHeader && (
+                              <Box>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => addItem(pr.key, form.id)}
+                                  sx={actionBtnSx}
+                                >
+                                  Add Item
+                                </Button>
+                              </Box>
+                            )}
                           </Stack>
                         </Collapse>
                       </fieldset>
@@ -1539,6 +1569,65 @@ export default function WarehouseCheckInPage({
             )}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={printerDialogOpen} onClose={handleClosePrinterDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          Select Printer
+          <IconButton
+            onClick={handleClosePrinterDialog}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
+            <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 12, color: '#555' }}>
+                Printer <span style={{ color: 'red' }}>*</span>
+              </Typography>
+              <StyledTextField
+                select
+                size="small"
+                value={selectedPrinterId}
+                onChange={(event) => setSelectedPrinterId(event.target.value)}
+                disabled={printersDropdown.loading}
+                helperText={printersDropdown.error || ''}
+                error={Boolean(printersDropdown.error)}
+                sx={{ width: '100%' }}
+              >
+                {printersDropdown.loading ? (
+                  <MenuItem value="" disabled>
+                    Loading printers...
+                  </MenuItem>
+                ) : printersDropdown.data.length > 0 ? (
+                  printersDropdown.data.map((printer) => (
+                    <MenuItem key={printer.printerId} value={printer.printerId}>
+                      {printer.printerName}
+                      {printer.printerIP ? ` - ${printer.printerIP}` : ''}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="" disabled>
+                    No printers available
+                  </MenuItem>
+                )}
+              </StyledTextField>
+            </Stack>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Iconify icon="mdi:printer" width={16} />}
+              disabled={printersDropdown.loading || !selectedPrinterId}
+              onClick={handlePrint}
+              sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' } }}
+            >
+              Print
+            </Button>
+          </Stack>
+        </DialogContent>
       </Dialog>
 
       {/* No Data Dialog */}

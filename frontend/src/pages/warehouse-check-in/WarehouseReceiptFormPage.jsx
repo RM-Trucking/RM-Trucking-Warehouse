@@ -1196,7 +1196,7 @@ export default function WarehouseReceiptFormPage() {
           </Button>
         </DialogActions>
       </Dialog>
-      <Dialog open={freightCameraOpen} onClose={handleCloseFreightCamera} maxWidth="sm" fullWidth>
+      <Dialog open={freightCameraOpen} onClose={handleCloseFreightCamera} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Capture Bad Freight Image</DialogTitle>
         <DialogContent dividers>
           <Box
@@ -1207,7 +1207,9 @@ export default function WarehouseReceiptFormPage() {
             muted
             sx={{
               width: '100%',
-              maxHeight: 420,
+              height: { xs: '60vh', md: '70vh' },
+              minHeight: { xs: 360, md: 560 },
+              maxHeight: 760,
               bgcolor: '#000',
               borderRadius: 1,
               objectFit: 'contain',

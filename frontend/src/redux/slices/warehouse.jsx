@@ -14,6 +14,11 @@ const initialState = {
         data: [],
         error: null
     },
+    printersDropdown: {
+        loading: false,
+        data: [],
+        error: null
+    },
     cargoApiDimensions: {
         loading: false,
         data: null,
@@ -102,6 +107,20 @@ const slice = createSlice({
             state.cargoApiDropdown.loading = false;
             state.cargoApiDropdown.data = [];
             state.cargoApiDropdown.error = null;
+        },
+        startPrintersDropdown(state) {
+            state.printersDropdown.loading = true;
+            state.printersDropdown.error = null;
+        },
+        printersDropdownSuccess(state, action) {
+            state.printersDropdown.loading = false;
+            state.printersDropdown.data = action.payload;
+            state.printersDropdown.error = null;
+        },
+        printersDropdownError(state, action) {
+            state.printersDropdown.loading = false;
+            state.printersDropdown.data = [];
+            state.printersDropdown.error = action.payload || 'Failed to load printers';
         },
         startCargoApiDimensions(state, action) {
             state.cargoApiDimensions.loading = true;
@@ -300,6 +319,24 @@ export function fetchCargoApiDropdown() {
             console.error('Error fetching cargo API dropdown:', error);
             const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load package details';
             dispatch(slice.actions.cargoApiDropdownError(errorMessage));
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
+// Fetch printer dropdown values
+export function fetchPrintersDropdown() {
+    return async () => {
+        dispatch(slice.actions.startPrintersDropdown());
+        try {
+            const response = await axios.get('/maintenance/devices/printers-dropdown');
+            const options = normalizeDropdownOptions(response);
+            dispatch(slice.actions.printersDropdownSuccess(options));
+            return options;
+        } catch (error) {
+            console.error('Error fetching printers dropdown:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load printers';
+            dispatch(slice.actions.printersDropdownError(errorMessage));
             return { error: true, message: errorMessage };
         }
     };
