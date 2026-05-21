@@ -1,12 +1,8 @@
 import PropTypes from 'prop-types';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 // @mui
 import {
   Box, Stack, Drawer
 } from '@mui/material';
-// hooks
-import useResponsive from '../../../hooks/useResponsive';
 // config
 import { NAV } from '../../../config';
 // components
@@ -32,7 +28,7 @@ export const navConfig = [
   },
   { title: 'En Route',              path: PATH_DASHBOARD.enRoute,             icon: null },
   { title: 'ID Verification Form',  path: PATH_DASHBOARD.idVerificationForm,  icon: null },
-  // { title: 'Warehouse Receipt Form',path: PATH_DASHBOARD.warehouseReceiptForm,icon: null },
+  { title: 'Warehouse Receipt Form',path: PATH_DASHBOARD.warehouseReceiptDashboard,icon: null },
   // { title: 'Shipment Form',         path: PATH_DASHBOARD.shipmentBuilding,    icon: null },
 ];
 
@@ -41,7 +37,7 @@ export const navConfig = [
 NavVertical.propTypes = {
 };
 
-export default function NavVertical({ }) {
+export default function NavVertical() {
 
   const renderContent = (
     <Scrollbar
