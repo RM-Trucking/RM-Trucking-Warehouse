@@ -14,13 +14,24 @@ const initialState = {
         data: [],
         error: null
     },
+    printersDropdown: {
+        loading: false,
+        data: [],
+        error: null
+    },
     cargoApiDimensions: {
         loading: false,
         data: null,
         error: null,
         selectedApiId: null
     },
-    warehouseCheckInDraft: null
+    warehouseReceiptBatch: {
+        loading: false,
+        data: null,
+        error: null
+    },
+    warehouseCheckInDraft: null,
+    warehouseCheckInDrafts: {}
 };
 
 const normalizeDropdownOptions = (payload) => {
@@ -97,6 +108,20 @@ const slice = createSlice({
             state.cargoApiDropdown.data = [];
             state.cargoApiDropdown.error = null;
         },
+        startPrintersDropdown(state) {
+            state.printersDropdown.loading = true;
+            state.printersDropdown.error = null;
+        },
+        printersDropdownSuccess(state, action) {
+            state.printersDropdown.loading = false;
+            state.printersDropdown.data = action.payload;
+            state.printersDropdown.error = null;
+        },
+        printersDropdownError(state, action) {
+            state.printersDropdown.loading = false;
+            state.printersDropdown.data = [];
+            state.printersDropdown.error = action.payload || 'Failed to load printers';
+        },
         startCargoApiDimensions(state, action) {
             state.cargoApiDimensions.loading = true;
             state.cargoApiDimensions.error = null;
@@ -112,11 +137,38 @@ const slice = createSlice({
             state.cargoApiDimensions.data = null;
             state.cargoApiDimensions.error = action.payload || 'Failed to load cargo dimensions';
         },
-        setWarehouseCheckInDraft(state, action) {
-            state.warehouseCheckInDraft = action.payload;
+        startWarehouseReceiptBatch(state) {
+            state.warehouseReceiptBatch.loading = true;
+            state.warehouseReceiptBatch.data = null;
+            state.warehouseReceiptBatch.error = null;
         },
-        clearWarehouseCheckInDraft(state) {
+        warehouseReceiptBatchSuccess(state, action) {
+            state.warehouseReceiptBatch.loading = false;
+            state.warehouseReceiptBatch.data = action.payload;
+            state.warehouseReceiptBatch.error = null;
+        },
+        warehouseReceiptBatchError(state, action) {
+            state.warehouseReceiptBatch.loading = false;
+            state.warehouseReceiptBatch.data = null;
+            state.warehouseReceiptBatch.error = action.payload || 'Failed to submit warehouse receipts';
+        },
+        setWarehouseCheckInDraft(state, action) {
+            const draftKey = action.payload?.draftKey || 'regular';
+            state.warehouseCheckInDraft = action.payload;
+            state.warehouseCheckInDrafts[draftKey] = action.payload?.draft || action.payload;
+        },
+        clearWarehouseCheckInDraft(state, action) {
+            const draftKey = action.payload?.draftKey;
+            if (draftKey) {
+                delete state.warehouseCheckInDrafts[draftKey];
+                if (state.warehouseCheckInDraft?.draftKey === draftKey) {
+                    state.warehouseCheckInDraft = null;
+                }
+                return;
+            }
+
             state.warehouseCheckInDraft = null;
+            state.warehouseCheckInDrafts = {};
         }
     }
 });
@@ -237,6 +289,23 @@ export function createTempWarehouseReceipt(payload) {
     };
 }
 
+// Submit Warehouse Receipt batch
+export function submitWarehouseReceiptBatch(payload) {
+    return async () => {
+        dispatch(slice.actions.startWarehouseReceiptBatch());
+        try {
+            const response = await axios.post('/warehouse-receipt/batch', payload);
+            dispatch(slice.actions.warehouseReceiptBatchSuccess(response.data));
+            return response.data;
+        } catch (error) {
+            console.error('Error submitting warehouse receipt batch:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to submit warehouse receipts';
+            dispatch(slice.actions.warehouseReceiptBatchError(errorMessage));
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
 // Fetch Cargo API dropdown values
 export function fetchCargoApiDropdown() {
     return async () => {
@@ -250,6 +319,24 @@ export function fetchCargoApiDropdown() {
             console.error('Error fetching cargo API dropdown:', error);
             const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load package details';
             dispatch(slice.actions.cargoApiDropdownError(errorMessage));
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
+// Fetch printer dropdown values
+export function fetchPrintersDropdown() {
+    return async () => {
+        dispatch(slice.actions.startPrintersDropdown());
+        try {
+            const response = await axios.get('/maintenance/devices/printers-dropdown');
+            const options = normalizeDropdownOptions(response);
+            dispatch(slice.actions.printersDropdownSuccess(options));
+            return options;
+        } catch (error) {
+            console.error('Error fetching printers dropdown:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load printers';
+            dispatch(slice.actions.printersDropdownError(errorMessage));
             return { error: true, message: errorMessage };
         }
     };
@@ -299,14 +386,14 @@ export function clearCargoApiDropdown() {
     };
 }
 
-export function setWarehouseCheckInDraft(draft) {
+export function setWarehouseCheckInDraft(draft, draftKey = 'regular') {
     return async () => {
-        dispatch(slice.actions.setWarehouseCheckInDraft(draft));
+        dispatch(slice.actions.setWarehouseCheckInDraft({ draftKey, draft }));
     };
 }
 
-export function clearWarehouseCheckInDraft() {
+export function clearWarehouseCheckInDraft(draftKey) {
     return async () => {
-        dispatch(slice.actions.clearWarehouseCheckInDraft());
+        dispatch(slice.actions.clearWarehouseCheckInDraft({ draftKey }));
     };
 }

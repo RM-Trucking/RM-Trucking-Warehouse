@@ -35,6 +35,7 @@ import {
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
+  fetchPrintersDropdown,
   setWarehouseCheckInDraft,
   clearWarehouseCheckInDraft,
 } from '../../redux/slices/warehouse';
@@ -66,7 +67,14 @@ const REQUIRED_ITEM_FIELDS = [
 
 // ─── Helpers to create blank form / item ────────────────────────────
 const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
-const createForm = (id, receiptNumber = null) => ({ id, collapsed: false, items: [createItem(1)], receiptNumber });
+const createForm = (id, receiptNumber = null, defaults = {}) => ({
+  id,
+  collapsed: false,
+  items: [createItem(1)],
+  receiptNumber,
+  destination: defaults.destination || '',
+  customerRefNoPackageId: defaults.customerRefNoPackageId || '',
+});
 
 const getDropdownOptionLabel = (option) => {
   if (option === null || option === undefined) return '';
@@ -115,6 +123,21 @@ const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
   </Box>
 );
 
+const getImageUrl = (file) => {
+  if (!file) return '';
+  if (typeof file === 'string') return file;
+  if (file.url) return file.url;
+  if (file.preview) return file.preview;
+  if (file instanceof File) return URL.createObjectURL(file);
+  return '';
+};
+
+const getImageName = (file, index) => {
+  if (!file) return `Image ${index + 1}`;
+  if (typeof file === 'string') return file.split('/').pop() || `Image ${index + 1}`;
+  return file.name || file.filename || `Image ${index + 1}`;
+};
+
 const getRowValue = (row, fields, fallback = '') => {
   const fieldList = Array.isArray(fields) ? fields : [fields];
   const field = fieldList.find((name) => row?.[name] !== undefined && row?.[name] !== null && row?.[name] !== '');
@@ -153,7 +176,12 @@ const DUMMY_DATA = {
   ],
 };
 
-export default function WarehouseCheckInPage() {
+export default function WarehouseCheckInPage({
+  title = 'Warehouse Check-In / Regular',
+  showParcelOption = true,
+  showTrailerFreightHeader = false,
+  draftKey = 'regular',
+}) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
@@ -161,7 +189,8 @@ export default function WarehouseCheckInPage() {
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const draftRestoredRef = useRef(false);
-  const { warehouseReceiptSearch, cargoApiDropdown, warehouseCheckInDraft } = useSelector((state) => state.warehousedata);
+  const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
+  const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
@@ -179,11 +208,21 @@ export default function WarehouseCheckInPage() {
   const [tempReceiptLoading, setTempReceiptLoading] = useState({});
   const [receiptErrors, setReceiptErrors] = useState({});
   const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+  const [imagePreviewDialog, setImagePreviewDialog] = useState({
+    open: false,
+    images: [],
+    itemLabel: '',
+    key: null,
+    formId: null,
+    itemId: null,
+  });
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
   const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
+  const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
+  const [selectedPrinterId, setSelectedPrinterId] = useState('');
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
@@ -231,9 +270,13 @@ export default function WarehouseCheckInPage() {
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
     setSavedResults(warehouseReceiptSearch.data);
+    const formDefaults = {
+      destination: getRowValue(row, ['destination', 'finalDestination'], ''),
+      customerRefNoPackageId: getRowValue(row, ['packageId', 'packageNumber'], ''),
+    };
     setProceededReceipts((prev) => [
       ...prev,
-      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1)] },
+      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1, null, formDefaults)] },
     ]);
     setIsSearchDisabled(true);
     // Clear search results
@@ -255,6 +298,7 @@ export default function WarehouseCheckInPage() {
   };
 
   const getItemErrorKey = (formId, itemId, field) => `${formId}-${itemId}-${field}`;
+  const getFormErrorKey = (formId, field) => `${formId}-${field}`;
 
   const addForm = async (key) => {
     const receipt = proceededReceipts.find((p) => p.key === key);
@@ -262,6 +306,7 @@ export default function WarehouseCheckInPage() {
 
     const lastForm = receipt.forms[receipt.forms.length - 1];
     const itemErrors = {};
+    const formErrors = {};
 
     if (!receipt.receivedBy.trim()) {
       setReceiptErrors((prev) => ({
@@ -284,12 +329,25 @@ export default function WarehouseCheckInPage() {
       });
     });
 
-    if (Object.keys(itemErrors).length > 0) {
+    if (showTrailerFreightHeader) {
+      if (!String(lastForm.destination || '').trim()) {
+        formErrors[getFormErrorKey(lastForm.id, 'destination')] = 'Destination is mandatory';
+      }
+      if (!String(lastForm.customerRefNoPackageId || '').trim()) {
+        formErrors[getFormErrorKey(lastForm.id, 'customerRefNoPackageId')] = 'Package ID is mandatory';
+      }
+    }
+
+    if (Object.keys(itemErrors).length > 0 || Object.keys(formErrors).length > 0) {
       setReceiptErrors((prev) => ({
         ...prev,
         [key]: {
           ...prev[key],
           receivedBy: '',
+          formFields: {
+            ...(prev[key]?.formFields || {}),
+            ...formErrors,
+          },
           items: {
             ...(prev[key]?.items || {}),
             ...itemErrors,
@@ -321,7 +379,11 @@ export default function WarehouseCheckInPage() {
       }
 
       const receiptNumber = response?.data?.receiptNumber;
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1, receiptNumber)] }));
+      const formDefaults = {
+        destination: getRowValue(receipt.row, ['destination', 'finalDestination'], ''),
+        customerRefNoPackageId: getRowValue(receipt.row, ['packageId', 'packageNumber'], ''),
+      };
+      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1, receiptNumber, formDefaults)] }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -338,6 +400,11 @@ export default function WarehouseCheckInPage() {
   const toggleFormCollapse = (key, formId) =>
     updateReceipt(key, (p) => ({
       forms: p.forms.map((f) => (f.id === formId ? { ...f, collapsed: !f.collapsed } : f)),
+    }));
+
+  const updateFormField = (key, formId, field, value) =>
+    updateReceipt(key, (p) => ({
+      forms: p.forms.map((f) => (f.id === formId ? { ...f, [field]: value } : f)),
     }));
 
   const addItem = (key, formId) =>
@@ -391,6 +458,23 @@ export default function WarehouseCheckInPage() {
     });
   };
 
+  const clearFormFieldError = (key, formId, field, value) => {
+    if (!String(value).trim()) return;
+
+    setReceiptErrors((prev) => {
+      const formFields = { ...(prev[key]?.formFields || {}) };
+      delete formFields[getFormErrorKey(formId, field)];
+
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          formFields,
+        },
+      };
+    });
+  };
+
   const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload') => {
     setUploadDialog({ open: true, mode, key, formId, itemId });
     setStagedFiles(existingFiles);
@@ -402,6 +486,23 @@ export default function WarehouseCheckInPage() {
     setStagedFiles([]);
     setIsDraggingFiles(false);
     handleCloseCamera();
+  };
+
+  const handleOpenImagePreview = (images = [], itemLabel = '', context = {}) => {
+    setImagePreviewDialog({ open: true, images, itemLabel, ...context });
+  };
+
+  const handleCloseImagePreview = () => {
+    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+  };
+
+  const handleRemovePreviewImage = (index) => {
+    const { key, formId, itemId } = imagePreviewDialog;
+    if (!key || !formId || !itemId) return;
+
+    const nextImages = imagePreviewDialog.images.filter((_, imageIndex) => imageIndex !== index);
+    updateItem(key, formId, itemId, 'images', nextImages);
+    setImagePreviewDialog((prev) => ({ ...prev, images: nextImages }));
   };
 
   const handleBrowseFiles = () => {
@@ -586,6 +687,31 @@ export default function WarehouseCheckInPage() {
     handleClosePackageDropdown();
   };
 
+  const handleOpenPrinterDialog = () => {
+    setPrinterDialogOpen(true);
+    setSelectedPrinterId('');
+    dispatch(fetchPrintersDropdown());
+  };
+
+  const handleClosePrinterDialog = () => {
+    setPrinterDialogOpen(false);
+    setSelectedPrinterId('');
+  };
+
+  const handlePrint = () => {
+    const printer = printersDropdown.data.find((item) => String(item.printerId) === String(selectedPrinterId));
+
+    setSnackbar({
+      open: true,
+      message: printer ? `Print requested for ${printer.printerName}` : 'Please select a printer',
+      severity: printer ? 'success' : 'error',
+    });
+
+    if (printer) {
+      handleClosePrinterDialog();
+    }
+  };
+
   const handleRejectOpen = (row) => {
     setRejectRow(row);
     setRejectReason('');
@@ -655,7 +781,7 @@ export default function WarehouseCheckInPage() {
   };
 
   const handleCancel = () => {
-    dispatch(clearWarehouseCheckInDraft());
+    dispatch(clearWarehouseCheckInDraft(draftKey));
     setSearchType('pro');
     setSearchBy('PRO');
     setSearchValue('');
@@ -690,7 +816,7 @@ export default function WarehouseCheckInPage() {
     let hasErrors = false;
 
     proceededReceipts.forEach((receipt) => {
-      const receiptError = { items: {} };
+      const receiptError = { formFields: {}, items: {} };
 
       if (!receipt.receivedBy.trim()) {
         receiptError.receivedBy = 'Received By is mandatory';
@@ -698,6 +824,17 @@ export default function WarehouseCheckInPage() {
       }
 
       receipt.forms.forEach((form) => {
+        if (showTrailerFreightHeader) {
+          if (!String(form.destination || '').trim()) {
+            receiptError.formFields[getFormErrorKey(form.id, 'destination')] = 'Destination is mandatory';
+            hasErrors = true;
+          }
+          if (!String(form.customerRefNoPackageId || '').trim()) {
+            receiptError.formFields[getFormErrorKey(form.id, 'customerRefNoPackageId')] = 'Package ID is mandatory';
+            hasErrors = true;
+          }
+        }
+
         form.items.forEach((item) => {
           REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
             if (!String(item[field]).trim()) {
@@ -708,7 +845,11 @@ export default function WarehouseCheckInPage() {
         });
       });
 
-      if (receiptError.receivedBy || Object.keys(receiptError.items).length > 0) {
+      if (
+        receiptError.receivedBy ||
+        Object.keys(receiptError.formFields).length > 0 ||
+        Object.keys(receiptError.items).length > 0
+      ) {
         nextErrors[receipt.key] = receiptError;
       }
     });
@@ -726,9 +867,14 @@ export default function WarehouseCheckInPage() {
             sectionCollapsed: false,
             forms: receipt.forms.map((form) => ({
               ...form,
-              collapsed: form.items.some((item) =>
-                REQUIRED_ITEM_FIELDS.some(({ field }) => receiptError.items[getItemErrorKey(form.id, item.id, field)])
-              )
+              collapsed:
+                Boolean(
+                  receiptError.formFields?.[getFormErrorKey(form.id, 'destination')] ||
+                    receiptError.formFields?.[getFormErrorKey(form.id, 'customerRefNoPackageId')]
+                ) ||
+                form.items.some((item) =>
+                  REQUIRED_ITEM_FIELDS.some(({ field }) => receiptError.items[getItemErrorKey(form.id, item.id, field)])
+                )
                 ? false
                 : form.collapsed,
             })),
@@ -749,9 +895,9 @@ export default function WarehouseCheckInPage() {
       isSearchDisabled,
       receiptErrors: nextErrors,
       proceededReceipts,
-    }));
+    }, draftKey));
 
-    navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts } });
+    navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts, title, draftKey } });
   };
 
   // ── Search handler ─────────────────────────────────────────────────
@@ -800,7 +946,7 @@ export default function WarehouseCheckInPage() {
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <ShipmentFormLayout
-      title="Warehouse Check-In / Regular"
+      title={title}
       handleClose={() => navigate(-1)}
       onCancel={handleCancel}
       onSubmit={handleNext}
@@ -834,12 +980,14 @@ export default function WarehouseCheckInPage() {
               control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
               label={<Typography sx={{ fontSize: 13 }}>RM Driver</Typography>}
             />
-            <FormControlLabel
-              value="parcel"
-              disabled={isSearchDisabled}
-              control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
-              label={<Typography sx={{ fontSize: 13 }}>Parcel</Typography>}
-            />
+            {showParcelOption && (
+              <FormControlLabel
+                value="parcel"
+                disabled={isSearchDisabled}
+                control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />}
+                label={<Typography sx={{ fontSize: 13 }}>Parcel</Typography>}
+              />
+            )}
           </RadioGroup>
 
           {/* Search row */}
@@ -1098,6 +1246,72 @@ export default function WarehouseCheckInPage() {
 
                         <Collapse in={!form.collapsed} timeout="auto">
                           <Stack spacing={2}>
+                            {showTrailerFreightHeader && (
+                              <Stack
+                                direction={{ xs: 'column', md: 'row' }}
+                                spacing={2}
+                                alignItems={{ xs: 'stretch', md: 'flex-end' }}
+                                justifyContent="space-between"
+                              >
+                                <Stack
+                                  direction={{ xs: 'column', sm: 'row' }}
+                                  spacing={3}
+                                  sx={{ flex: 1, minWidth: 0 }}
+                                >
+                                  <Stack spacing={0.3} sx={{ width: { xs: '100%', sm: 260 }, minWidth: 0 }}>
+                                    <Typography sx={{ fontSize: 11, color: '#555' }}>
+                                      Destination <span style={{ color: 'red' }}>*</span>
+                                    </Typography>
+                                    <StyledTextField
+                                      variant="standard"
+                                      size="small"
+                                      value={form.destination || ''}
+                                      onChange={(e) => {
+                                        updateFormField(pr.key, form.id, 'destination', e.target.value);
+                                        clearFormFieldError(pr.key, form.id, 'destination', e.target.value);
+                                      }}
+                                      error={!!receiptErrors[pr.key]?.formFields?.[getFormErrorKey(form.id, 'destination')]}
+                                      helperText={receiptErrors[pr.key]?.formFields?.[getFormErrorKey(form.id, 'destination')] || ' '}
+                                      inputProps={{ style: { fontSize: 13 } }}
+                                    />
+                                  </Stack>
+                                  <Stack spacing={0.3} sx={{ width: { xs: '100%', sm: 260 }, minWidth: 0 }}>
+                                    <Typography sx={{ fontSize: 11, color: '#555' }}>
+                                      Package ID <span style={{ color: 'red' }}>*</span>
+                                    </Typography>
+                                    <StyledTextField
+                                      variant="standard"
+                                      size="small"
+                                      value={form.customerRefNoPackageId || ''}
+                                      onChange={(e) => {
+                                        updateFormField(pr.key, form.id, 'customerRefNoPackageId', e.target.value);
+                                        clearFormFieldError(pr.key, form.id, 'customerRefNoPackageId', e.target.value);
+                                      }}
+                                      error={
+                                        !!receiptErrors[pr.key]?.formFields?.[
+                                          getFormErrorKey(form.id, 'customerRefNoPackageId')
+                                        ]
+                                      }
+                                      helperText={
+                                        receiptErrors[pr.key]?.formFields?.[
+                                          getFormErrorKey(form.id, 'customerRefNoPackageId')
+                                        ] || ' '
+                                      }
+                                      inputProps={{ style: { fontSize: 13 } }}
+                                    />
+                                  </Stack>
+                                </Stack>
+                                <Button
+                                  variant="contained"
+                                  size="small"
+                                  startIcon={<Iconify icon="mdi:printer" width={16} />}
+                                  onClick={handleOpenPrinterDialog}
+                                  sx={{ ...actionBtnSx, minWidth: 76, alignSelf: { xs: 'flex-end', md: 'flex-start' } }}
+                                >
+                                  Print
+                                </Button>
+                              </Stack>
+                            )}
                             {form.items.map((item, iIdx) => (
                               <Stack
                                 key={item.id}
@@ -1222,7 +1436,13 @@ export default function WarehouseCheckInPage() {
                                     <IconButton
                                       size="small"
                                       title="View images"
-                                      onClick={() => handleOpenImageUpload(pr.key, form.id, item.id, item.images || [], 'view')}
+                                      onClick={() =>
+                                        handleOpenImagePreview(
+                                          item.images || [],
+                                          `Item ${String(iIdx + 1).padStart(2, '0')}`,
+                                          { key: pr.key, formId: form.id, itemId: item.id }
+                                        )
+                                      }
                                       sx={{ p: 0.4, position: 'relative' }}
                                     >
                                       <Iconify icon="mdi:image-multiple" width={30} sx={{ color: '#000' }} />
@@ -1252,16 +1472,18 @@ export default function WarehouseCheckInPage() {
                               </Stack>
                             ))}
 
-                            <Box>
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={() => addItem(pr.key, form.id)}
-                                sx={actionBtnSx}
-                              >
-                                Add Item
-                              </Button>
-                            </Box>
+                            {!showTrailerFreightHeader && (
+                              <Box>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => addItem(pr.key, form.id)}
+                                  sx={actionBtnSx}
+                                >
+                                  Add Item
+                                </Button>
+                              </Box>
+                            )}
                           </Stack>
                         </Collapse>
                       </fieldset>
@@ -1349,6 +1571,65 @@ export default function WarehouseCheckInPage() {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={printerDialogOpen} onClose={handleClosePrinterDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          Select Printer
+          <IconButton
+            onClick={handleClosePrinterDialog}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
+            <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 12, color: '#555' }}>
+                Printer <span style={{ color: 'red' }}>*</span>
+              </Typography>
+              <StyledTextField
+                select
+                size="small"
+                value={selectedPrinterId}
+                onChange={(event) => setSelectedPrinterId(event.target.value)}
+                disabled={printersDropdown.loading}
+                helperText={printersDropdown.error || ''}
+                error={Boolean(printersDropdown.error)}
+                sx={{ width: '100%' }}
+              >
+                {printersDropdown.loading ? (
+                  <MenuItem value="" disabled>
+                    Loading printers...
+                  </MenuItem>
+                ) : printersDropdown.data.length > 0 ? (
+                  printersDropdown.data.map((printer) => (
+                    <MenuItem key={printer.printerId} value={printer.printerId}>
+                      {printer.printerName}
+                      {printer.printerIP ? ` - ${printer.printerIP}` : ''}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="" disabled>
+                    No printers available
+                  </MenuItem>
+                )}
+              </StyledTextField>
+            </Stack>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Iconify icon="mdi:printer" width={16} />}
+              disabled={printersDropdown.loading || !selectedPrinterId}
+              onClick={handlePrint}
+              sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' } }}
+            >
+              Print
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
       {/* No Data Dialog */}
       <Dialog open={noDataDialogOpen} onClose={() => {
         setNoDataDialogOpen(false);
@@ -1381,6 +1662,87 @@ export default function WarehouseCheckInPage() {
               dispatch(clearReceiptSearch());
             }}
             sx={{ ...actionBtnSx, height: 32 }}
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={imagePreviewDialog.open} onClose={handleCloseImagePreview} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          Uploaded Images - {imagePreviewDialog.itemLabel}
+          <IconButton
+            onClick={handleCloseImagePreview}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {imagePreviewDialog.images.length === 0 ? (
+            <Typography sx={{ fontSize: 13 }}>No uploaded images available.</Typography>
+          ) : (
+            <Stack direction="row" flexWrap="wrap" gap={2}>
+              {imagePreviewDialog.images.map((file, index) => {
+                const imageUrl = getImageUrl(file);
+
+                return (
+                  <Stack key={`${getImageName(file, index)}-${index}`} spacing={0.7} sx={{ width: 170 }}>
+                    <Box
+                      sx={{
+                        position: 'relative',
+                        width: 170,
+                        height: 130,
+                        border: '1px solid #d0d0d0',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        bgcolor: '#f7f7f7',
+                      }}
+                    >
+                      {imageUrl ? (
+                        <Box
+                          component="img"
+                          src={imageUrl}
+                          alt={getImageName(file, index)}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', opacity: 0.5 }}>
+                          <Iconify icon="mdi:image-off" width={28} />
+                        </Stack>
+                      )}
+                      <IconButton
+                        size="small"
+                        title="Remove image"
+                        onClick={() => handleRemovePreviewImage(index)}
+                        sx={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          bgcolor: 'rgba(255,255,255,0.9)',
+                          color: '#A22',
+                          '&:hover': { bgcolor: '#fff' },
+                        }}
+                      >
+                        <Iconify icon="mdi:close-circle" width={18} />
+                      </IconButton>
+                    </Box>
+                    <Typography sx={{ fontSize: 12, wordBreak: 'break-word' }}>
+                      {getImageName(file, index)}
+                    </Typography>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleCloseImagePreview}
+            sx={{ ...actionBtnSx, height: 32, minWidth: 70 }}
           >
             OK
           </Button>
@@ -1527,7 +1889,7 @@ export default function WarehouseCheckInPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={cameraDialogOpen} onClose={handleCloseCamera} maxWidth="sm" fullWidth>
+      <Dialog open={cameraDialogOpen} onClose={handleCloseCamera} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
           Capture Image
           <IconButton
@@ -1547,7 +1909,9 @@ export default function WarehouseCheckInPage() {
             muted
             sx={{
               width: '100%',
-              maxHeight: 420,
+              height: { xs: '60vh', md: '70vh' },
+              minHeight: { xs: 360, md: 560 },
+              maxHeight: 760,
               bgcolor: '#000',
               borderRadius: 1,
               objectFit: 'contain',
