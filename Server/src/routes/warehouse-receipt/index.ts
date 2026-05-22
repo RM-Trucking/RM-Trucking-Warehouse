@@ -46,6 +46,16 @@ router.post("/batch", authenticateJWT, uploaders.warehouse.combinedImages.any(),
     }
 });
 
+// Print label via ZPL
+router.post("/label-print", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.printLabel(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 // Create warehouse receipt with freight info
 router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();

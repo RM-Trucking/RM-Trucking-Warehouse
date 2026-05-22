@@ -215,6 +215,41 @@ export async function getReceiptSummary(req: Request, res: Response, conn: Conne
 }
 
 /**
+ * PRINT LABEL
+ * Endpoint: POST /warehouse-receipt/label-print
+ * Supports either full payload data or only receiptNumber
+ * Requires printerPort and printerIP always
+ */
+export async function printLabel(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const { printerPort, printerIP, ...payload } = req.body;
+
+        if (!printerPort || !printerIP) {
+            res.status(400).json({ success: false, message: "printerPort and printerIP are required" });
+            return;
+        }
+
+        const result = await warehouseReceiptService.printWarehouseReceiptLabelService(
+            conn,
+            {
+                printerPort,
+                printerIP,
+                ...payload
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Label print sent successfully",
+            data: result
+        });
+    } catch (error: any) {
+        logger.error("Error printing label", error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+/**
  * CREATE TEMPORARY WAREHOUSE RECEIPT
  * Endpoint: POST /warehouse-receipt/temp
  * Returns all created temp receipt data
@@ -226,7 +261,7 @@ export async function createTemporaryWarehouseReceipt(req: Request, res: Respons
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
         // Validate required fields
-        const requiredFields = ['customerId', 'stationId', 'carrierId', 'status', 'shipper', 'receivedBy', 'location', 'proNumber'];
+        const requiredFields = ['customerId', 'stationId', 'carrierId', 'status', 'shipper', 'proNumber'];
         const missingFields = requiredFields.filter(field => !tempData[field]);
 
         if (missingFields.length > 0) {

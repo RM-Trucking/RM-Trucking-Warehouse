@@ -1,8 +1,10 @@
 import { Connection } from "odbc";
 import fs from "fs";
 import path from "path";
+import { Socket } from "net";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import * as idVerificationDB from "../../database/id-verification";
+import { dataToZPL } from "../../utils/labelPrintHandler";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as customerDB from "../../database/maintanance/customer";
@@ -11,10 +13,7 @@ import { emitAuditLog } from "../../utils/email";
 import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptTemp } from "../../entities/warehouse-receipt";
 import { getProDetailFromCsv, validateProCsvData, findProCsvFile } from "../../utils/pro-csv-handler";
 
-/**
- * GET WAREHOUSE RECEIPT WITH ALL DETAILS
- * - Fetches receipt, freight info with images, rates, and audit logs
- */
+
 export async function getWarehouseReceiptWithDetailsService(conn: Connection, receiptId: number) {
     const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, receiptId);
     if (!receipt) return null;
@@ -753,5 +752,129 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         proDate: proDetail.proDate,
         hazmat: proDetail.hazmat || 'N',
         receiptNumber: receiptNumber
+    };
+}
+
+
+
+/**
+ * GET WAREHOUSE RECEIPT WITH ALL DETAILS
+ * - Fetches receipt, freight info with images, rates, and audit logs
+ */
+function sendZplToPrinter(zpl: string, printerIp: string, printerPort: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const client = new Socket();
+        client.connect(printerPort, printerIp, () => {
+            client.write(zpl, (err) => {
+                if (err) {
+                    client.destroy();
+                    reject(err);
+                    return;
+                }
+                client.end();
+                resolve();
+            });
+        });
+
+        client.on("error", (err) => {
+            client.destroy();
+            reject(err);
+        });
+
+        client.on("timeout", () => {
+            client.destroy();
+            reject(new Error("Printer connection timed out"));
+        });
+    });
+}
+
+type LabelReceiptData = WarehouseReceipt & {
+    customerName?: string;
+    carrierName?: string;
+};
+
+export async function printWarehouseReceiptLabelService(
+    conn: Connection,
+    payload: {
+        printerPort?: number | string;
+        printerIP?: string;
+        labelCount?: number;
+        receiptNumber?: number;
+        customerName?: string;
+        packageId?: string;
+        shipper?: string;
+        carrierName?: string;
+        proNumber?: string;
+        destination?: string;
+        pieces?: number;
+    }
+) {
+    const printerPort = payload.printerPort ? Number(payload.printerPort) : undefined;
+    const printerIP = payload.printerIP;
+
+    if (!printerPort || !printerIP) {
+        throw new Error("printerPort and printerIP are required");
+    }
+
+    let printData: {
+        labelCount: number;
+        receiptNumber: number;
+        customerName: string;
+        packageId: string;
+        shipper: string;
+        carrierName: string;
+        proNumber: string;
+        destination: string;
+        pieces: number;
+    };
+
+    if (
+        payload.receiptNumber !== undefined &&
+        payload.customerName &&
+        payload.shipper &&
+        payload.carrierName
+    ) {
+        printData = {
+            labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
+            receiptNumber: payload.receiptNumber,
+            customerName: payload.customerName,
+            packageId: payload.packageId || "",
+            shipper: payload.shipper,
+            carrierName: payload.carrierName,
+            proNumber: payload.proNumber || "",
+            destination: payload.destination || "",
+            pieces: payload.pieces || 0
+        };
+    } else if (payload.receiptNumber !== undefined) {
+        const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, payload.receiptNumber) as LabelReceiptData | null;
+        if (!receipt) {
+            throw new Error(`Receipt with number ${payload.receiptNumber} not found`);
+        }
+
+        const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId));
+        const pieces = freightInfos.reduce((sum, freight) => sum + (freight.pieces || 0), 0);
+
+        printData = {
+            labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
+            receiptNumber: Number(receipt.receiptNumber),
+            customerName: receipt.customerName || "",
+            packageId: receipt.packageId || "",
+            shipper: receipt.shipper || "",
+            carrierName: receipt.carrierName || "",
+            proNumber: receipt.proNumber || "",
+            destination: receipt.destination || "",
+            pieces
+        };
+    } else {
+        throw new Error("receiptNumber is required either alone or with full label payload data");
+    }
+
+    const zpl = dataToZPL(printData);
+    await sendZplToPrinter(zpl, printerIP, printerPort);
+    return {
+        success: true,
+        printedTo: printerIP,
+        printerPort,
+        printData
     };
 }
