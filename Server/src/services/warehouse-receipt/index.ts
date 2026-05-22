@@ -571,11 +571,18 @@ export async function batchProcessWarehouseReceiptsService(
 
         await conn.commit();
 
+        // Collect all receipt numbers from updated and created receipts
+        const receiptNumbers = [
+            ...updatedReceipts.map(r => r.receiptNumber).filter(Boolean),
+            ...createdReceipts.map(r => r.receiptNumber).filter(Boolean)
+        ];
+
         return {
             updated: updatedReceipts,
             created: createdReceipts,
             totalUpdated: updatedReceipts.length,
-            totalCreated: createdReceipts.length
+            totalCreated: createdReceipts.length,
+            receiptNumbers
         };
     } catch (err) {
         await conn.rollback();
