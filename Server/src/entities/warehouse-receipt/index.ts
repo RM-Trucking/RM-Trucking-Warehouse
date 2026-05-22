@@ -14,6 +14,9 @@ export interface WarehouseReceiptTemp {
     destination?: string | null;
     proNumber?: string | null;
     packageId?: string | null;
+    customerName?: string | null;
+    stationName?: string | null;
+    carrierName?: string | null;
 }
 
 /**

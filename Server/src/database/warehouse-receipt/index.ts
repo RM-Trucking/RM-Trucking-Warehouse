@@ -31,19 +31,31 @@ export async function createWarehouseReceiptTemp(conn: Connection, temp: Omit<Wa
         temp.receivedBy ? temp.receivedBy : '' as string | number
     ];
     const result = await conn.query(query, params) as any[];
-    return result[0].receiptNumber;
+    return parseInt(result[0].receiptNumber);
 }
 
 export async function getWarehouseReceiptTempByNumber(conn: Connection, receiptNumber: number): Promise<WarehouseReceiptTemp | null> {
-    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Temp" WHERE "receiptNumber" = ?`;
+    const query = `
+    SELECT w.*, c."carrierName", cu."customerName", s."stationName"
+    FROM ${SCHEMA}."Warehouse_Receipt_Temp" w
+    LEFT JOIN ${SCHEMA}."Carrier" c ON w."carrierId" = c."carrierId"
+    LEFT JOIN ${SCHEMA}."Customer" cu ON w."customerId" = cu."customerId"
+    LEFT JOIN ${SCHEMA}."Station" s ON w."stationId" = s."stationId"
+    WHERE w."receiptNumber" = ?`;
     const result = await conn.query(query, [Number(receiptNumber)]) as any[];
+
+    if (!result || result.length === 0) {
+        return null;
+    }
 
     return {
         ...result[0],
         receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
         verificationId: result[0].verificationId != null ? parseInt(result[0].verificationId) : null,
-    }
-
+        customerName: result[0].customerName ?? null,
+        stationName: result[0].stationName ?? null,
+        carrierName: result[0].carrierName ?? null,
+    };
 }
 
 /**
@@ -530,6 +542,26 @@ export async function createFreightImage(conn: Connection, freightId: number | b
     return Number(result[0].imageId);
 }
 
+export async function createBadFreightConditionImage(conn: Connection, receiptId: number | bigint, imagePath: string): Promise<number> {
+    const query = `
+        SELECT "imageId"
+        FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Warehouse_Receipt_Freight_Condition_Images"
+            ("receiptId","imagePath","uploadedAt")
+            VALUES (?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+        )
+    `;
+
+    const params: (string | number)[] = [
+        Number(receiptId),
+        imagePath
+    ];
+    const result = await conn.query(query, params) as any[];
+    return Number(result[0].imageId);
+}
+
+
+
 export async function getFreightImages(conn: Connection, freightId: number | bigint): Promise<WarehouseReceiptFreightImage[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Images" WHERE "freightId" = ? ORDER BY "uploadedAt" DESC`;
     const result = await conn.query(query, [Number(freightId)]) as any[];
@@ -537,6 +569,16 @@ export async function getFreightImages(conn: Connection, freightId: number | big
         ...row,
         imageId: row.imageId != null ? parseInt(row.imageId) : null,
         freightId: row.freightId != null ? parseInt(row.freightId) : null,
+    }));
+}
+
+export async function getBadFreightConditionImages(conn: Connection, receiptId: number | bigint): Promise<WarehouseReceiptFreightImage[]> {
+    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Condition_Images" WHERE "receiptId" = ? ORDER BY "uploadedAt" DESC`;
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+    return result.map((row: any) => ({
+        ...row,
+        imageId: row.imageId != null ? parseInt(row.imageId) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
     }));
 }
 

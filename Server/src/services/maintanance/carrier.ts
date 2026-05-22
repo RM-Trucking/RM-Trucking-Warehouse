@@ -57,3 +57,10 @@ export async function listCarrierDropdownService(
 ): Promise<{ carrierId: number; carrierName: string }[]> {
     return await carrierDB.listCarriers(conn, searchTerm);
 }
+
+export async function listParcelCarrierDropdownService(
+    conn: Connection,
+    searchTerm?: string
+): Promise<{ carrierId: number; carrierName: string }[]> {
+    return await carrierDB.listParcelCarriers(conn, searchTerm);
+}

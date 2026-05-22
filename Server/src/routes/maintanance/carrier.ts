@@ -18,4 +18,10 @@ router.get('/dropdown', authenticateJWT, async (req: Request, res: Response) => 
     if (conn) conn.close();
 });
 
+router.get('/parcel-dropdown', authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await carrierController.listParcelCarrierDropdown(req, res, conn);
+    if (conn) conn.close();
+});
+
 export default router;

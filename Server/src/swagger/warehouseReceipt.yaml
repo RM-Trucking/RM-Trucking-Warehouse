@@ -681,7 +681,7 @@ paths:
             type: string
           required: true
           description: PRO (Progressive Rotating Order) number
-          example: "PRO123456"
+          example: "21987292"
       responses:
         "200":
           description: PRO header details retrieved successfully

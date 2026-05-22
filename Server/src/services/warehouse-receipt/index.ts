@@ -434,6 +434,16 @@ export async function batchProcessWarehouseReceiptsService(
                 // Update the receipt with filtered data
                 await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, updateData);
 
+
+                console.log(`Updated receipt ID ${receiptId} with data:`, receipt.badFreightImages);
+
+                if (Array.isArray(receipt.badFreightImages)) {
+                    console.log(`Creating freight images for freight ID ${receiptId}:`, receipt.badFreightImages);
+                    for (const imagePath of receipt.badFreightImages) {
+                        await warehouseReceiptDB.createBadFreightConditionImage(conn, receiptId, imagePath);
+                    }
+                }
+
                 console.log(`Updated receipt ID ${receiptId} with data:`, updateData);
 
                 // Delete existing freight details and create new ones
@@ -443,6 +453,8 @@ export async function batchProcessWarehouseReceiptsService(
 
                 // Create new freight details with images
                 for (const freight of freightDetails) {
+                    console.log("Freight", freight);
+
                     const { images, ...freightData } = freight;
 
                     const freightId = await warehouseReceiptDB.createFreightInfo(conn, {
@@ -465,6 +477,14 @@ export async function batchProcessWarehouseReceiptsService(
 
                 // Get updated receipt with all details
                 const updatedReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+
+                const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId);
+
+                const updatedReceiptWithBadFreightConditionImages = {
+                    ...updatedReceipt,
+                    badFreightConditionImages
+                };
+
                 const updatedFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
 
                 // Fetch images for each freight
@@ -476,7 +496,7 @@ export async function batchProcessWarehouseReceiptsService(
                 );
 
                 updatedReceipts.push({
-                    ...updatedReceipt,
+                    ...updatedReceiptWithBadFreightConditionImages,
                     freightInfos: updatedFreightWithImages
                 });
             } else {
@@ -496,6 +516,14 @@ export async function batchProcessWarehouseReceiptsService(
 
                 // Create warehouse receipt
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, dataWithUser);
+
+                if (Array.isArray(dataWithUser.badFreightImages)) {
+                    console.log(`Creating freight images for freight ID ${receiptId}:`, dataWithUser.badFreightImages);
+                    for (const imagePath of dataWithUser.badFreightImages) {
+                        await warehouseReceiptDB.createBadFreightConditionImage(conn, receiptId, imagePath);
+                    }
+                }
+
 
                 console.log(`Created new receipt ID ${receiptId} with data:`, dataWithUser);
 
@@ -517,6 +545,13 @@ export async function batchProcessWarehouseReceiptsService(
 
                 // Get complete receipt with all details
                 const createdReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+                const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId);
+
+                const createdReceiptWithBadFreightConditionImages = {
+                    ...createdReceipt,
+                    badFreightConditionImages
+                };
+
                 const createdFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
 
                 // Fetch images for each freight
@@ -528,7 +563,7 @@ export async function batchProcessWarehouseReceiptsService(
                 );
 
                 createdReceipts.push({
-                    ...createdReceipt,
+                    ...createdReceiptWithBadFreightConditionImages,
                     freightInfos: createdFreightWithImages
                 });
             }
@@ -588,7 +623,7 @@ export async function rejectWarehouseReceiptService(conn: Connection, receiptId:
  * 6. Delete CSV file after successful processing
  * 7. Return formatted response with all relevant fields
  */
-export async function getProHeaderDetailsService(conn: Connection, proNumber: string) {
+export async function getProHeaderDetailsService(conn: Connection, proNumber: string, userId: number) {
     let proDetail = await warehouseReceiptDB.getProHeaderDetailsByProNumber(conn, proNumber);
     let csvFilePath: string | null = null;
 
@@ -662,6 +697,23 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         throw new Error(`Carrier not found: ${proDetail.carrierName}`);
     }
 
+    const receiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn,
+        {
+            verificationId: 0,
+            receiptDate: new Date(),
+            shipper: proDetail.shipperName,
+            customerId: station.customerId,
+            stationId: station.stationId,
+            carrierId: carrier.carrierId,
+            createdBy: userId,
+            status: 'INITIATED',
+            proNumber: proDetail.proNumber,
+            packageId: null,
+            receivedBy: null,
+            location: null
+        }
+    )
+
     // Delete CSV file after successful processing
     if (csvFilePath && fs.existsSync(csvFilePath)) {
         try {
@@ -692,6 +744,7 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         pieces: proDetail.pieces,
         proNumber: proDetail.proNumber,
         proDate: proDetail.proDate,
-        hazmat: proDetail.hazmat || 'N'
+        hazmat: proDetail.hazmat || 'N',
+        receiptNumber: receiptNumber
     };
 }
