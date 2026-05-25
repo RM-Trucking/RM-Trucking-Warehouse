@@ -11,7 +11,7 @@ router.get("/cargo-api-dropdown", authenticateJWT, async (req: Request, res: Res
     if (conn) conn.close();
 });
 
-router.get("/cargo-api-dimensions", authenticateJWT, async (req: Request, res: Response) => {
+router.get("/cargo-api-dimensions", async (req: Request, res: Response) => {
     const conn = await db();
     await devicesController.getDimentionsFromCargoAPI(req, res, conn);
     if (conn) conn.close();

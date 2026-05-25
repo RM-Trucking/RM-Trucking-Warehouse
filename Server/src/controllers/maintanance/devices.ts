@@ -23,15 +23,18 @@ export async function getDimentionsFromCargoAPI(req: Request, res: Response, con
         }
         const result = await devicesService.getDimentionsFromCargoAPI(conn, apiId);
 
-        if (result) {
+        if (result && result.error) {
+            res.status(400).json({ success: false, message: result.message, code: result.code });
+        } else {
             res.status(200).json({ success: true, data: result });
         }
-        else {
-            res.status(404).json({ success: false, message: 'Cargo API not found' });
-        }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching Cargo API dimensions:', error);
-        res.status(500).json({ error: 'Failed to fetch Cargo API dimensions' });
+        if (error.message === 'Cargo API not found') {
+            res.status(404).json({ success: false, message: error.message });
+        } else {
+            res.status(500).json({ error: 'Failed to fetch Cargo API dimensions', message: error.message });
+        }
     }
 }
 
