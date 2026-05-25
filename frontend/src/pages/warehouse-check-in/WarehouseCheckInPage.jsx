@@ -101,6 +101,12 @@ const createForm = (id, receiptNumber = null, defaults = {}) => ({
   customerRefNoPackageId: defaults.customerRefNoPackageId || '',
 });
 
+const getNextFormId = (forms = []) =>
+  forms.reduce((maxId, form) => Math.max(maxId, Number(form.id) || 0), 0) + 1;
+
+const getNextItemId = (items = []) =>
+  items.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) + 1;
+
 const getDropdownOptionLabel = (option) => {
   if (option === null || option === undefined) return '';
   if (typeof option !== 'object') return String(option);
@@ -319,6 +325,20 @@ export default function WarehouseCheckInPage({
     cameraStreamRef.current = null;
   }, []);
 
+  // useEffect(() => {
+  //   if (!cameraDialogOpen || !cameraStreamRef.current || !cameraVideoRef.current) return;
+
+  //   const video = cameraVideoRef.current;
+  //   video.srcObject = cameraStreamRef.current;
+  //   video.muted = true;
+  //   video.playsInline = true;
+  //   const playVideo = () => video.play?.().catch(() => {});
+  //   playVideo();
+  //   const retryTimer = window.setTimeout(playVideo, 300);
+
+  //   return () => window.clearTimeout(retryTimer);
+  // }, [cameraDialogOpen]);
+
   useEffect(() => {
     if (isSelectingParcelCarrierRef.current) {
       isSelectingParcelCarrierRef.current = false;
@@ -516,7 +536,7 @@ export default function WarehouseCheckInPage({
         destination: getRowValue(receipt.row, ['destination', 'finalDestination'], ''),
         customerRefNoPackageId: getRowValue(receipt.row, ['packageId', 'packageNumber'], ''),
       };
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1, receiptNumber, formDefaults)] }));
+      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(getNextFormId(p.forms), receiptNumber, formDefaults)] }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -543,7 +563,7 @@ export default function WarehouseCheckInPage({
   const addItem = (key, formId) =>
     updateReceipt(key, (p) => ({
       forms: p.forms.map((f) =>
-        f.id === formId ? { ...f, items: [...f.items, createItem(f.items.length + 1)] } : f
+        f.id === formId ? { ...f, items: [...f.items, createItem(getNextItemId(f.items))] } : f
       ),
     }));
 
@@ -660,19 +680,12 @@ export default function WarehouseCheckInPage({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: true,
         audio: false,
       });
 
       cameraStreamRef.current = stream;
       setCameraDialogOpen(true);
-
-      setTimeout(() => {
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-          cameraVideoRef.current.play?.();
-        }
-      }, 0);
     } catch (error) {
       setSnackbar({
         open: true,
@@ -683,6 +696,9 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCloseCamera = () => {
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
     stopCameraStream();
     setCameraDialogOpen(false);
   };
@@ -1767,7 +1783,7 @@ export default function WarehouseCheckInPage({
                                 key={item.id}
                                 direction="row"
                                 spacing={1.5}
-                                alignItems="flex-end"
+                                alignItems="flex-start"
                                 sx={{ width: '100%' }}
                               >
                                 {/* Box icon + label */}
@@ -1775,7 +1791,7 @@ export default function WarehouseCheckInPage({
                                   direction="row"
                                   alignItems="center"
                                   spacing={0.5}
-                                  sx={{ minWidth: 64, pb: 0.5 }}
+                                  sx={{ minWidth: 64, pt: '22px' }}
                                 >
                                   <Iconify icon="mdi:package-variant-closed" width={22} sx={{ color: '#555' }} />
                                   <Typography sx={{ fontSize: 12, whiteSpace: 'nowrap' }}>
@@ -1819,6 +1835,24 @@ export default function WarehouseCheckInPage({
                                     error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'type')]}
                                     helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'type')] || ' '}
                                     inputProps={{ style: { fontSize: 13 } }}
+                                    SelectProps={{
+                                      sx: {
+                                        '& .MuiSelect-select.MuiInputBase-input.MuiInput-input': {
+                                          pt: 0,
+                                          pb: '3px',
+                                          minHeight: '1.4375em',
+                                          lineHeight: '1.4375em',
+                                        },
+                                        '& .MuiSelect-icon': {
+                                          top: 'calc(50% - 0.7em)',
+                                        },
+                                      },
+                                    }}
+                                    sx={{
+                                      '& .MuiInputBase-root': {
+                                        alignItems: 'flex-start',
+                                      },
+                                    }}
                                   >
                                     {FREIGHT_TYPE_OPTIONS.map((opt) => (
                                       <MenuItem key={opt} value={opt}>{opt}</MenuItem>
@@ -1853,7 +1887,7 @@ export default function WarehouseCheckInPage({
                                 ))}
 
                                 {/* Action icons */}
-                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pb: 0.5 }}>
+                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pt: '19px' }}>
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}
@@ -2353,10 +2387,18 @@ export default function WarehouseCheckInPage({
         <DialogContent dividers>
           <Box
             component="video"
-            ref={cameraVideoRef}
+            ref={(node) => {
+            cameraVideoRef.current = node;
+            if (node && cameraStreamRef.current && node.srcObject !== cameraStreamRef.current) {
+            node.srcObject = cameraStreamRef.current;
+            node.play?.().catch(() => {});
+             }
+             }}
             autoPlay
             playsInline
             muted
+            onLoadedMetadata={(event) => event.currentTarget.play?.().catch(() => {})}
+            onCanPlay={(event) => event.currentTarget.play?.().catch(() => {})}
             sx={{
               width: '100%',
               height: { xs: '60vh', md: '70vh' },

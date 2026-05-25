@@ -461,6 +461,20 @@ export default function WarehouseReceiptFormPage() {
     freightCameraStreamRef.current = null;
   }, []);
 
+  // useEffect(() => {
+  //   if (!freightCameraOpen || !freightCameraStreamRef.current || !freightCameraVideoRef.current) return;
+
+  //   const video = freightCameraVideoRef.current;
+  //   video.srcObject = freightCameraStreamRef.current;
+  //   video.muted = true;
+  //   video.playsInline = true;
+  //   const playVideo = () => video.play?.().catch(() => {});
+  //   playVideo();
+  //   const retryTimer = window.setTimeout(playVideo, 300);
+
+  //   return () => window.clearTimeout(retryTimer);
+  // }, [freightCameraOpen]);
+
   const updateActiveFormField = (field, value) => {
     setReceiptForms((prev) =>
       prev.map((form) => (form.id === activeTab ? { ...form, [field]: value } : form))
@@ -540,25 +554,21 @@ export default function WarehouseReceiptFormPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: true,
         audio: false,
       });
 
       freightCameraStreamRef.current = stream;
       setFreightCameraOpen(true);
-
-      setTimeout(() => {
-        if (freightCameraVideoRef.current) {
-          freightCameraVideoRef.current.srcObject = stream;
-          freightCameraVideoRef.current.play?.();
-        }
-      }, 0);
     } catch {
       freightCameraInputRef.current?.click();
     }
   };
 
   const handleCloseFreightCamera = () => {
+    if (freightCameraVideoRef.current) {
+      freightCameraVideoRef.current.srcObject = null;
+    }
     stopFreightCameraStream();
     setFreightCameraOpen(false);
   };
@@ -1367,10 +1377,18 @@ export default function WarehouseReceiptFormPage() {
         <DialogContent dividers>
           <Box
             component="video"
-            ref={freightCameraVideoRef}
+            ref={(node) => {
+    freightCameraVideoRef.current = node;
+    if (node && freightCameraStreamRef.current && node.srcObject !== freightCameraStreamRef.current) {
+      node.srcObject = freightCameraStreamRef.current;
+      node.play?.().catch(() => {});
+    }
+  }}
             autoPlay
             playsInline
             muted
+            onLoadedMetadata={(event) => event.currentTarget.play?.().catch(() => {})}
+            onCanPlay={(event) => event.currentTarget.play?.().catch(() => {})}
             sx={{
               width: '100%',
               height: { xs: '60vh', md: '70vh' },

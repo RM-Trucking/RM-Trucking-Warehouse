@@ -20,6 +20,10 @@ const initialState = {
   logicOperator: 'and',
   tempSearchValue: '',
   searchValue: '',
+  paginationModel: {
+    page: 0,
+    pageSize: 10,
+  },
 };
 
 const slice = createSlice({
@@ -73,6 +77,9 @@ const slice = createSlice({
     },
     setSearchValue(state, action) {
       state.searchValue = action.payload;
+    },
+    setPaginationModel(state, action) {
+      state.paginationModel = action.payload;
     },
     clearAllFilters(state) {
       state.appliedFilterParams = {};
@@ -163,6 +170,10 @@ export const setTempSearchValue = (payload) => (dispatch) => {
 
 export const setSearchValue = (payload) => (dispatch) => {
   dispatch(slice.actions.setSearchValue(payload));
+};
+
+export const setIdVerificationPaginationModel = (payload) => (dispatch) => {
+  dispatch(slice.actions.setPaginationModel(payload));
 };
 
 export const clearAllFilters = () => (dispatch) => {

@@ -477,7 +477,7 @@ const handleDriverNameFocus = () => {
       const checkInData = {
         carrierId: selectedCarrier.carrierId,
         doorNo: doorValue,
-        firstIdType: firstIdTypeValue.toUpperCase().replace(/\s+/g, '_'),
+        firstIdType: firstIdTypeValue,
         firstIdPhotoMatch: firstIdPhotoChecked,
         driverName: driverNameValue,
         driverSignature: signatureData || '',
@@ -1306,9 +1306,10 @@ const handleDriverNameFocus = () => {
                   label="Driver Name"
                   value={driverNameValue}
                   onChange={(e) => {
-                    setDriverNameValue(e.target.value);
+                    setDriverNameValue(e.target.value.slice(0, 100));
                     clearFieldError('driverNameValue');
                   }}
+                  inputProps={{ maxLength: 100 }}
                   onFocus={handleDriverNameFocus}
                   error={formErrors.driverNameValue}
                   helperText={formErrors.driverNameValue ? 'Driver Name is required' : ' '}
@@ -1401,6 +1402,7 @@ const handleDriverNameFocus = () => {
                 error={formErrors.firstIdTypeValue}
                 helperText={formErrors.firstIdTypeValue ? 'ID Type is required' : ' '}
                 sx={{ width: { xs: "100%", lg: "26%" } }}
+                inputProps={{ maxLength: 50 }}
               />
               <Stack
                 direction="row"
@@ -1675,6 +1677,7 @@ const handleDriverNameFocus = () => {
                   }}
                   error={formErrors.shipper}
                   helperText={formErrors.shipper ? 'Shipper is required' : ' '}
+                  inputProps={{ maxLength: 255 }}
                   sx={{ width: { xs: "100%", lg: "22%" } }}
                 />
                 <Button
