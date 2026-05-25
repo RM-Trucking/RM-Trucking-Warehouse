@@ -319,6 +319,20 @@ export default function WarehouseCheckInPage({
     cameraStreamRef.current = null;
   }, []);
 
+  // useEffect(() => {
+  //   if (!cameraDialogOpen || !cameraStreamRef.current || !cameraVideoRef.current) return;
+
+  //   const video = cameraVideoRef.current;
+  //   video.srcObject = cameraStreamRef.current;
+  //   video.muted = true;
+  //   video.playsInline = true;
+  //   const playVideo = () => video.play?.().catch(() => {});
+  //   playVideo();
+  //   const retryTimer = window.setTimeout(playVideo, 300);
+
+  //   return () => window.clearTimeout(retryTimer);
+  // }, [cameraDialogOpen]);
+
   useEffect(() => {
     if (isSelectingParcelCarrierRef.current) {
       isSelectingParcelCarrierRef.current = false;
@@ -660,19 +674,12 @@ export default function WarehouseCheckInPage({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: true,
         audio: false,
       });
 
       cameraStreamRef.current = stream;
       setCameraDialogOpen(true);
-
-      setTimeout(() => {
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-          cameraVideoRef.current.play?.();
-        }
-      }, 0);
     } catch (error) {
       setSnackbar({
         open: true,
@@ -683,6 +690,9 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCloseCamera = () => {
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
     stopCameraStream();
     setCameraDialogOpen(false);
   };
@@ -2353,10 +2363,18 @@ export default function WarehouseCheckInPage({
         <DialogContent dividers>
           <Box
             component="video"
-            ref={cameraVideoRef}
+            ref={(node) => {
+            cameraVideoRef.current = node;
+            if (node && cameraStreamRef.current && node.srcObject !== cameraStreamRef.current) {
+            node.srcObject = cameraStreamRef.current;
+            node.play?.().catch(() => {});
+             }
+             }}
             autoPlay
             playsInline
             muted
+            onLoadedMetadata={(event) => event.currentTarget.play?.().catch(() => {})}
+            onCanPlay={(event) => event.currentTarget.play?.().catch(() => {})}
             sx={{
               width: '100%',
               height: { xs: '60vh', md: '70vh' },

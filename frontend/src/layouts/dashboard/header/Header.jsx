@@ -9,7 +9,6 @@ import {
 
 import Logo from '../../../components/logo';
 import { HEADER } from '../../../config';
-import SearchBar from './SearchBar';
 import UserAccount from './UserAccount';
 
 // ----------------------------------------------------------------------
@@ -23,7 +22,6 @@ export default function Header() {
     <>
       <Stack flexDirection={"row"} alignItems={"center"} justifyContent={"space-between"} sx={{width : "100%"}}>
         <Logo />
-        <SearchBar/>
         <UserAccount/>
       </Stack>
     </>
