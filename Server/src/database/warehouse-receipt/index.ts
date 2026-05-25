@@ -752,7 +752,7 @@ export async function getWarehouseReceiptsByProNumber(
         LEFT JOIN ${SCHEMA}."Carrier" c ON wr."carrierId" = c."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" cu ON wr."customerId" = cu."customerId"
         LEFT JOIN ${SCHEMA}."Station" s ON wr."stationId" = s."stationId"
-        WHERE wr."proNumber" = ? AND wr."status" = 'INITIATE'
+        WHERE wr."proNumber" = ? AND wr."status" = 'INITIATED'
         ORDER BY wr."receiptId" DESC 
     `;
     const result = await conn.query(query, [proNumber]) as any[];
