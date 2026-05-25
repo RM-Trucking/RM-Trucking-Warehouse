@@ -222,10 +222,12 @@ export async function getReceiptSummary(req: Request, res: Response, conn: Conne
  */
 export async function printLabel(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
-        const { printerPort, printerIP, ...payload } = req.body;
+        const { receiptNumber } = req.query;
+        const { printerPort, printerIP } = req.query;
+        const payload = req.body;
 
-        if (!printerPort || !printerIP) {
-            res.status(400).json({ success: false, message: "printerPort and printerIP are required" });
+        if (!printerPort || !printerIP || !receiptNumber) {
+            res.status(400).json({ success: false, message: "printerPort, printerIP, and receiptNumber are required" });
             return;
         }
 
@@ -234,6 +236,7 @@ export async function printLabel(req: Request, res: Response, conn: Connection):
             {
                 printerPort,
                 printerIP,
+                receiptNumber: Number(receiptNumber),
                 ...payload
             }
         );

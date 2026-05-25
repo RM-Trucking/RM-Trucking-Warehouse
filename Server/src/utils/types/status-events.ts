@@ -15,7 +15,7 @@ export enum ReceiptStatus {
     ACCEPTED = 'ACCEPTED'
 }
 
-export type ReceiptStatusType = 'INITIATED' | 'LOADED' | 'SHIPPED' | 'DISCARDED' | 'REJECTED' | 'ACCEPTED';
+export type ReceiptStatusType = 'INITIATED' | 'ON_HAND' | 'SHIPPED' | 'DISCARDED' | 'REJECTED' | 'ACCEPTED';
 
 // Audit log task interface
 export interface AuditLogTask {

@@ -117,7 +117,7 @@ export async function createVerificationService(
                     stationId,
                     carrierId: header.carrierId,
                     createdBy: userId,
-                    status: "INITIATE",
+                    status: "INITIATED",
                     destination: null,
                     proNumber: detail.proNumber,
                     packageId: null,
@@ -142,7 +142,7 @@ export async function createVerificationService(
                     piecesInland: detail.pieces,
                     weightInland: detail.weight,
                     proNumber: detail.proNumber,
-                    status: "INITIATE",
+                    status: "INITIATED",
                     entityId: entityId,
                     noteThreadId: noteThreadId,
                     toEmails: detail.toEmails,
@@ -158,7 +158,7 @@ export async function createVerificationService(
                     receiptId,
                     proNumber: detail.proNumber,
                     userId: userId,
-                    status: "INITIATE",
+                    status: "INITIATED",
                     description: `Receipt created for verification ID ${verificationId}`,
                     level: "INFO"
                 });

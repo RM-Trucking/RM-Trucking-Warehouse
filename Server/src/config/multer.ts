@@ -27,7 +27,7 @@ const LIMITS = {
 };
 
 // Helper to ensure directory exists
-function ensureUploadDirExists(dirPath: string | undefined): string {
+export function ensureUploadDirExists(dirPath: string | undefined): string {
     if (!dirPath) {
         throw new Error('Upload path is not configured. Check your environment variables.');
     }

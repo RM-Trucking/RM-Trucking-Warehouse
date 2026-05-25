@@ -56,6 +56,7 @@ router.post("/label-print", authenticateJWT, async (req: Request, res: Response)
     }
 });
 
+
 // Create warehouse receipt with freight info
 router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();

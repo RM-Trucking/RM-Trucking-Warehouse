@@ -9,9 +9,11 @@ import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as customerDB from "../../database/maintanance/customer";
 import * as carrierDB from "../../database/maintanance/carrier";
-import { emitAuditLog } from "../../utils/email";
+import { emitAuditLog, emitEmail } from "../../utils/email";
 import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptTemp } from "../../entities/warehouse-receipt";
 import { getProDetailFromCsv, validateProCsvData, findProCsvFile } from "../../utils/pro-csv-handler";
+import { createWarehouseReceiptPDF } from "../../utils/warehouseReceiptPDFHandler";
+import { ensureUploadDirExists } from "../../config/multer";
 
 
 export async function getWarehouseReceiptWithDetailsService(conn: Connection, receiptId: number) {
@@ -405,8 +407,10 @@ export async function batchProcessWarehouseReceiptsService(
                 receipt.verificationId = verificationId;
             }
 
+            receipt.status = "ON_HAND";
+
             // Check if this is an update (receipt has receiptId) or create (doesn't have receiptId)
-            if (receipt.receiptId) {
+            if (receipt.receiptId && receipt.receiptId !== 0) {
                 // UPDATE operation
                 const receiptId = receipt.receiptId;
 
@@ -417,7 +421,7 @@ export async function batchProcessWarehouseReceiptsService(
                 }
 
                 // System fields that should NOT be updated
-                const systemFields = ['receiptId', 'receiptNumber', 'createdAt', 'createdBy', 'documentId', 'entityId', 'noteThreadId', 'receiptDate'];
+                const systemFields = ['receiptId', 'receiptNumber', 'createdAt', 'createdBy', 'documentId', 'entityId', 'noteThreadId', 'receiptDate', 'toEmails'];
 
                 // Extract only updateable fields from provided receipt
                 const updateData: any = {};
@@ -476,14 +480,7 @@ export async function batchProcessWarehouseReceiptsService(
 
                 // Get updated receipt with all details
                 const updatedReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
-
                 const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId);
-
-                const updatedReceiptWithBadFreightConditionImages = {
-                    ...updatedReceipt,
-                    badFreightConditionImages
-                };
-
                 const updatedFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
 
                 // Fetch images for each freight
@@ -494,10 +491,42 @@ export async function batchProcessWarehouseReceiptsService(
                     }))
                 );
 
-                updatedReceipts.push({
-                    ...updatedReceiptWithBadFreightConditionImages,
+                const updatedReceiptData = {
+                    ...updatedReceipt,
+                    badFreightConditionImages,
                     freightInfos: updatedFreightWithImages
+                }
+
+                updatedReceipts.push(updatedReceiptData);
+
+                // const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
+
+                // await createWarehouseReceiptPDF(updatedReceiptData, false, tempReceiptOutPath);
+
+                emitAuditLog({
+                    receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
+                    receiptId,
+                    proNumber: updatedReceiptData.proNumber,
+                    userId: userId,
+                    status: updatedReceiptData.status ? updatedReceiptData.status : "ON_HAND",
+                    description: `Receipt now ON-HAND for verification ID ${updatedReceiptData.verificationId}`,
+                    level: "INFO"
                 });
+
+                console.log("To Emails:", updatedReceiptData.toEmails)
+
+                if (updatedReceiptData.toEmails && Array.isArray(updatedReceiptData.toEmails) && updatedReceiptData.toEmails.length > 0) {
+
+                    for (const emailRecipient of updatedReceiptData.toEmails) {
+                        // emitEmail will queue email notification asynchronously
+                        emitEmail({
+                            receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
+                            to: emailRecipient,
+                            status: updateData.status
+                        });
+                    }
+                }
+
             } else {
 
                 console.log("Creating new receipt with data:", receipt);
@@ -545,12 +574,6 @@ export async function batchProcessWarehouseReceiptsService(
                 // Get complete receipt with all details
                 const createdReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
                 const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId);
-
-                const createdReceiptWithBadFreightConditionImages = {
-                    ...createdReceipt,
-                    badFreightConditionImages
-                };
-
                 const createdFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
 
                 // Fetch images for each freight
@@ -561,10 +584,35 @@ export async function batchProcessWarehouseReceiptsService(
                     }))
                 );
 
-                createdReceipts.push({
-                    ...createdReceiptWithBadFreightConditionImages,
+                const createdReceiptData = {
+                    ...createdReceipt,
+                    badFreightConditionImages,
                     freightInfos: createdFreightWithImages
+                }
+
+                createdReceipts.push(createdReceiptData);
+
+
+                emitAuditLog({
+                    receiptNumber: createdReceiptData.receiptNumber ? createdReceiptData.receiptNumber : 0,
+                    receiptId,
+                    proNumber: createdReceiptData.proNumber,
+                    userId: userId,
+                    status: createdReceiptData.status ? createdReceiptData.status : "ON_HAND",
+                    description: `Receipt now ON-HAND for verification ID ${createdReceiptData.verificationId}`,
+                    level: "INFO"
                 });
+
+                if (createdReceiptData.toEmails && Array.isArray(createdReceiptData.toEmails) && createdReceiptData.toEmails.length > 0) {
+                    for (const emailRecipient of dataWithUser.toEmails) {
+                        // emitEmail will queue email notification asynchronously
+                        emitEmail({
+                            receiptNumber: dataWithUser.receiptNumber,
+                            to: emailRecipient,
+                            status: dataWithUser.status
+                        });
+                    }
+                }
             }
         }
 
@@ -812,28 +860,14 @@ export async function printWarehouseReceiptLabelService(
     const printerPort = payload.printerPort ? Number(payload.printerPort) : undefined;
     const printerIP = payload.printerIP;
 
-    if (!printerPort || !printerIP) {
-        throw new Error("printerPort and printerIP are required");
+    if (!printerPort || !printerIP || !payload.receiptNumber) {
+        throw new Error("printerPort, printerIP, and receiptNumber are required");
     }
 
-    let printData: {
-        labelCount: number;
-        receiptNumber: number;
-        customerName: string;
-        packageId: string;
-        shipper: string;
-        carrierName: string;
-        proNumber: string;
-        destination: string;
-        pieces: number;
-    };
+    let printData;
 
-    if (
-        payload.receiptNumber !== undefined &&
-        payload.customerName &&
-        payload.shipper &&
-        payload.carrierName
-    ) {
+    // If full payload is provided, use it directly
+    if (payload.customerName && payload.shipper && payload.carrierName) {
         printData = {
             labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
             receiptNumber: payload.receiptNumber,
@@ -845,14 +879,18 @@ export async function printWarehouseReceiptLabelService(
             destination: payload.destination || "",
             pieces: payload.pieces || 0
         };
-    } else if (payload.receiptNumber !== undefined) {
-        const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, payload.receiptNumber) as LabelReceiptData | null;
+    } else {
+
+        console.log(`Fetching receipt data from DB for receipt number: ${payload.receiptNumber}`);
+
+        // Otherwise, fetch from DB
+        const receipt = await warehouseReceiptDB.getAllWarehouseReceiptByReceiptNumber(conn, payload.receiptNumber) as any | null;
         if (!receipt) {
             throw new Error(`Receipt with number ${payload.receiptNumber} not found`);
         }
 
-        const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId));
-        const pieces = freightInfos.reduce((sum, freight) => sum + (freight.pieces || 0), 0);
+        // const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId));
+        // const pieces = freightInfos.reduce((sum, freight) => sum + (freight.pieces || 0), 0);
 
         printData = {
             labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
@@ -863,10 +901,8 @@ export async function printWarehouseReceiptLabelService(
             carrierName: receipt.carrierName || "",
             proNumber: receipt.proNumber || "",
             destination: receipt.destination || "",
-            pieces
+            pieces: receipt.piecesInland || 0
         };
-    } else {
-        throw new Error("receiptNumber is required either alone or with full label payload data");
     }
 
     const zpl = dataToZPL(printData);
