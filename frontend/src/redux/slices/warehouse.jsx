@@ -19,6 +19,11 @@ const initialState = {
         data: [],
         error: null
     },
+    parcelCarrierDropdown: {
+        loading: false,
+        data: [],
+        error: null
+    },
     cargoApiDimensions: {
         loading: false,
         data: null,
@@ -154,6 +159,21 @@ const slice = createSlice({
             state.printersDropdown.loading = false;
             state.printersDropdown.data = [];
             state.printersDropdown.error = action.payload || 'Failed to load printers';
+        },
+        startParcelCarrierDropdown(state) {
+            state.parcelCarrierDropdown.loading = true;
+            state.parcelCarrierDropdown.error = null;
+            state.parcelCarrierDropdown.data = [];
+        },
+        parcelCarrierDropdownSuccess(state, action) {
+            state.parcelCarrierDropdown.loading = false;
+            state.parcelCarrierDropdown.data = action.payload;
+            state.parcelCarrierDropdown.error = null;
+        },
+        parcelCarrierDropdownError(state, action) {
+            state.parcelCarrierDropdown.loading = false;
+            state.parcelCarrierDropdown.data = [];
+            state.parcelCarrierDropdown.error = action.payload || 'Failed to search parcel carriers';
         },
         startCargoApiDimensions(state, action) {
             state.cargoApiDimensions.loading = true;
@@ -376,6 +396,44 @@ export function fetchPrintersDropdown() {
             console.error('Error fetching printers dropdown:', error);
             const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to load printers';
             dispatch(slice.actions.printersDropdownError(errorMessage));
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
+// Print warehouse receipt label
+export function printWarehouseReceiptLabel({ printerIP, printerPort, receiptNumber, payload }) {
+    return async () => {
+        try {
+            const url = `/warehouse-receipt/label-print?printerIP=${encodeURIComponent(printerIP)}&printerPort=${encodeURIComponent(printerPort)}&receiptNumber=${encodeURIComponent(receiptNumber)}`;
+            const response = payload === undefined ? await axios.post(url) : await axios.post(url, payload);
+            return response.data;
+        } catch (error) {
+            console.error('Error printing warehouse receipt label:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to print label';
+            return { error: true, message: errorMessage };
+        }
+    };
+}
+
+// Search parcel carriers
+export function searchParcelCarriers(searchTerm) {
+    return async () => {
+        if (!searchTerm || searchTerm.length < 1) {
+            dispatch(slice.actions.parcelCarrierDropdownSuccess([]));
+            return;
+        }
+
+        dispatch(slice.actions.startParcelCarrierDropdown());
+        try {
+            const response = await axios.get(`/maintenance/carrier/parcel-dropdown?search=${searchTerm}`);
+            const options = normalizeDropdownOptions(response);
+            dispatch(slice.actions.parcelCarrierDropdownSuccess(options));
+            return options;
+        } catch (error) {
+            console.error('Error searching parcel carriers:', error);
+            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to search parcel carriers';
+            dispatch(slice.actions.parcelCarrierDropdownError(errorMessage));
             return { error: true, message: errorMessage };
         }
     };

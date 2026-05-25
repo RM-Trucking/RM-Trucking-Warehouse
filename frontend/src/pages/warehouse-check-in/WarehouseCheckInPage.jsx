@@ -20,6 +20,7 @@ import {
   TextField,
   Typography,
   CircularProgress,
+  Autocomplete,
   Alert,
   Snackbar,
 } from '@mui/material';
@@ -37,9 +38,12 @@ import {
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
   fetchPrintersDropdown,
+  printWarehouseReceiptLabel,
+  searchParcelCarriers,
   setWarehouseCheckInDraft,
   clearWarehouseCheckInDraft,
 } from '../../redux/slices/warehouse';
+import { searchCustomers } from '../../redux/slices/enroute';
 import axios from '../../utils/axios';
 import { PATH_DASHBOARD } from '../../routes/paths';
 
@@ -65,6 +69,26 @@ const REQUIRED_ITEM_FIELDS = [
   { field: 'height', label: 'Height' },
   { field: 'weight', label: 'Weight' },
 ];
+
+const createParcelForm = () => ({
+  proNumber: '',
+  carrier: '',
+  customer: '',
+  shipper: '',
+  driverName: '',
+  pieces: '',
+  weight: '',
+});
+
+const createParcelErrors = () => ({
+  proNumber: '',
+  carrier: '',
+  customer: '',
+  shipper: '',
+  driverName: '',
+  pieces: '',
+  weight: '',
+});
 
 // ─── Helpers to create blank form / item ────────────────────────────
 const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
@@ -94,6 +118,21 @@ const getDropdownOptionLabel = (option) => {
     option.id ||
     ''
   );
+};
+
+const getCarrierOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+  return option.carrierName || option.name || option.label || '';
+};
+
+const getCustomerOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+
+  const customerName = option.customerName || option.name || option.label || '';
+  const stationName = option.stationName || '';
+  return stationName ? `${customerName} | ${stationName}` : customerName;
 };
 
 const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
@@ -190,7 +229,8 @@ export default function WarehouseCheckInPage({
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const draftRestoredRef = useRef(false);
-  const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
+  const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, parcelCarrierDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
+  const { customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
@@ -224,6 +264,14 @@ export default function WarehouseCheckInPage({
   const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
   const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
+  const [printerContext, setPrinterContext] = useState(null);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [parcelForm, setParcelForm] = useState(createParcelForm());
+  const [parcelErrors, setParcelErrors] = useState(createParcelErrors());
+  const [parcelCarrierSearchValue, setParcelCarrierSearchValue] = useState('');
+  const [parcelCustomerSearchValue, setParcelCustomerSearchValue] = useState('');
+  const isSelectingParcelCarrierRef = useRef(false);
+  const isSelectingParcelCustomerRef = useRef(false);
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
@@ -253,6 +301,12 @@ export default function WarehouseCheckInPage({
     setPackageDropdownContext({ key: null, formId: null, itemId: null });
     setPrinterDialogOpen(false);
     setSelectedPrinterId('');
+    setPrinterContext(null);
+    setPrintLoading(false);
+    setParcelForm(createParcelForm());
+    setParcelErrors(createParcelErrors());
+    setParcelCarrierSearchValue('');
+    setParcelCustomerSearchValue('');
     setProceededReceipts([]);
   };
 
@@ -264,6 +318,32 @@ export default function WarehouseCheckInPage({
     cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     cameraStreamRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (isSelectingParcelCarrierRef.current) {
+      isSelectingParcelCarrierRef.current = false;
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      dispatch(searchParcelCarriers(parcelCarrierSearchValue));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, parcelCarrierSearchValue]);
+
+  useEffect(() => {
+    if (isSelectingParcelCustomerRef.current) {
+      isSelectingParcelCustomerRef.current = false;
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      dispatch(searchCustomers(parcelCustomerSearchValue));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, parcelCustomerSearchValue]);
 
   useEffect(() => {
     draftRestoredRef.current = false;
@@ -289,6 +369,8 @@ export default function WarehouseCheckInPage({
     setRejectedRowIds(warehouseCheckInDraft.rejectedRowIds || []);
     setIsSearchDisabled(Boolean(warehouseCheckInDraft.isSearchDisabled));
     setReceiptErrors(warehouseCheckInDraft.receiptErrors || {});
+    setParcelForm(warehouseCheckInDraft.parcelForm || createParcelForm());
+    setParcelErrors(warehouseCheckInDraft.parcelErrors || createParcelErrors());
     setProceededReceipts(warehouseCheckInDraft.proceededReceipts || []);
   }, [warehouseCheckInDraft]);
 
@@ -311,13 +393,17 @@ export default function WarehouseCheckInPage({
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
     setSavedResults(warehouseReceiptSearch.data);
+    const normalizedRow = {
+      ...row,
+      driverName: getRowValue(row, ['driverName', 'driver'], ''),
+    };
     const formDefaults = {
-      destination: getRowValue(row, ['destination', 'finalDestination'], ''),
-      customerRefNoPackageId: getRowValue(row, ['packageId', 'packageNumber'], ''),
+      destination: getRowValue(normalizedRow, ['destination', 'finalDestination'], ''),
+      customerRefNoPackageId: getRowValue(normalizedRow, ['packageId', 'packageNumber'], ''),
     };
     setProceededReceipts((prev) => [
       ...prev,
-      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1, null, formDefaults)] },
+      { key, proNumber: warehouseReceiptSearch.data.proNumber, row: normalizedRow, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1, null, formDefaults)] },
     ]);
     setIsSearchDisabled(true);
     // Clear search results
@@ -333,6 +419,10 @@ export default function WarehouseCheckInPage({
     setProceededReceipts((prev) => prev.filter((p) => p.key !== key));
     setIsSearchDisabled(false);
     setSearchValue('');
+    setParcelForm(createParcelForm());
+    setParcelErrors(createParcelErrors());
+    setParcelCarrierSearchValue('');
+    setParcelCustomerSearchValue('');
     if (savedResults) {
       // Restore the previous search results
       // Note: This is a simple restoration from saved state
@@ -730,29 +820,193 @@ export default function WarehouseCheckInPage({
     handleClosePackageDropdown();
   };
 
-  const handleOpenPrinterDialog = () => {
+  const buildLabelPrintPayload = (receipt, form) => {
+    const row = receipt?.row || {};
+    const items = form?.items || [];
+    const customerDisplay = getRowValue(row, ['customerName', 'customer'], '');
+    const carrierDisplay = getRowValue(row, ['carrierName', 'carrier'], '');
+
+    return {
+      customerName: String(customerDisplay || '').split('|')[0].trim(),
+      packageId: form?.customerRefNoPackageId || getRowValue(row, ['packageId', 'packageNumber'], ''),
+      shipper: getRowValue(row, ['shipper', 'shipperName', 'shipperCompany'], ''),
+      carrierName: String(carrierDisplay || '').split('|')[0].trim(),
+      proNumber: getRowValue(row, 'proNumber', receipt?.proNumber || ''),
+      destination: form?.destination || getRowValue(row, ['destination', 'finalDestination'], ''),
+      pieces: items.reduce((sum, item) => sum + Number(item.pieces || 0), 0),
+      labelCount: items.length,
+    };
+  };
+
+  const isTrailerFormReadyForPrint = (form) =>
+    Boolean(String(form?.destination || '').trim()) &&
+    Boolean(String(form?.customerRefNoPackageId || '').trim()) &&
+    (form?.items || []).length > 0 &&
+    (form?.items || []).every((item) =>
+      REQUIRED_ITEM_FIELDS.every(({ field }) => String(item[field] || '').trim())
+    );
+
+  const handleOpenPrinterDialog = (receipt = null, form = null) => {
     setPrinterDialogOpen(true);
     setSelectedPrinterId('');
+    setPrinterContext(receipt && form ? { receipt, form } : null);
     dispatch(fetchPrintersDropdown());
   };
 
   const handleClosePrinterDialog = () => {
     setPrinterDialogOpen(false);
     setSelectedPrinterId('');
+    setPrinterContext(null);
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const printer = printersDropdown.data.find((item) => String(item.printerId) === String(selectedPrinterId));
+
+    if (!printer) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a printer',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const receiptNumber =
+      printerContext?.form?.receiptNumber || printerContext?.receipt?.row?.receiptNumber || printerContext?.receipt?.row?.receiptNo || '';
+
+    if (!receiptNumber) {
+      setSnackbar({
+        open: true,
+        message: 'Receipt number is required to print the label',
+        severity: 'error',
+      });
+      return;
+    }
+
+    setPrintLoading(true);
+    const response = await dispatch(
+      printWarehouseReceiptLabel({
+        printerIP: printer.printerIP,
+        printerPort: printer.printerPort,
+        receiptNumber,
+        payload: buildLabelPrintPayload(printerContext?.receipt, printerContext?.form),
+      })
+    );
+    setPrintLoading(false);
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to print label',
+        severity: 'error',
+      });
+      return;
+    }
 
     setSnackbar({
       open: true,
-      message: printer ? `Print requested for ${printer.printerName}` : 'Please select a printer',
-      severity: printer ? 'success' : 'error',
+      message: response?.message || `Print requested for ${printer.printerName}`,
+      severity: 'success',
     });
+    handleClosePrinterDialog();
+  };
 
-    if (printer) {
-      handleClosePrinterDialog();
+  const handleParcelFormChange = (field, value) => {
+    setParcelForm((prev) => ({ ...prev, [field]: value }));
+    if (value && String(value).trim()) {
+      setParcelErrors((prev) => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const validateParcelForm = () => {
+    const nextErrors = createParcelErrors();
+
+    if (!String(parcelForm.proNumber || '').trim()) nextErrors.proNumber = 'Pro is required';
+    if (!parcelForm.carrier) nextErrors.carrier = 'Carrier is required';
+    if (!parcelForm.customer) nextErrors.customer = 'Customer is required';
+    if (!String(parcelForm.shipper || '').trim()) nextErrors.shipper = 'Shipper is required';
+    if (!String(parcelForm.driverName || '').trim()) nextErrors.driverName = 'Driver Name is required';
+    if (!String(parcelForm.pieces || '').trim()) nextErrors.pieces = 'Pieces is required';
+    if (!String(parcelForm.weight || '').trim()) nextErrors.weight = 'Weight is required';
+
+    setParcelErrors(nextErrors);
+    return !Object.values(nextErrors).some(Boolean);
+  };
+
+  const handleParcelSubmit = async () => {
+    if (!validateParcelForm()) {
+      setSnackbar({
+        open: true,
+        message: 'Please fill all mandatory parcel fields',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const payload = {
+      verificationId: 0,
+      shipper: parcelForm.shipper || '',
+      customerId: parcelForm.customer?.customerId || 0,
+      stationId: parcelForm.customer?.stationId || 0,
+      carrierId: parcelForm.carrier?.carrierId || 0,
+      status: 'INITIATE',
+      receivedBy: '',
+      location: '',
+      destination: '',
+      proNumber: parcelForm.proNumber || '',
+      packageId: '',
+    };
+
+    const response = await dispatch(createTempWarehouseReceipt(payload));
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to create temporary warehouse receipt',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const receiptData = response?.data || {};
+    const row = {
+      id: receiptData.receiptNumber || receiptData.verificationId || Date.now(),
+      receiptNumber: receiptData.receiptNumber || '',
+      carrier: receiptData.carrierName || '',
+      customer: receiptData.customerName
+        ? `${receiptData.customerName}${receiptData.stationName ? ` | ${receiptData.stationName}` : ''}`
+        : '',
+      piecesInland: parcelForm.pieces,
+      weightInland: parcelForm.weight,
+      driverName: parcelForm.driverName || '',
+      ...receiptData,
+    };
+    const key = `${receiptData.proNumber || parcelForm.proNumber}-${row.id}`;
+    const form = createForm(1, receiptData.receiptNumber);
+    const parcelItem = createItem(1);
+
+    setSavedResults({
+      proNumber: receiptData.proNumber || parcelForm.proNumber,
+      rows: [row],
+    });
+    setProceededReceipts([
+      {
+        key,
+        proNumber: receiptData.proNumber || parcelForm.proNumber,
+        row,
+        receivedBy: receiptData.receivedBy || '',
+        location: receiptData.location || 'OH',
+        sectionCollapsed: false,
+        forms: [{ ...form, items: [parcelItem] }],
+      },
+    ]);
+    setIsSearchDisabled(true);
+
+    setSnackbar({
+      open: true,
+      message: response?.message || 'Temporary warehouse receipt created successfully',
+      severity: 'success',
+    });
   };
 
   const handleRejectOpen = (row) => {
@@ -918,6 +1172,8 @@ export default function WarehouseCheckInPage({
       rejectedRowIds,
       isSearchDisabled,
       receiptErrors: nextErrors,
+      parcelForm,
+      parcelErrors,
       proceededReceipts,
     }, draftKey));
 
@@ -964,7 +1220,9 @@ export default function WarehouseCheckInPage({
       sortable: false,
       renderCell: (params) => (
         <Stack direction="row" spacing={1} alignItems="center" sx={{ height: '100%' }}>
-          <Button size="small" sx={actionBtnSx} onClick={() => handleRejectOpen(params.row)}>Reject</Button>
+          {searchType !== 'rmDriver' && (
+            <Button size="small" sx={actionBtnSx} onClick={() => handleRejectOpen(params.row)}>Reject</Button>
+          )}
           <Button size="small" sx={actionBtnSx} onClick={() => handleProceed(params.row)}>Proceed</Button>
         </Stack>
       ),
@@ -1018,52 +1276,213 @@ export default function WarehouseCheckInPage({
             )}
           </RadioGroup>
 
-          {/* Search row */}
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
-            {searchType !== 'rmDriver' && (
-              <Stack spacing={0.5} sx={{ minWidth: 160 }}>
-                <Typography sx={{ fontSize: 12, color: '#555' }}>
-                  Search By <span style={{ color: 'red' }}>*</span>
-                </Typography>
+          {searchType === 'parcel' ? (
+            <Stack spacing={3}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
                 <StyledTextField
-                  select
                   variant="standard"
                   size="small"
-                  value={searchBy}
-                  onChange={(e) => setSearchBy(e.target.value)}
+                  required
+                  label="Pro"
+                  value={parcelForm.proNumber}
+                  onChange={(event) => handleParcelFormChange('proNumber', event.target.value)}
                   disabled={isSearchDisabled}
-                  sx={{ minWidth: 160 }}
-                >
-                  {SEARCH_BY_OPTIONS.map((opt) => (
-                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                  ))}
-                </StyledTextField>
+                  error={Boolean(parcelErrors.proNumber)}
+                  helperText={parcelErrors.proNumber || ' '}
+                  sx={{ minWidth: 220 }}
+                />
+                <Autocomplete
+                  disabled={isSearchDisabled}
+                  options={parcelCarrierDropdown.data}
+                  value={parcelForm.carrier}
+                  getOptionLabel={getCarrierOptionLabel}
+                  isOptionEqualToValue={(option, value) =>
+                    option.carrierId === value.carrierId || option.carrierName === value.carrierName
+                  }
+                  onChange={(event, newValue) => {
+                    isSelectingParcelCarrierRef.current = true;
+                    handleParcelFormChange('carrier', newValue);
+                    setParcelCarrierSearchValue('');
+                    if (!newValue) {
+                      dispatch(searchParcelCarriers(''));
+                    }
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    if (reason !== 'reset') {
+                      setParcelCarrierSearchValue(newInputValue);
+                      if (!newInputValue || !newInputValue.trim()) {
+                        dispatch(searchParcelCarriers(''));
+                      }
+                    }
+                  }}
+                  loading={parcelCarrierDropdown.loading}
+                  loadingText="Searching carriers..."
+                  noOptionsText={parcelCarrierSearchValue ? 'No carriers found' : 'Type to search for carriers'}
+                  clearIcon={parcelCarrierSearchValue ? <CloseIcon fontSize="small" /> : null}
+                  sx={{ minWidth: 220 }}
+                  renderInput={(params) => (
+                    <StyledTextField
+                      {...params}
+                      variant="standard"
+                      size="small"
+                      required
+                      label="Select Carrier"
+                      error={Boolean(parcelErrors.carrier)}
+                      helperText={parcelErrors.carrier || ' '}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {parcelCarrierDropdown.loading ? <CircularProgress color="inherit" size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+                <Autocomplete
+                  disabled={isSearchDisabled}
+                  options={customerOptions}
+                  value={parcelForm.customer}
+                  getOptionLabel={getCustomerOptionLabel}
+                  isOptionEqualToValue={(option, value) =>
+                    option.customerId === value.customerId && option.stationId === value.stationId
+                  }
+                  onChange={(event, newValue) => {
+                    isSelectingParcelCustomerRef.current = true;
+                    handleParcelFormChange('customer', newValue);
+                    setParcelCustomerSearchValue('');
+                    if (!newValue) {
+                      dispatch(searchCustomers(''));
+                    }
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    if (reason !== 'reset') {
+                      setParcelCustomerSearchValue(newInputValue);
+                      if (!newInputValue || !newInputValue.trim()) {
+                        dispatch(searchCustomers(''));
+                      }
+                    }
+                  }}
+                  loading={customerLoading}
+                  loadingText="Searching customers..."
+                  noOptionsText={parcelCustomerSearchValue ? 'No customers found' : 'Type to search for customers'}
+                  clearIcon={parcelCustomerSearchValue ? <CloseIcon fontSize="small" /> : null}
+                  sx={{ minWidth: 220 }}
+                  renderInput={(params) => (
+                    <StyledTextField
+                      {...params}
+                      variant="standard"
+                      size="small"
+                      required
+                      label="Select Customer"
+                      error={Boolean(parcelErrors.customer)}
+                      helperText={parcelErrors.customer || ' '}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {customerLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+                <StyledTextField
+                  variant="standard"
+                  size="small"
+                  required
+                  label="Shipper"
+                  value={parcelForm.shipper}
+                  onChange={(event) => handleParcelFormChange('shipper', event.target.value)}
+                  disabled={isSearchDisabled}
+                  error={Boolean(parcelErrors.shipper)}
+                  helperText={parcelErrors.shipper || ' '}
+                  sx={{ minWidth: 220 }}
+                />
               </Stack>
-            )}
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
+                {[
+                  { field: 'driverName', label: 'Driver Name' },
+                  { field: 'pieces', label: 'Pieces' },
+                  { field: 'weight', label: 'Weight' },
+                ].map(({ field, label }) => (
+                  <StyledTextField
+                    key={field}
+                    variant="standard"
+                    size="small"
+                    required
+                    label={label}
+                    value={parcelForm[field]}
+                    onChange={(event) => handleParcelFormChange(field, event.target.value)}
+                    disabled={isSearchDisabled}
+                    error={Boolean(parcelErrors[field])}
+                    helperText={parcelErrors[field] || ' '}
+                    sx={{ minWidth: 220 }}
+                  />
+                ))}
+              </Stack>
+              <Box>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleParcelSubmit}
+                  disabled={isSearchDisabled}
+                  sx={{ ...actionBtnSx, minWidth: 76 }}
+                >
+                  Submit
+                </Button>
+              </Box>
+            </Stack>
+          ) : (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
+              {searchType !== 'rmDriver' && (
+                <Stack spacing={0.5} sx={{ minWidth: 160 }}>
+                  <Typography sx={{ fontSize: 12, color: '#555' }}>
+                    Search By <span style={{ color: 'red' }}>*</span>
+                  </Typography>
+                  <StyledTextField
+                    select
+                    variant="standard"
+                    size="small"
+                    value={searchBy}
+                    onChange={(e) => setSearchBy(e.target.value)}
+                    disabled={isSearchDisabled}
+                    sx={{ minWidth: 160 }}
+                  >
+                    {SEARCH_BY_OPTIONS.map((opt) => (
+                      <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                    ))}
+                  </StyledTextField>
+                </Stack>
+              )}
 
-            {/* PRO / value input */}
-            <StyledTextField
-              variant="standard"
-              size="small"
-              required
-              label={searchType === 'rmDriver' ? 'Pro' : searchBy}
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              disabled={isSearchDisabled}
-              sx={{ minWidth: 200 }}
-            />
+              <StyledTextField
+                variant="standard"
+                size="small"
+                required
+                label={searchType === 'rmDriver' ? 'Pro' : searchBy}
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                disabled={isSearchDisabled}
+                sx={{ minWidth: 200 }}
+              />
 
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleSearch}
-              disabled={isSearchDisabled}
-              sx={{ ...actionBtnSx, minWidth: 90, height: 36 }}
-            >
-              Search
-            </Button>
-          </Stack>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleSearch}
+                disabled={isSearchDisabled}
+                sx={{ ...actionBtnSx, minWidth: 90, height: 36 }}
+              >
+                Search
+              </Button>
+            </Stack>
+          )}
         </fieldset>
 
         {/* Results */}
@@ -1330,15 +1749,17 @@ export default function WarehouseCheckInPage({
                                     />
                                   </Stack>
                                 </Stack>
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  startIcon={<Iconify icon="mdi:printer" width={16} />}
-                                  onClick={handleOpenPrinterDialog}
-                                  sx={{ ...actionBtnSx, minWidth: 76, alignSelf: { xs: 'flex-end', md: 'flex-start' } }}
-                                >
-                                  Print
-                                </Button>
+                                {isTrailerFormReadyForPrint(form) && (
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    startIcon={<Iconify icon="mdi:printer" width={16} />}
+                                    onClick={() => handleOpenPrinterDialog(pr, form)}
+                                    sx={{ ...actionBtnSx, minWidth: 76, alignSelf: { xs: 'flex-end', md: 'flex-start' } }}
+                                  >
+                                    Print
+                                  </Button>
+                                )}
                               </Stack>
                             )}
                             {form.items.map((item, iIdx) => (
@@ -1622,7 +2043,7 @@ export default function WarehouseCheckInPage({
                 size="small"
                 value={selectedPrinterId}
                 onChange={(event) => setSelectedPrinterId(event.target.value)}
-                disabled={printersDropdown.loading}
+                disabled={printersDropdown.loading || printLoading}
                 helperText={printersDropdown.error || ''}
                 error={Boolean(printersDropdown.error)}
                 sx={{ width: '100%' }}
@@ -1649,11 +2070,11 @@ export default function WarehouseCheckInPage({
               variant="contained"
               size="small"
               startIcon={<Iconify icon="mdi:printer" width={16} />}
-              disabled={printersDropdown.loading || !selectedPrinterId}
+              disabled={printersDropdown.loading || printLoading || !selectedPrinterId}
               onClick={handlePrint}
               sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' } }}
             >
-              Print
+              {printLoading ? 'Printing...' : 'Print'}
             </Button>
           </Stack>
         </DialogContent>
