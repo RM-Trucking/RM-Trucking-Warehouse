@@ -499,9 +499,9 @@ export async function batchProcessWarehouseReceiptsService(
 
                 updatedReceipts.push(updatedReceiptData);
 
-                // const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
+                const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
 
-                // await createWarehouseReceiptPDF(updatedReceiptData, false, tempReceiptOutPath);
+                await createWarehouseReceiptPDF(updatedReceiptData, false, tempReceiptOutPath);
 
                 emitAuditLog({
                     receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
