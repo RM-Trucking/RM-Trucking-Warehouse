@@ -107,6 +107,8 @@ const getNextFormId = (forms = []) =>
 const getNextItemId = (items = []) =>
   items.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) + 1;
 
+const getCargoApiLoadingKey = (key, formId, itemId) => `${key}-${formId}-${itemId}`;
+
 const getDropdownOptionLabel = (option) => {
   if (option === null || option === undefined) return '';
   if (typeof option !== 'object') return String(option);
@@ -169,19 +171,71 @@ const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
   </Box>
 );
 
+const looksLikeBase64Image = (value) => {
+  const compactValue = String(value || '').trim();
+  return compactValue.length > 80 && /^[A-Za-z0-9+/]+={0,2}$/.test(compactValue);
+};
+
+const getBase64ImageMimeType = (value) => {
+  const compactValue = String(value || '').trim();
+
+  if (compactValue.startsWith('/9j/')) return 'image/jpeg';
+  if (compactValue.startsWith('iVBORw0KGgo')) return 'image/png';
+  if (compactValue.startsWith('R0lGOD')) return 'image/gif';
+  if (compactValue.startsWith('UklGR')) return 'image/webp';
+  return 'image/jpeg';
+};
+
 const getImageUrl = (file) => {
   if (!file) return '';
-  if (typeof file === 'string') return file;
+  if (typeof file === 'string') {
+    const image = file.trim();
+    if (/^(data:image\/|https?:\/\/|blob:)/i.test(image)) return image;
+    if (looksLikeBase64Image(image)) return `data:${getBase64ImageMimeType(image)};base64,${image}`;
+    return image;
+  }
   if (file.url) return file.url;
   if (file.preview) return file.preview;
+  if (file.base64) return getImageUrl(file.base64);
+  if (file.image) return getImageUrl(file.image);
   if (file instanceof File) return URL.createObjectURL(file);
   return '';
 };
 
 const getImageName = (file, index) => {
   if (!file) return `Image ${index + 1}`;
-  if (typeof file === 'string') return file.split('/').pop() || `Image ${index + 1}`;
+  if (typeof file === 'string') {
+    if (looksLikeBase64Image(file) || file.startsWith('data:image/')) return `Cargo API Image ${index + 1}`;
+    return file.split('/').pop() || `Image ${index + 1}`;
+  }
   return file.name || file.filename || `Image ${index + 1}`;
+};
+
+const openImagePreviewTab = (imageUrl, title = 'Image Preview') => {
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) return false;
+
+  previewWindow.document.title = title;
+  previewWindow.document.body.style.margin = '0';
+  previewWindow.document.body.style.minHeight = '100vh';
+  previewWindow.document.body.style.background = '#111';
+  previewWindow.document.body.style.display = 'flex';
+  previewWindow.document.body.style.alignItems = 'center';
+  previewWindow.document.body.style.justifyContent = 'center';
+  previewWindow.document.body.style.padding = '24px';
+  previewWindow.document.body.style.boxSizing = 'border-box';
+
+  const image = previewWindow.document.createElement('img');
+  image.src = imageUrl;
+  image.alt = title;
+  image.style.maxWidth = '100%';
+  image.style.maxHeight = 'calc(100vh - 48px)';
+  image.style.objectFit = 'contain';
+  image.style.background = '#fff';
+
+  previewWindow.document.body.appendChild(image);
+  previewWindow.document.close();
+  return true;
 };
 
 const getRowValue = (row, fields, fallback = '') => {
@@ -263,11 +317,13 @@ export default function WarehouseCheckInPage({
     formId: null,
     itemId: null,
   });
+  const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '' });
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
   const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
+  const [cargoApiLoadingItems, setCargoApiLoadingItems] = useState({});
   const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printerContext, setPrinterContext] = useState(null);
@@ -305,6 +361,7 @@ export default function WarehouseCheckInPage({
     setCameraDialogOpen(false);
     setPackageDropdownAnchor(null);
     setPackageDropdownContext({ key: null, formId: null, itemId: null });
+    setCargoApiLoadingItems({});
     setPrinterDialogOpen(false);
     setSelectedPrinterId('');
     setPrinterContext(null);
@@ -647,6 +704,15 @@ export default function WarehouseCheckInPage({
 
   const handleCloseImagePreview = () => {
     setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+    setFullImageDialog({ open: false, image: null, title: '' });
+  };
+
+  const handleOpenFullImage = (image, title) => {
+    setFullImageDialog({ open: true, image, title });
+  };
+
+  const handleCloseFullImage = () => {
+    setFullImageDialog({ open: false, image: null, title: '' });
   };
 
   const handleRemovePreviewImage = (index) => {
@@ -755,15 +821,19 @@ export default function WarehouseCheckInPage({
     setStagedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleViewStagedFile = (file) => {
+  const handleViewStagedFile = (file, index = 0) => {
     if (!file) return;
 
-    const previewUrl = URL.createObjectURL(file);
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    const previewUrl = getImageUrl(file);
+    if (!previewUrl) return;
 
-    setTimeout(() => {
-      URL.revokeObjectURL(previewUrl);
-    }, 1000);
+    const opened = openImagePreviewTab(previewUrl, getImageName(file, index));
+
+    if (opened && file instanceof File) {
+      setTimeout(() => {
+        URL.revokeObjectURL(previewUrl);
+      }, 1000);
+    }
   };
 
   const handleUploadImages = () => {
@@ -777,6 +847,14 @@ export default function WarehouseCheckInPage({
     const data = Array.isArray(dimensions) ? dimensions[0] : dimensions;
     const field = fields.find((name) => data?.[name] !== undefined && data?.[name] !== null && data?.[name] !== '');
     return field ? data[field] : null;
+  };
+
+  const getDimensionImages = (dimensions) => {
+    const data = Array.isArray(dimensions) ? dimensions[0] : dimensions;
+    const images = data?.images || data?.cargoImages || data?.apiImages || data?.imageList;
+
+    if (!images) return [];
+    return Array.isArray(images) ? images.filter(Boolean) : [images].filter(Boolean);
   };
 
   const applyCargoDimensions = (dimensionsResponse) => {
@@ -799,6 +877,11 @@ export default function WarehouseCheckInPage({
         clearItemError(key, formId, itemId, field, String(value));
       }
     });
+
+    const images = getDimensionImages(dimensions);
+    if (images.length > 0) {
+      updateItem(key, formId, itemId, 'images', images);
+    }
   };
 
   const handlePackageDetailsClick = (event, key, formId, itemId) => {
@@ -812,28 +895,45 @@ export default function WarehouseCheckInPage({
 
   const handlePackageOptionSelect = async (option) => {
     const apiId = option?.apiId || option?.id || option?.value;
+    const { key, formId, itemId } = packageDropdownContext;
 
     if (!apiId) {
       handleClosePackageDropdown();
       return;
     }
 
-    const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
-    applyCargoDimensions(dimensionsResponse);
-
-    if (dimensionsResponse?.message) {
-      setSnackbar({
-        open: true,
-        message: dimensionsResponse.message,
-        severity: dimensionsResponse.error || dimensionsResponse.success === false
-          ? 'error'
-          : dimensionsResponse.warning
-            ? 'warning'
-            : 'success',
-      });
+    if (!key || !formId || !itemId) {
+      handleClosePackageDropdown();
+      return;
     }
 
+    const loadingKey = getCargoApiLoadingKey(key, formId, itemId);
     handleClosePackageDropdown();
+
+    setCargoApiLoadingItems((prev) => ({ ...prev, [loadingKey]: true }));
+
+    try {
+      const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
+      applyCargoDimensions(dimensionsResponse);
+
+      if (dimensionsResponse?.message) {
+        setSnackbar({
+          open: true,
+          message: dimensionsResponse.message,
+          severity: dimensionsResponse.error || dimensionsResponse.success === false
+            ? 'error'
+            : dimensionsResponse.warning
+              ? 'warning'
+              : 'success',
+        });
+      }
+    } finally {
+      setCargoApiLoadingItems((prev) => {
+        const next = { ...prev };
+        delete next[loadingKey];
+        return next;
+      });
+    }
   };
 
   const buildLabelPrintPayload = (receipt, form) => {
@@ -1544,6 +1644,7 @@ export default function WarehouseCheckInPage({
                     columns={columns}
                     autoHeight
                     disableRowSelectionOnClick
+                    disableColumnFilter
                     hideFooter
                     sx={{
                       border: 'none',
@@ -1778,7 +1879,10 @@ export default function WarehouseCheckInPage({
                                 )}
                               </Stack>
                             )}
-                            {form.items.map((item, iIdx) => (
+                            {form.items.map((item, iIdx) => {
+                              const isCargoApiProcessing = !!cargoApiLoadingItems[getCargoApiLoadingKey(pr.key, form.id, item.id)];
+
+                              return (
                               <Stack
                                 key={item.id}
                                 direction="row"
@@ -1904,17 +2008,23 @@ export default function WarehouseCheckInPage({
                                     size="small"
                                     title="Package details"
                                     onClick={(event) => handlePackageDetailsClick(event, pr.key, form.id, item.id)}
+                                    disabled={isCargoApiProcessing}
                                     sx={{ p: 0.4 }}
                                   >
-                                    <Iconify icon="mdi:cube" width={28} sx={{ color: '#000' }} />
+                                    <Iconify icon="mdi:cube" width={28} sx={{ color: isCargoApiProcessing ? '#9e9e9e' : '#000' }} />
                                   </IconButton>
                                   <IconButton
                                     size="small"
                                     title="Upload image"
                                     onClick={() => handleOpenImageUpload(pr.key, form.id, item.id, item.images || [])}
+                                    disabled={isCargoApiProcessing}
                                     sx={{ p: 0.4 }}
                                   >
-                                    <Iconify icon="mdi:image-plus" width={28} sx={{ color: '#000' }} />
+                                    {isCargoApiProcessing ? (
+                                      <CircularProgress size={22} sx={{ color: '#A22' }} />
+                                    ) : (
+                                      <Iconify icon="mdi:image-plus" width={28} sx={{ color: '#000' }} />
+                                    )}
                                   </IconButton>
                                   {(item.images?.length || 0) > 0 && (
                                     <IconButton
@@ -1953,8 +2063,25 @@ export default function WarehouseCheckInPage({
                                     </IconButton>
                                   )}
                                 </Stack>
+                                {isCargoApiProcessing && (
+                                  <Stack
+                                    direction="row"
+                                    spacing={0.8}
+                                    alignItems="center"
+                                    sx={{
+                                      minWidth: 150,
+                                      pt: '23px',
+                                      color: '#A22',
+                                    }}
+                                  >
+                                    <Typography sx={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                      Cargo API processing...
+                                    </Typography>
+                                  </Stack>
+                                )}
                               </Stack>
-                            ))}
+                              );
+                            })}
 
                             {!showTrailerFreightHeader && (
                               <Box>
@@ -2189,7 +2316,8 @@ export default function WarehouseCheckInPage({
                           component="img"
                           src={imageUrl}
                           alt={getImageName(file, index)}
-                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onClick={() => handleOpenFullImage(file, getImageName(file, index))}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
                         />
                       ) : (
                         <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', opacity: 0.5 }}>
@@ -2231,6 +2359,41 @@ export default function WarehouseCheckInPage({
             OK
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={fullImageDialog.open} onClose={handleCloseFullImage} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          {fullImageDialog.title || 'Image Preview'}
+          <IconButton
+            onClick={handleCloseFullImage}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#111', p: 2 }}>
+          {getImageUrl(fullImageDialog.image) ? (
+            <Box
+              component="img"
+              src={getImageUrl(fullImageDialog.image)}
+              alt={fullImageDialog.title || 'Image Preview'}
+              sx={{
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '75vh',
+                mx: 'auto',
+                objectFit: 'contain',
+                bgcolor: '#fff',
+              }}
+            />
+          ) : (
+            <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320, color: '#fff' }} spacing={1}>
+              <Iconify icon="mdi:image-off" width={32} />
+              <Typography sx={{ fontSize: 13 }}>Image preview unavailable.</Typography>
+            </Stack>
+          )}
+        </DialogContent>
       </Dialog>
 
       {/* Image Upload Dialog */}
@@ -2338,9 +2501,9 @@ export default function WarehouseCheckInPage({
                   <Box sx={{ maxHeight: 180, overflowY: 'auto', pr: 1 }}>
                     {stagedFiles.map((file, idx) => (
                       <FileItem
-                        key={`${file.name}-${file.lastModified || idx}-${idx}`}
-                        filename={file.name}
-                        onView={() => handleViewStagedFile(file)}
+                        key={`${getImageName(file, idx)}-${file.lastModified || idx}-${idx}`}
+                        filename={getImageName(file, idx)}
+                        onView={() => handleViewStagedFile(file, idx)}
                         onRemove={uploadDialog.mode === 'view' ? undefined : () => handleRemoveStagedFile(idx)}
                         hideRemove={uploadDialog.mode === 'view'}
                       />
