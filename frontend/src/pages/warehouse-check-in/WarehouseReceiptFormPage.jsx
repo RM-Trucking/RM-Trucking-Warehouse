@@ -12,6 +12,7 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  MenuItem,
   Alert,
   Snackbar,
   Stack,
@@ -31,7 +32,12 @@ import StyledTextField from '../../sections/shared/StyledTextField';
 import rmLogo from '../../assets/RM.png';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchCustomers } from '../../redux/slices/enroute';
-import { clearWarehouseCheckInDraft, submitWarehouseReceiptBatch } from '../../redux/slices/warehouse';
+import {
+  clearWarehouseCheckInDraft,
+  fetchPrintersDropdown,
+  printWarehouseReceiptLabel,
+  submitWarehouseReceiptBatch,
+} from '../../redux/slices/warehouse';
 import { PATH_DASHBOARD } from '../../routes/paths';
 
 const actionBtnSx = {
@@ -73,6 +79,38 @@ const toNumberOrNull = (value) => {
 
   const numberValue = Number(value);
   return Number.isNaN(numberValue) ? null : numberValue;
+};
+
+const calculateItemCbm = (item) =>
+  Number(item.length || 0) * Number(item.width || 0) * Number(item.height || 0);
+
+const formatMeasurement = (value) => {
+  if (!value) return 0;
+  return Number.isInteger(value) ? value : Number(value.toFixed(3));
+};
+
+const normalizeEmailList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (!value) return [];
+
+  if (typeof value === 'string') {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) return [];
+
+    try {
+      const parsedValue = JSON.parse(trimmedValue);
+      if (Array.isArray(parsedValue)) return parsedValue.filter(Boolean);
+    } catch {
+      // Fall back to comma-separated parsing below.
+    }
+
+    return trimmedValue
+      .split(',')
+      .map((email) => email.trim())
+      .filter(Boolean);
+  }
+
+  return [value].filter(Boolean);
 };
 
 const toValueOrNull = (value) => {
@@ -343,19 +381,60 @@ function ReceiptInfoRow({ label, value, editable = false, onChange }) {
   );
 }
 
+const looksLikeBase64Image = (value) => {
+  const compactValue = String(value || '').trim();
+  return compactValue.length > 80 && /^[A-Za-z0-9+/]+={0,2}$/.test(compactValue);
+};
+
+const getBase64ImageMimeType = (value) => {
+  const compactValue = String(value || '').trim();
+
+  if (compactValue.startsWith('/9j/')) return 'image/jpeg';
+  if (compactValue.startsWith('iVBORw0KGgo')) return 'image/png';
+  if (compactValue.startsWith('R0lGOD')) return 'image/gif';
+  if (compactValue.startsWith('UklGR')) return 'image/webp';
+  return 'image/jpeg';
+};
+
 const getImageUrl = (file) => {
   if (!file) return '';
-  if (typeof file === 'string') return file;
+  if (typeof file === 'string') {
+    const image = file.trim();
+    if (/^(data:image\/|https?:\/\/|blob:)/i.test(image)) return image;
+    if (looksLikeBase64Image(image)) return `data:${getBase64ImageMimeType(image)};base64,${image}`;
+    return image;
+  }
   if (file.url) return file.url;
   if (file.preview) return file.preview;
+  if (file.base64) return getImageUrl(file.base64);
+  if (file.image) return getImageUrl(file.image);
   if (file instanceof File) return URL.createObjectURL(file);
   return '';
 };
 
 const getImageName = (file, index) => {
   if (!file) return `Image ${index + 1}`;
-  if (typeof file === 'string') return file.split('/').pop() || `Image ${index + 1}`;
+  if (typeof file === 'string') {
+    if (looksLikeBase64Image(file) || file.startsWith('data:image/')) return `Cargo API Image ${index + 1}`;
+    return file.split('/').pop() || `Image ${index + 1}`;
+  }
   return file.name || file.filename || `Image ${index + 1}`;
+};
+
+const getSubmittedImageValue = async (image) => {
+  const base64Image = await fileToBase64(image);
+  if (!base64Image) return '';
+
+  return base64Image.startsWith('base64,') ? base64Image : `base64,${base64Image}`;
+};
+
+const getReceiptNumbersFromResponse = (response) => {
+  const receiptNumbers = response?.data?.receiptNumbers || [];
+  if (receiptNumbers.length) return [...new Set(receiptNumbers.filter(Boolean))];
+
+  const updatedNumbers = response?.data?.updated?.map((receipt) => receipt.receiptNumber).filter(Boolean) || [];
+  const createdNumbers = response?.data?.created?.map((receipt) => receipt.receiptNumber).filter(Boolean) || [];
+  return [...new Set([...updatedNumbers, ...createdNumbers])];
 };
 
 export default function WarehouseReceiptFormPage() {
@@ -363,11 +442,12 @@ export default function WarehouseReceiptFormPage() {
   const dispatch = useDispatch();
   const { state } = useLocation();
   const { customerOptions, customerLoading } = useSelector((reduxState) => reduxState.enroutedata);
-  const { warehouseReceiptBatch } = useSelector((reduxState) => reduxState.warehousedata);
+  const { warehouseReceiptBatch, printersDropdown } = useSelector((reduxState) => reduxState.warehousedata);
   const isSelectingCustomerRef = useRef(false);
   const freightCameraVideoRef = useRef(null);
   const freightCameraStreamRef = useRef(null);
   const freightCameraInputRef = useRef(null);
+  const freightUploadInputRef = useRef(null);
   const initialReceiptForms = useMemo(() => {
     const forms = getFormsFromState(state?.receipts || []);
     return forms.length ? forms : buildFallbackForms();
@@ -375,19 +455,25 @@ export default function WarehouseReceiptFormPage() {
   const [receiptForms, setReceiptForms] = useState(initialReceiptForms);
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
   const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '' });
+  const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '' });
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [successDialog, setSuccessDialog] = useState({ open: false, message: '' });
+  const [successDialog, setSuccessDialog] = useState({ open: false, message: '', receiptNumbers: [] });
+  const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
+  const [selectedPrinterId, setSelectedPrinterId] = useState('');
+  const [printLoading, setPrintLoading] = useState(false);
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
 
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
-  const totalPieces = activeForm.items.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
   const totalWeight = activeForm.items.reduce(
     (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
     0
   );
+  const totalCbm = activeForm.items.reduce((sum, item) => sum + calculateItemCbm(item), 0);
   const row = activeForm.row || {};
+  const piecesInland = getRowValue(row, ['piecesInland', 'pieces'], '');
+  const weightInland = getRowValue(row, ['weightInland', 'weight'], '');
   const activeFreightInfo = { ...createFreightInfo(), ...(activeForm.freightInfo || {}) };
 
   useEffect(() => {
@@ -407,6 +493,20 @@ export default function WarehouseReceiptFormPage() {
     freightCameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     freightCameraStreamRef.current = null;
   }, []);
+
+  // useEffect(() => {
+  //   if (!freightCameraOpen || !freightCameraStreamRef.current || !freightCameraVideoRef.current) return;
+
+  //   const video = freightCameraVideoRef.current;
+  //   video.srcObject = freightCameraStreamRef.current;
+  //   video.muted = true;
+  //   video.playsInline = true;
+  //   const playVideo = () => video.play?.().catch(() => {});
+  //   playVideo();
+  //   const retryTimer = window.setTimeout(playVideo, 300);
+
+  //   return () => window.clearTimeout(retryTimer);
+  // }, [freightCameraOpen]);
 
   const updateActiveFormField = (field, value) => {
     setReceiptForms((prev) =>
@@ -460,6 +560,15 @@ export default function WarehouseReceiptFormPage() {
 
   const handleCloseImages = () => {
     setImageDialog({ open: false, images: [], itemLabel: '' });
+    setFullImageDialog({ open: false, image: null, title: '' });
+  };
+
+  const handleOpenFullImage = (image, title) => {
+    setFullImageDialog({ open: true, image, title });
+  };
+
+  const handleCloseFullImage = () => {
+    setFullImageDialog({ open: false, image: null, title: '' });
   };
 
   const handleRemovePreviewImage = (index) => {
@@ -487,25 +596,21 @@ export default function WarehouseReceiptFormPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: true,
         audio: false,
       });
 
       freightCameraStreamRef.current = stream;
       setFreightCameraOpen(true);
-
-      setTimeout(() => {
-        if (freightCameraVideoRef.current) {
-          freightCameraVideoRef.current.srcObject = stream;
-          freightCameraVideoRef.current.play?.();
-        }
-      }, 0);
     } catch {
       freightCameraInputRef.current?.click();
     }
   };
 
   const handleCloseFreightCamera = () => {
+    if (freightCameraVideoRef.current) {
+      freightCameraVideoRef.current.srcObject = null;
+    }
     stopFreightCameraStream();
     setFreightCameraOpen(false);
   };
@@ -535,6 +640,10 @@ export default function WarehouseReceiptFormPage() {
     event.target.value = '';
   };
 
+  const handleOpenFreightUpload = () => {
+    freightUploadInputRef.current?.click();
+  };
+
   const addTagValue = (value, listField, inputField) => {
     const nextValue = value.replace(/,/g, '').trim();
     if (!nextValue) return;
@@ -552,41 +661,56 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const buildReceiptPayload = () => ({
-    receipts: receiptForms.map((form) => {
+    receipts: receiptForms.map((form, formIndex) => {
       const formRow = form.row || {};
       const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
       const customerSelection = form.customerSelection || {};
-      const freightDetails = (form.items || []).map((item) => ({
-        pieces: toNumberOrNull(item.pieces),
-        type: toValueOrNull(item.type),
-        weight: toNumberOrNull(item.weight),
-        length: toNumberOrNull(item.length),
-        width: toNumberOrNull(item.width),
-        height: toNumberOrNull(item.height),
-      }));
+      const freightDetails = (form.items || []).map((item) => {
+        const cubicMeter = formatMeasurement(calculateItemCbm(item));
+
+        return {
+          pieces: toNumberOrNull(item.pieces),
+          type: toValueOrNull(item.type),
+          weight: toNumberOrNull(item.weight),
+          length: toNumberOrNull(item.length),
+          width: toNumberOrNull(item.width),
+          height: toNumberOrNull(item.height),
+          cubicMeter,
+        };
+      });
       const piecesInland = freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
       const weightInland = freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
       const reWeight = freightDetails.reduce(
         (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
         0
       );
-      const receiptId = toNumberOrNull(getRowValue(formRow, 'receiptId', null));
+      const cubicMeter = formatMeasurement(
+        freightDetails.reduce((sum, item) => sum + Number(item.cubicMeter || 0), 0)
+      );
+      const receiptId = formIndex === 0 ? toNumberOrNull(getRowValue(formRow, 'receiptId', null)) : 0;
+      const verificationId = toNumberOrNull(formRow.verificationId);
+      const hasNoVerificationId = verificationId === 0 || verificationId === null;
 
       return {
         receipt: {
-          ...(receiptId ? { receiptId } : {}),
+          receiptId: receiptId || 0,
           receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(formRow, 'receiptNumber', null)),
           receivedBy: toValueOrNull(form.receivedBy),
           location: toValueOrNull(form.location),
           shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
           customerId: toNumberOrNull(customerSelection.customerId || formRow.customerId),
           stationId: toNumberOrNull(customerSelection.stationId || formRow.stationId),
-          verificationId: toNumberOrNull(formRow.verificationId),
+          verificationId,
+          ...(hasNoVerificationId
+            ? { driverName: toValueOrNull(getRowValue(formRow, ['driverName', 'driver'], '')) || '' }
+            : {}),
           carrierId: toNumberOrNull(formRow.carrierId),
           piecesInland,
           weightInland,
           reWeight,
+          cubicMeter,
           proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
+          toEmails: normalizeEmailList(getRowValue(formRow, 'toEmails', [])),
           invoiceNumber: toValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], '')),
           poNumber: toValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], '')),
           customerRefNumber: toValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], '')),
@@ -618,41 +742,52 @@ export default function WarehouseReceiptFormPage() {
     }),
   });
 
-  const hasFreightItemImages = () =>
-    receiptForms.some((form) => (form.items || []).some((item) => (item.images || []).length > 0));
+  const hasReceiptImages = () =>
+    receiptForms.some((form) => {
+      const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
+      return (
+        (form.items || []).some((item) => (item.images || []).length > 0) ||
+        freightInfo.freightConditionImages.length > 0
+      );
+    });
 
   const buildReceiptFormData = async () => {
     const payload = buildReceiptPayload();
     const formData = new FormData();
 
     formData.append('batchData', JSON.stringify(payload));
-    formData.append('receipts', JSON.stringify(payload.receipts));
 
     await Promise.all(
-      receiptForms.flatMap((form, receiptIndex) =>
-        (form.items || []).flatMap((item, freightIndex) =>
+      receiptForms.flatMap((form, receiptIndex) => {
+        const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
+        const freightItemImageTasks = (form.items || []).flatMap((item, freightIndex) =>
           (item.images || []).map(async (image, imageIndex) => {
             const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
-            const renamedImage = await toRenamedImageFile(image, fieldName);
-            const base64Image = await fileToBase64(image);
+            const imageValue = await getSubmittedImageValue(image);
 
-            if (renamedImage instanceof File || renamedImage instanceof Blob) {
-              formData.append(fieldName, renamedImage);
-            }
-
-            if (base64Image) {
-              formData.append(`${fieldName}-base64`, base64Image);
+            if (imageValue) {
+              formData.append(fieldName, imageValue);
             }
           })
-        )
-      )
+        );
+        const badFreightImageTasks = freightInfo.freightConditionImages.map(async (image, imageIndex) => {
+          const fieldName = `bad-freight-image-${receiptIndex}-${imageIndex}`;
+          const renamedImage = await toRenamedImageFile(image, fieldName);
+
+          if (renamedImage instanceof File || renamedImage instanceof Blob) {
+            formData.append(fieldName, renamedImage);
+          }
+        });
+
+        return [...freightItemImageTasks, ...badFreightImageTasks];
+      })
     );
 
     return formData;
   };
 
   const handleSubmit = async () => {
-    const payload = hasFreightItemImages() ? await buildReceiptFormData() : buildReceiptPayload();
+    const payload = hasReceiptImages() ? await buildReceiptFormData() : buildReceiptPayload();
     const response = await dispatch(submitWarehouseReceiptBatch(payload));
 
     if (response?.error || response?.success === false) {
@@ -667,13 +802,61 @@ export default function WarehouseReceiptFormPage() {
     setSuccessDialog({
       open: true,
       message: response?.message || 'Warehouse receipts submitted successfully',
+      receiptNumbers: getReceiptNumbersFromResponse(response),
     });
   };
 
   const handleSuccessDialogOk = () => {
-    setSuccessDialog({ open: false, message: '' });
+    setSuccessDialog({ open: false, message: '', receiptNumbers: [] });
     dispatch(clearWarehouseCheckInDraft(state?.draftKey));
     navigate(PATH_DASHBOARD.warehouseCheckIn);
+  };
+
+  const handleOpenPrinterDialog = (receiptNumber) => {
+    setPrinterDialog({ open: true, receiptNumber });
+    setSelectedPrinterId('');
+    dispatch(fetchPrintersDropdown());
+  };
+
+  const handleClosePrinterDialog = () => {
+    setPrinterDialog({ open: false, receiptNumber: '' });
+    setSelectedPrinterId('');
+    setPrintLoading(false);
+  };
+
+  const handlePrintReceipt = async () => {
+    const printer = printersDropdown.data.find((item) => String(item.printerId) === String(selectedPrinterId));
+
+    if (!printer) {
+      setSnackbar({ open: true, message: 'Please select a printer', severity: 'error' });
+      return;
+    }
+
+    setPrintLoading(true);
+    const response = await dispatch(
+      printWarehouseReceiptLabel({
+        printerIP: printer.printerIP,
+        printerPort: printer.printerPort,
+        receiptNumber: printerDialog.receiptNumber,
+      })
+    );
+    setPrintLoading(false);
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to print label',
+        severity: 'error',
+      });
+      return;
+    }
+
+    setSnackbar({
+      open: true,
+      message: response?.message || `Print requested for receipt ${printerDialog.receiptNumber} on ${printer.printerName}`,
+      severity: 'success',
+    });
+    handleClosePrinterDialog();
   };
 
   return (
@@ -855,9 +1038,10 @@ export default function WarehouseReceiptFormPage() {
                   <Box sx={{ flex: 1 }} />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                  <DisplayField label="Pieces" value={totalPieces} required />
-                  <DisplayField label="Weight" value={activeForm.items[0]?.height || ''} required />
+                  <DisplayField label="Pieces" value={piecesInland} required />
+                  <DisplayField label="Weight" value={weightInland} required />
                   <DisplayField label="RE Weight" value={totalWeight} required />
+                  <DisplayField label="CBM (m³)" value={formatMeasurement(totalCbm)} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
@@ -869,7 +1053,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'Actions'].map((head) => (
+                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
                       <TableCell key={head} sx={{ py: 0.6, px: 0.8, fontSize: 12, fontWeight: 700 }}>
                         {head}
                       </TableCell>
@@ -886,6 +1070,9 @@ export default function WarehouseReceiptFormPage() {
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.width}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.height}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.weight}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                        {formatMeasurement(calculateItemCbm(item))}
+                      </TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8 }}>
                         <IconButton
                           size="small"
@@ -939,6 +1126,14 @@ export default function WarehouseReceiptFormPage() {
                       style={{ display: 'none' }}
                       onChange={handleFreightCameraFileSelection}
                     />
+                    <input
+                      ref={freightUploadInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleFreightCameraFileSelection}
+                    />
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <FormControlLabel
                         control={
@@ -952,21 +1147,38 @@ export default function WarehouseReceiptFormPage() {
                         label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
                       />
                       {activeFreightInfo.badFreightCondition && (
-                        <IconButton
-                          size="small"
-                          title="Capture freight condition image"
-                          onClick={handleOpenFreightCamera}
-                          sx={{
-                            bgcolor: '#A22',
-                            color: '#fff',
-                            width: 30,
-                            height: 30,
-                            borderRadius: 1,
-                            '&:hover': { bgcolor: '#8b1c1c' },
-                          }}
-                        >
-                          <Iconify icon="mdi:camera" width={18} />
-                        </IconButton>
+                        <>
+                          <IconButton
+                            size="small"
+                            title="Capture freight condition image"
+                            onClick={handleOpenFreightCamera}
+                            sx={{
+                              bgcolor: '#A22',
+                              color: '#fff',
+                              width: 30,
+                              height: 30,
+                              borderRadius: 1,
+                              '&:hover': { bgcolor: '#8b1c1c' },
+                            }}
+                          >
+                            <Iconify icon="mdi:camera" width={18} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            title="Upload freight condition image"
+                            onClick={handleOpenFreightUpload}
+                            sx={{
+                              bgcolor: '#A22',
+                              color: '#fff',
+                              width: 30,
+                              height: 30,
+                              borderRadius: 1,
+                              '&:hover': { bgcolor: '#8b1c1c' },
+                            }}
+                          >
+                            <Iconify icon="mdi:image-plus" width={18} />
+                          </IconButton>
+                        </>
                       )}
                     </Stack>
                     {activeFreightInfo.badFreightCondition && activeFreightInfo.freightConditionImages.length > 0 && (
@@ -1141,12 +1353,14 @@ export default function WarehouseReceiptFormPage() {
                           component="img"
                           src={imageUrl}
                           alt={getImageName(file, index)}
+                          onClick={() => handleOpenFullImage(file, getImageName(file, index))}
                           sx={{
                             width: 160,
                             height: 120,
                             objectFit: 'cover',
                             border: '1px solid #d0d0d0',
                             borderRadius: 1,
+                            cursor: 'zoom-in',
                           }}
                         />
                       ) : (
@@ -1196,15 +1410,57 @@ export default function WarehouseReceiptFormPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <Dialog open={fullImageDialog.open} onClose={handleCloseFullImage} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          {fullImageDialog.title || 'Image Preview'}
+          <IconButton
+            onClick={handleCloseFullImage}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <Iconify icon="mdi:close" width={18} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#111', p: 2 }}>
+          {getImageUrl(fullImageDialog.image) ? (
+            <Box
+              component="img"
+              src={getImageUrl(fullImageDialog.image)}
+              alt={fullImageDialog.title || 'Image Preview'}
+              sx={{
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '75vh',
+                mx: 'auto',
+                objectFit: 'contain',
+                bgcolor: '#fff',
+              }}
+            />
+          ) : (
+            <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320, color: '#fff' }} spacing={1}>
+              <Iconify icon="mdi:image-off" width={32} />
+              <Typography sx={{ fontSize: 13 }}>Image preview unavailable.</Typography>
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
       <Dialog open={freightCameraOpen} onClose={handleCloseFreightCamera} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Capture Bad Freight Image</DialogTitle>
         <DialogContent dividers>
           <Box
             component="video"
-            ref={freightCameraVideoRef}
+            ref={(node) => {
+    freightCameraVideoRef.current = node;
+    if (node && freightCameraStreamRef.current && node.srcObject !== freightCameraStreamRef.current) {
+      node.srcObject = freightCameraStreamRef.current;
+      node.play?.().catch(() => {});
+    }
+  }}
             autoPlay
             playsInline
             muted
+            onLoadedMetadata={(event) => event.currentTarget.play?.().catch(() => {})}
+            onCanPlay={(event) => event.currentTarget.play?.().catch(() => {})}
             sx={{
               width: '100%',
               height: { xs: '60vh', md: '70vh' },
@@ -1239,6 +1495,32 @@ export default function WarehouseReceiptFormPage() {
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Success</DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ fontSize: 14 }}>{successDialog.message}</Typography>
+          {successDialog.receiptNumbers.length > 0 && (
+            <Stack spacing={1} sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Receipt Numbers</Typography>
+              {successDialog.receiptNumbers.map((receiptNumber) => (
+                <Stack
+                  key={receiptNumber}
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  spacing={2}
+                  sx={{ border: '1px solid #e2e2e2', borderRadius: 1, px: 1.2, py: 0.8 }}
+                >
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{receiptNumber}</Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<Iconify icon="mdi:printer" width={16} />}
+                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    sx={{ ...actionBtnSx, height: 30, minWidth: 78 }}
+                  >
+                    Print
+                  </Button>
+                </Stack>
+              ))}
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 2, pb: 2 }}>
           <Button
@@ -1250,6 +1532,64 @@ export default function WarehouseReceiptFormPage() {
             OK
           </Button>
         </DialogActions>
+      </Dialog>
+      <Dialog open={printerDialog.open} onClose={handleClosePrinterDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          Select Printer
+          <IconButton
+            onClick={handleClosePrinterDialog}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <Iconify icon="mdi:close" width={18} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
+            <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 12, color: '#555' }}>
+                Printer <span style={{ color: 'red' }}>*</span>
+              </Typography>
+              <StyledTextField
+                select
+                size="small"
+                value={selectedPrinterId}
+                onChange={(event) => setSelectedPrinterId(event.target.value)}
+                disabled={printersDropdown.loading || printLoading}
+                helperText={printersDropdown.error || ''}
+                error={Boolean(printersDropdown.error)}
+                sx={{ width: '100%' }}
+              >
+                {printersDropdown.loading ? (
+                  <MenuItem value="" disabled>
+                    Loading printers...
+                  </MenuItem>
+                ) : printersDropdown.data.length > 0 ? (
+                  printersDropdown.data.map((printer) => (
+                    <MenuItem key={printer.printerId} value={printer.printerId}>
+                      {printer.printerName}
+                      {printer.printerIP ? ` - ${printer.printerIP}` : ''}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="" disabled>
+                    No printers available
+                  </MenuItem>
+                )}
+              </StyledTextField>
+            </Stack>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Iconify icon="mdi:printer" width={16} />}
+              disabled={printersDropdown.loading || printLoading || !selectedPrinterId}
+              onClick={handlePrintReceipt}
+              sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' } }}
+            >
+              {printLoading ? 'Printing...' : 'Print'}
+            </Button>
+          </Stack>
+        </DialogContent>
       </Dialog>
       <Snackbar
         open={snackbar.open}

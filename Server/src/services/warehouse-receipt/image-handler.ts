@@ -2,10 +2,15 @@ import { getRelativeImagePath } from "../../config/multer";
 
 /**
  * Process batch data with uploaded images
- * Maps uploaded files to freight items based on field names
+ * Maps uploaded files to freight items and bad freight items based on field names
  * 
- * Expected file field names: freight-{receiptIndex}-{freightIndex}-{imageIndex}
- * Example: freight-0-1-0 means receipts[0].freightDetails[1].images[0]
+ * Expected file field names:
+ * - Freight images: freight-{receiptIndex}-{freightIndex}-{imageIndex}
+ *   Example: freight-0-1-0 means receipts[0].freightDetails[1].images[0]
+ * 
+ * - Bad freight images: bad-freight-image-{receiptIndex}-{imageIndex}
+ *   Example: bad-freight-image-0-0 means receipts[0].badFreightImages[0]
+ *   Example: bad-freight-image-0-1 means receipts[0].badFreightImages[1]
  */
 export function processUploadedImages(batchData: any, uploadedFiles: Express.Multer.File[]): any {
     const processedData = JSON.parse(JSON.stringify(batchData));
@@ -13,38 +18,39 @@ export function processUploadedImages(batchData: any, uploadedFiles: Express.Mul
     // Create a map of file field names to file paths
     const fileMap: { [key: string]: string } = {};
     uploadedFiles.forEach(file => {
+
         if (file.filename) {
-
             console.log("Processing uploaded file:", file.fieldname, file.originalname);
-
-            fileMap[file.fieldname] = getRelativeImagePath(file.path);
+            fileMap[file.fieldname] = file.filename
+            console.log("File Name:", file.filename)
         }
     });
 
-    // Map files back to freight items
+    // Map files back to receipts
     processedData.receipts?.forEach((item: any, receiptIndex: number) => {
+        // Process freight images
         item.freightDetails?.forEach((freight: any, freightIndex: number) => {
             freight.images = [];
 
             // Find all images for this freight item
             let imageIndex = 0;
-            // const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
-
-            // while (fileMap[fieldName]) {
-            //     freight.images.push(fileMap[fieldName]);
-            //     imageIndex++;
-            // }
-
             while (true) {
                 const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
                 if (!fileMap[fieldName]) break;
-
                 freight.images.push(fileMap[fieldName]);
                 imageIndex++;
             }
-
-
         });
+
+        // Process bad freight images for this receipt
+        item.receipt.badFreightImages = [];
+        let badImageIndex = 0;
+        while (true) {
+            const fieldName = `bad-freight-image-${receiptIndex}-${badImageIndex}`;
+            if (!fileMap[fieldName]) break;
+            item.receipt.badFreightImages.push(fileMap[fieldName]);
+            badImageIndex++;
+        }
     });
 
     return processedData;

@@ -17,7 +17,7 @@ const EMAIL_TEMPLATES: EmailTemplates = {
         body: (receiptNumber: number) =>
             `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} has been initiated and is now in our system. We'll notify you as it progresses.\n\nThank you for choosing us.`
     },
-    LOADED: {
+    ON_HAND: {
         subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - On Hand`,
         body: (receiptNumber: number) =>
             `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} is now ON-HAND and ready for the next step. We appreciate your business.`

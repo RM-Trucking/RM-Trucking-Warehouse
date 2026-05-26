@@ -87,6 +87,12 @@ const NODE_ENV: string = serverConfig.env;
 // MIDDLEWARE
 // ============================================================================
 
+if (process.env.FREIGHT_IMAGE_PATH)
+    app.use("/api/uploads/warehouse/freight-image", express.static(process.env.FREIGHT_IMAGE_PATH));
+
+if (process.env.BAD_FREIGHT_IMAGE_PATH)
+    app.use("/api/uploads/warehouse/bad-freight-image", express.static(process.env.BAD_FREIGHT_IMAGE_PATH));
+
 // CORS middleware
 app.use(cors({
     origin: '*', // You can restrict this to specific origins if needed

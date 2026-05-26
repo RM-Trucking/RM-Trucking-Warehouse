@@ -31,19 +31,31 @@ export async function createWarehouseReceiptTemp(conn: Connection, temp: Omit<Wa
         temp.receivedBy ? temp.receivedBy : '' as string | number
     ];
     const result = await conn.query(query, params) as any[];
-    return result[0].receiptNumber;
+    return parseInt(result[0].receiptNumber);
 }
 
 export async function getWarehouseReceiptTempByNumber(conn: Connection, receiptNumber: number): Promise<WarehouseReceiptTemp | null> {
-    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Temp" WHERE "receiptNumber" = ?`;
+    const query = `
+    SELECT w.*, c."carrierName", cu."customerName", s."stationName"
+    FROM ${SCHEMA}."Warehouse_Receipt_Temp" w
+    LEFT JOIN ${SCHEMA}."Carrier" c ON w."carrierId" = c."carrierId"
+    LEFT JOIN ${SCHEMA}."Customer" cu ON w."customerId" = cu."customerId"
+    LEFT JOIN ${SCHEMA}."Station" s ON w."stationId" = s."stationId"
+    WHERE w."receiptNumber" = ?`;
     const result = await conn.query(query, [Number(receiptNumber)]) as any[];
+
+    if (!result || result.length === 0) {
+        return null;
+    }
 
     return {
         ...result[0],
         receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
         verificationId: result[0].verificationId != null ? parseInt(result[0].verificationId) : null,
-    }
-
+        customerName: result[0].customerName ?? null,
+        stationName: result[0].stationName ?? null,
+        carrierName: result[0].carrierName ?? null,
+    };
 }
 
 /**
@@ -92,9 +104,10 @@ export async function createWarehouseReceipt(
                 "class",
                 "properShippingName",
                 "hazardousDescription",
-                "toEmails"
+                "toEmails",
+                "cubicMeter"
             )
-            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -132,7 +145,8 @@ export async function createWarehouseReceipt(
         Array.isArray(receipt.class) ? JSON.stringify(receipt.class) : receipt.class ?? null,
         receipt.properShippingName ?? '',
         receipt.hazardousDescription ?? '',
-        Array.isArray(receipt.toEmails) ? JSON.stringify(receipt.toEmails) : receipt.toEmails ?? null
+        Array.isArray(receipt.toEmails) ? JSON.stringify(receipt.toEmails) : receipt.toEmails ?? null,
+        receipt.cubicMeter !== undefined ? Number(receipt.cubicMeter) : null
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -164,6 +178,7 @@ export async function getWarehouseReceiptById(
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null
     };
 }
 
@@ -301,6 +316,12 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         fields.push(`"weightInland" = ?`);
         params.push(updates.weightInland !== null && !isNaN(Number(updates.weightInland)) ? Number(updates.weightInland) : null);
     }
+
+    if (updates.cubicMeter !== undefined) {
+        fields.push(`"cubicMeter" = ?`);
+        params.push(updates.cubicMeter !== null && !isNaN(Number(updates.cubicMeter)) ? Number(updates.cubicMeter) : null);
+    }
+
     if (updates.reWeight !== undefined) {
         fields.push(`"reWeight" = ?`);
         params.push(updates.reWeight !== null && !isNaN(Number(updates.reWeight)) ? Number(updates.reWeight) : null);
@@ -404,6 +425,15 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         params.push(updates.rejectionReason ? updates.rejectionReason : '' as string);
     }
 
+    if (updates.toEmails !== undefined) {
+        fields.push(`"toEmails" = ?`);
+        params.push(
+            Array.isArray(updates.toEmails)
+                ? JSON.stringify(updates.toEmails)
+                : updates.toEmails || null
+        );
+    }
+
     if (fields.length === 0) return;
 
     fields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
@@ -431,8 +461,8 @@ export async function createFreightInfo(conn: Connection, freight: Omit<FreightI
         SELECT "freightId"
         FROM FINAL TABLE (
             INSERT INTO ${SCHEMA}."Warehouse_Receipt_Freight_Info"
-            ("receiptId","pieces","type","length","width","height","weight")
-            VALUES (?,?,?,?,?,?,?)
+            ("receiptId","pieces","type","length","width","height","weight","cubicMeter")
+            VALUES (?,?,?,?,?,?,?,?)
         )
         `;
 
@@ -444,6 +474,7 @@ export async function createFreightInfo(conn: Connection, freight: Omit<FreightI
         (freight.width || '') as string | number,
         (freight.height || '') as string | number,
         (freight.weight || '') as string | number,
+        (freight.cubicMeter || '') as string | number
     ];
     const result = await conn.query(query, params) as any[];
     return result[0].freightId;
@@ -530,6 +561,26 @@ export async function createFreightImage(conn: Connection, freightId: number | b
     return Number(result[0].imageId);
 }
 
+export async function createBadFreightConditionImage(conn: Connection, receiptId: number | bigint, imagePath: string): Promise<number> {
+    const query = `
+        SELECT "imageId"
+        FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Warehouse_Receipt_Freight_Condition_Images"
+            ("receiptId","imagePath","uploadedAt")
+            VALUES (?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+        )
+    `;
+
+    const params: (string | number)[] = [
+        Number(receiptId),
+        imagePath
+    ];
+    const result = await conn.query(query, params) as any[];
+    return Number(result[0].imageId);
+}
+
+
+
 export async function getFreightImages(conn: Connection, freightId: number | bigint): Promise<WarehouseReceiptFreightImage[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Images" WHERE "freightId" = ? ORDER BY "uploadedAt" DESC`;
     const result = await conn.query(query, [Number(freightId)]) as any[];
@@ -537,6 +588,16 @@ export async function getFreightImages(conn: Connection, freightId: number | big
         ...row,
         imageId: row.imageId != null ? parseInt(row.imageId) : null,
         freightId: row.freightId != null ? parseInt(row.freightId) : null,
+    }));
+}
+
+export async function getBadFreightConditionImages(conn: Connection, receiptId: number | bigint): Promise<WarehouseReceiptFreightImage[]> {
+    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Freight_Condition_Images" WHERE "receiptId" = ? ORDER BY "uploadedAt" DESC`;
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+    return result.map((row: any) => ({
+        ...row,
+        imageId: row.imageId != null ? parseInt(row.imageId) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
     }));
 }
 
@@ -562,6 +623,38 @@ export async function getWarehouseReceiptByReceiptNumber(
         LEFT JOIN ${SCHEMA}."Customer" cu ON w."customerId" = cu."customerId"
         LEFT JOIN ${SCHEMA}."Station" s ON w."stationId" = s."stationId"
         WHERE w."receiptNumber" = ? AND w."status" = 'INITIATED'
+        ORDER BY w."receiptId" DESC
+    `;
+    const result = await conn.query(query, [Number(receiptNumber)]) as any[];
+
+    if (!result || result.length === 0) {
+        return null;
+    }
+
+    const row = result[0];
+    return {
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
+    };
+}
+
+export async function getAllWarehouseReceiptByReceiptNumber(
+    conn: Connection,
+    receiptNumber: number
+): Promise<WarehouseReceipt | null> {
+    const query = `
+        SELECT w.*, c."carrierName", cu."customerName", s."stationName"
+        FROM ${SCHEMA}."Warehouse_Receipt" w
+        LEFT JOIN ${SCHEMA}."Carrier" c ON w."carrierId" = c."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" cu ON w."customerId" = cu."customerId"
+        LEFT JOIN ${SCHEMA}."Station" s ON w."stationId" = s."stationId"
+        WHERE w."receiptNumber" = ?
         ORDER BY w."receiptId" DESC
     `;
     const result = await conn.query(query, [Number(receiptNumber)]) as any[];
@@ -659,7 +752,7 @@ export async function getWarehouseReceiptsByProNumber(
         LEFT JOIN ${SCHEMA}."Carrier" c ON wr."carrierId" = c."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" cu ON wr."customerId" = cu."customerId"
         LEFT JOIN ${SCHEMA}."Station" s ON wr."stationId" = s."stationId"
-        WHERE wr."proNumber" = ? AND wr."status" = 'INITIATE'
+        WHERE wr."proNumber" = ? AND wr."status" = 'INITIATED'
         ORDER BY wr."receiptId" DESC 
     `;
     const result = await conn.query(query, [proNumber]) as any[];

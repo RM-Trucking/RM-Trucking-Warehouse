@@ -124,6 +124,56 @@ paths:
                   message:
                     type: string
                     example: "Database connection error"
+  /api/maintenance/carrier/parcel-dropdown:
+    get:
+      tags:
+        - Carrier
+      summary: Get parcel carriers for dropdown
+      description: Returns all parcel carriers with status Active or Incomplete, filtered by search term.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          required: false
+          description: Search term to filter parcel carrier names (case-insensitive).
+      responses:
+        "200":
+          description: Successful response with parcel carrier dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        carrierId:
+                          type: integer
+                          example: 5
+                        carrierName:
+                          type: string
+                          example: "Parcel Express"
+        "400":
+          description: Failed to fetch parcel carrier dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Database connection error"
 
 components:
   securitySchemes:

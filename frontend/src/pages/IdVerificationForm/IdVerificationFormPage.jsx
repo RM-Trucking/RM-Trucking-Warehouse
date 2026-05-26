@@ -35,7 +35,7 @@ import {
   setLogicOperator,
   setTempSearchValue,
   setSearchValue,
-  clearAllFilters
+  setIdVerificationPaginationModel
 } from '../../redux/slices/idVerification';
 
 const createEmptyFilter = (id) => ({ id, field: '', value: '' });
@@ -97,11 +97,17 @@ const CustomNoRowsOverlay = () => (
 export default function IdVerificationFormPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { idVerificationData, isLoading, error, pagination } = useSelector((state) => state.idVerificationdata);
+  const {
+    idVerificationData,
+    isLoading,
+    error,
+    pagination,
+    paginationModel: savedPaginationModel,
+  } = useSelector((state) => state.idVerificationdata);
   const isInitialMount = useRef(true);
 
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
-  const [paginationModel, setPaginationModel] = useState({ pageSize: 10, page: 0 });
+  const [paginationModel, setPaginationModel] = useState(savedPaginationModel || { pageSize: 10, page: 0 });
 
   // Redux selectors for filter state
   const appliedFilterParams = useSelector((state) => state.idVerificationdata.appliedFilterParams);
@@ -150,7 +156,9 @@ export default function IdVerificationFormPage() {
       }));
       // Reset to first page when searching
       if (paginationModel.page !== 0) {
-        setPaginationModel(prev => ({ ...prev, page: 0 }));
+        const nextPaginationModel = { ...paginationModel, page: 0 };
+        setPaginationModel(nextPaginationModel);
+        dispatch(setIdVerificationPaginationModel(nextPaginationModel));
       }
     }, 500);
 
@@ -159,6 +167,7 @@ export default function IdVerificationFormPage() {
 
   const handlePaginationModelChange = (newModel) => {
     setPaginationModel(newModel);
+    dispatch(setIdVerificationPaginationModel(newModel));
   };
 
   const updateFilter = (filterId, key, value) => {
@@ -193,7 +202,9 @@ export default function IdVerificationFormPage() {
       filterLogic: Object.keys(requestFilters).length ? logicOperator.toUpperCase() : '',
     }));
     if (paginationModel.page !== 0) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
+      const nextPaginationModel = { ...paginationModel, page: 0 };
+      setPaginationModel(nextPaginationModel);
+      dispatch(setIdVerificationPaginationModel(nextPaginationModel));
     }
   };
 
@@ -212,7 +223,9 @@ export default function IdVerificationFormPage() {
     setSearchValue('');
     // Reset to first page when clearing filters
     if (paginationModel.page !== 0) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
+      const nextPaginationModel = { ...paginationModel, page: 0 };
+      setPaginationModel(nextPaginationModel);
+      dispatch(setIdVerificationPaginationModel(nextPaginationModel));
     }
   };
 
@@ -228,7 +241,9 @@ export default function IdVerificationFormPage() {
 
   const handleSearch = () => {
     dispatch(setSearchValue(tempSearchValue));
-    setPaginationModel({ pageSize: 10, page: 0 });
+    const nextPaginationModel = { pageSize: paginationModel.pageSize, page: 0 };
+    setPaginationModel(nextPaginationModel);
+    dispatch(setIdVerificationPaginationModel(nextPaginationModel));
   };
 
   const columns = [
@@ -366,7 +381,9 @@ export default function IdVerificationFormPage() {
                         onClick={() => {
                           dispatch(setTempSearchValue(''));
                           dispatch(setSearchValue(''));
-                          setPaginationModel({ pageSize: 10, page: 0 });
+                          const nextPaginationModel = { pageSize: paginationModel.pageSize, page: 0 };
+                          setPaginationModel(nextPaginationModel);
+                          dispatch(setIdVerificationPaginationModel(nextPaginationModel));
                         }}
                         edge="end"
                         sx={{ cursor: 'pointer' }}

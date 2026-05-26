@@ -61,6 +61,8 @@ ENVIRONMENT=uat
 PORT=6501
 JWT_EXPIRY=36000s
 PRO_DETAIL_PATH=/home/FTP/PRODETAIL
+FREIGHT_IMAGE_PATH=/home/warehouse-app-docs/freight-images
+BAD_FREIGHT_IMAGE_PATH=/home/warehouse-app-docs/bad-freight-images
 ENVFILE
 
 # Remove existing zip on remote

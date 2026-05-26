@@ -14,6 +14,9 @@ export interface WarehouseReceiptTemp {
     destination?: string | null;
     proNumber?: string | null;
     packageId?: string | null;
+    customerName?: string | null;
+    stationName?: string | null;
+    carrierName?: string | null;
 }
 
 /**
@@ -50,6 +53,7 @@ export interface WarehouseReceipt {
     carrierId: number;
     piecesInland?: number;
     weightInland?: number;
+    cubicMeter?: number;
     reWeight?: number;
     proNumber?: string;
     invoiceNumber?: string;
@@ -94,6 +98,7 @@ export interface CreateWarehouseReceipt {
     carrierId: number;
     piecesInland?: number;
     weightInland?: number;
+    cubicMeter?: number;
     reWeight?: number;
     proNumber?: string;
     invoiceNumber?: string;
@@ -129,6 +134,7 @@ export interface UpdateWarehouseReceipt {
     labelCount?: number;
     piecesInland?: number;
     weightInland?: number;
+    cubicMeter?: number;
     reWeight?: number;
     status?: string;
     updatedBy?: number;
@@ -147,6 +153,7 @@ export interface FreightInfo {
     width?: number;
     height?: number;
     weight?: number;
+    cubicMeter?: number;
 }
 
 export interface CreateFreightInfo {
@@ -157,6 +164,7 @@ export interface CreateFreightInfo {
     width?: number;
     height?: number;
     weight?: number;
+    cubicMeter?: number;
 }
 
 /**

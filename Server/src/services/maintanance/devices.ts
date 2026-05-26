@@ -1,13 +1,11 @@
 import * as devicesDB from '../../database/maintanance';
 import { Connection } from 'odbc';
 
-
 interface CargoSpectreBase {
     code: string; // always exists
 }
 
 export interface CargoSpectreSuccess extends CargoSpectreBase {
-    code: "0";
     Info: {
         Dimensions: {
             Length: number;
@@ -44,79 +42,124 @@ export interface CargoSpectreError extends CargoSpectreBase {
     value: string;
 }
 
-// Root type
 export type CargoSpectreResponse =
     | { Responses: { Dimension: CargoSpectreSuccess } }
     | { Responses: { Dimension: CargoSpectreError } };
 
-
-
-
 export async function getCargoAPIDropdown(
     conn: Connection
 ): Promise<{ apiId: number; apiName: string }[]> {
-    try {
-        const dropdownData = await devicesDB.getCargoAPIDropdown(conn);
-        return dropdownData;
-    } catch (error) {
-        console.error('Error fetching Cargo API dropdown:', error);
-        return [];
-    }
+    return await devicesDB.getCargoAPIDropdown(conn);
 }
 
 export async function getDimentionsFromCargoAPI(
     conn: Connection,
     apiId: number
-): Promise<CargoSpectreResponse | null> {
-    try {
-        const cargoAPI = await devicesDB.getCargoAPIById(conn, apiId);
-        if (!cargoAPI) {
-            return null;
+): Promise<any> {
+    const cargoAPI = await devicesDB.getCargoAPIById(conn, apiId);
+    if (!cargoAPI) {
+        throw new Error('Cargo API not found');
+    }
+
+    const endpointParts = cargoAPI.apiEndPoint.split('/');
+    endpointParts.pop(); // Remove the last segment (assumed to be 'dimension')
+    const baseUrl = endpointParts.join('/');
+    const snapshotUrl = `${baseUrl}/snapshot`;
+
+    // First API call: Dimensions
+    const dimensionRes = await fetch(cargoAPI.apiEndPoint, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${cargoAPI.apiKey}`
         }
+    });
 
-        console.log(cargoAPI);
+    if (!dimensionRes.ok) {
+        throw new Error(`Cargo API Dimension request failed with status: ${dimensionRes.status}`);
+    }
 
+    const result: any = await dimensionRes.json();
 
-        let result: CargoSpectreResponse = await fetch(
-            cargoAPI.apiEndPoint,
-            {
+    if (!result?.Responses?.Dimension) {
+        throw new Error(`Invalid response structure from Cargo API: ${JSON.stringify(result)}`);
+    }
+
+    if (result.Responses.Dimension.code === 'DIM_NO_OBJECT') {
+        return {
+            error: true,
+            code: result.Responses.Dimension.code,
+            message: result.Responses.Dimension.description || 'No object detected'
+        };
+    }
+
+    // Second API call: Snapshot
+    let snapshot: any = null;
+    try {
+        const snapshotRes = await fetch(snapshotUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${cargoAPI.apiKey}`
+            }
+        });
+
+        if (snapshotRes.ok) {
+            snapshot = await snapshotRes.json();
+        } else {
+            console.warn(`Cargo API Snapshot request failed with status: ${snapshotRes.status}`);
+        }
+    } catch (error) {
+        console.error('Error fetching Cargo API Snapshot:', error);
+    }
+
+    // Helper to fetch file and convert to base64
+    async function fetchFileAsBase64(path: string): Promise<string> {
+        try {
+            const fileUrl = `${baseUrl}/file/${path}`;
+            const res = await fetch(fileUrl, {
                 method: 'GET',
                 headers: {
-                    'Accept': "application/json",
-                    'Authorization': `Bearer ${cargoAPI.apiKey}`
+                    'Authorization': `Bearer ${cargoAPI?.apiKey}`
                 }
+            });
+            if (!res.ok) {
+                console.warn(`Failed to fetch file ${path}: ${res.status}`);
+                return '';
             }
-        ).then(data => data.json())
-
-        console.log('Cargo API response:', result);
-
-        if (!result || !result.Responses || !result.Responses.Dimension) {
-            console.error('Invalid response structure from Cargo API:', result);
-            return null;
+            const buffer = await res.arrayBuffer();
+            return Buffer.from(buffer).toString('base64');
+        } catch (err) {
+            console.error(`Error fetching file ${path}:`, err);
+            return '';
         }
-
-        if (result.Responses.Dimension.code == "DIM_NO_OBJECT") {
-            console.error('Error response from Cargo API:', result);
-            return result; // Return the error response as is
-        }
-
-        return result;
-
-    } catch (error) {
-        console.error('Error fetching Cargo API dimensions:', error);
-        return null;
     }
-}
 
+    // Normalize image paths
+    const imagesNode = snapshot?.Responses?.Snapshot?.Directory?.Images;
+    let imagePaths: string[] = [];
+    if (imagesNode?.Path) {
+        imagePaths = Array.isArray(imagesNode.Path)
+            ? imagesNode.Path
+            : [imagesNode.Path];
+    }
+
+    // Fetch all images in parallel
+    const imagesBase64: string[] = await Promise.all(
+        imagePaths.map((path: string) => fetchFileAsBase64(path))
+    );
+
+    return {
+        length: result.Responses.Dimension.Info?.Dimensions?.Length || 0,
+        width: result.Responses.Dimension.Info?.Dimensions?.Width || 0,
+        height: result.Responses.Dimension.Info?.Dimensions?.Height || 0,
+        weight: result.Responses.Dimension.Info?.Dimensions?.Weight?.Net || 0,
+        images: imagesBase64.filter(img => img) // drop failed fetches
+    };
+}
 
 export async function getPrintersDropdown(
     conn: Connection
 ): Promise<{ printerId: number; printerName: string; printerIP: string; printerPort: number }[]> {
-    try {
-        const dropdownData = await devicesDB.getPrintersDropdown(conn);
-        return dropdownData;
-    } catch (error) {
-        console.error('Error fetching Printers dropdown:', error);
-        return [];
-    }
+    return await devicesDB.getPrintersDropdown(conn);
 }

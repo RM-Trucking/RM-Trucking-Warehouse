@@ -114,6 +114,9 @@ paths:
                     plasticSkid: "Y"
                     hazMat: "Y"
                     labelCount: 0
+                    toEmails: ["user@example.com"]
+                    cubicMeter: 100
+                    driverName: "John Doe"
                   freightDetails:
                     - pieces: 20
                       type: "Box"
@@ -121,12 +124,14 @@ paths:
                       length: 10
                       width: 10
                       height: 10
+                      cubicMeter: 20
                     - pieces: 30
                       type: "Pallet"
                       weight: 3000
                       length: 48
                       width: 40
                       height: 60
+                      cubicMeter: 80
                 - receipt:
                     receiptNumber: 100000033
                     receivedBy: null
@@ -160,6 +165,9 @@ paths:
                     plasticSkid: "Y"
                     hazMat: "Y"
                     labelCount: 0
+                    toEmails: ["user@example.com"]
+                    cubicMeter: 100
+                    driverName: "John Doe"
                   freightDetails:
                     - pieces: 10
                       type: "Crate"
@@ -167,12 +175,14 @@ paths:
                       length: 20
                       width: 15
                       height: 12
+                      cubicMeter: 3.6
                     - pieces: 30
                       type: "Pallet"
                       weight: 3000
                       length: 48
                       width: 40
                       height: 55
+                      cubicMeter: 70
           multipart/form-data:
             schema:
               type: object
@@ -257,6 +267,8 @@ paths:
                 status: "INITIATE"
                 entityId: 1
                 noteThreadId: 1
+                toEmails: ["user@example.com"]
+                cubicMeter: 100
               freightDetails:
                 - pieces: 20
                   type: "Box"
@@ -264,12 +276,14 @@ paths:
                   length: 10
                   width: 10
                   height: 10
+                  cubicMeter: 20
                 - pieces: 30
                   type: "Pallet"
                   weight: 3000
                   length: 48
                   width: 40
                   height: 60
+                  cubicMeter: 80
       responses:
         "201":
           description: Warehouse receipt created successfully with freight info
@@ -681,7 +695,7 @@ paths:
             type: string
           required: true
           description: PRO (Progressive Rotating Order) number
-          example: "PRO123456"
+          example: "21987292"
       responses:
         "200":
           description: PRO header details retrieved successfully
@@ -780,6 +794,102 @@ paths:
                   message:
                     type: string
                     example: 'Duplicate - Carrier "Shiva Test Carrier" with PRO "PRO123456" already added in another Record'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/warehouse-receipt/label-print:
+    post:
+      tags:
+        - Receipts
+      summary: Generate and print labels for a warehouse receipt
+      description: >
+        Generate label data for a receipt and send to printer.  
+        - **printerIP**, **printerPort**, and **receiptNumber** must be provided as query parameters.  
+        - Additional label data can be provided in the request body.  
+        - If full label payload is given in the body, it will be used directly.  
+        - If not, the service will fetch missing data from the database using the receiptNumber.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: printerIP
+          required: true
+          schema:
+            type: string
+          description: IP address of the target printer
+        - in: query
+          name: printerPort
+          required: true
+          schema:
+            type: integer
+          description: Port number of the target printer
+        - in: query
+          name: receiptNumber
+          required: true
+          schema:
+            type: integer
+          description: Warehouse receipt number to print
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LabelPrintRequest"
+            examples:
+              fullPayload:
+                summary: Full label payload provided
+                value:
+                  customerName: "ACME Corp"
+                  packageId: "PKG123"
+                  shipper: "John Doe"
+                  carrierName: "FedEx"
+                  proNumber: "PRO987"
+                  destination: "New York"
+                  pieces: 10
+                  labelCount: 2
+              minimalPayload:
+                summary: Only receiptNumber in query, no body
+                value: {}
+      responses:
+        "200":
+          description: Labels generated and sent to printer successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Label print sent successfully"
+                  data:
+                    type: object
+                    properties:
+                      printedTo:
+                        type: string
+                        example: "192.168.1.100"
+                      printerPort:
+                        type: integer
+                        example: 9100
+                      printData:
+                        $ref: "#/components/schemas/LabelPrintData"
+        "400":
+          description: Invalid request - missing printerIP, printerPort, or receiptNumber
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
           content:
@@ -1001,6 +1111,11 @@ components:
           nullable: true
           example: 10
           description: Height in inches
+        cubicMeter:
+          type: number
+          nullable: true
+          example: 20
+          description: Cubic meter volume
         imageId:
           type: integer
           nullable: true
@@ -1406,6 +1521,10 @@ components:
                     type: string
                     nullable: true
                     example: "John Doe"
+                  cubicMeter:
+                    type: number
+                    nullable: true
+                    example: 100.5
               freightDetails:
                 type: array
                 minItems: 1

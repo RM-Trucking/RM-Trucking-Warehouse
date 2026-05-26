@@ -26,8 +26,10 @@ paths:
               properties:
                 loginUserName:
                   type: string
+                  example: "ADMIN"
                 password:
                   type: string
+                  example: "Admin@123"
       responses:
         "200":
           description: Login successful - returns access token, refresh token and user info

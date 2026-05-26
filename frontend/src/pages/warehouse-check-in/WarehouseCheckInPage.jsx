@@ -20,6 +20,7 @@ import {
   TextField,
   Typography,
   CircularProgress,
+  Autocomplete,
   Alert,
   Snackbar,
 } from '@mui/material';
@@ -37,9 +38,12 @@ import {
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
   fetchPrintersDropdown,
+  printWarehouseReceiptLabel,
+  searchParcelCarriers,
   setWarehouseCheckInDraft,
   clearWarehouseCheckInDraft,
 } from '../../redux/slices/warehouse';
+import { searchCustomers } from '../../redux/slices/enroute';
 import axios from '../../utils/axios';
 import { PATH_DASHBOARD } from '../../routes/paths';
 
@@ -66,6 +70,26 @@ const REQUIRED_ITEM_FIELDS = [
   { field: 'weight', label: 'Weight' },
 ];
 
+const createParcelForm = () => ({
+  proNumber: '',
+  carrier: '',
+  customer: '',
+  shipper: '',
+  driverName: '',
+  pieces: '',
+  weight: '',
+});
+
+const createParcelErrors = () => ({
+  proNumber: '',
+  carrier: '',
+  customer: '',
+  shipper: '',
+  driverName: '',
+  pieces: '',
+  weight: '',
+});
+
 // ─── Helpers to create blank form / item ────────────────────────────
 const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
 const createForm = (id, receiptNumber = null, defaults = {}) => ({
@@ -76,6 +100,14 @@ const createForm = (id, receiptNumber = null, defaults = {}) => ({
   destination: defaults.destination || '',
   customerRefNoPackageId: defaults.customerRefNoPackageId || '',
 });
+
+const getNextFormId = (forms = []) =>
+  forms.reduce((maxId, form) => Math.max(maxId, Number(form.id) || 0), 0) + 1;
+
+const getNextItemId = (items = []) =>
+  items.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) + 1;
+
+const getCargoApiLoadingKey = (key, formId, itemId) => `${key}-${formId}-${itemId}`;
 
 const getDropdownOptionLabel = (option) => {
   if (option === null || option === undefined) return '';
@@ -94,6 +126,21 @@ const getDropdownOptionLabel = (option) => {
     option.id ||
     ''
   );
+};
+
+const getCarrierOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+  return option.carrierName || option.name || option.label || '';
+};
+
+const getCustomerOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+
+  const customerName = option.customerName || option.name || option.label || '';
+  const stationName = option.stationName || '';
+  return stationName ? `${customerName} | ${stationName}` : customerName;
 };
 
 const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
@@ -124,19 +171,71 @@ const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
   </Box>
 );
 
+const looksLikeBase64Image = (value) => {
+  const compactValue = String(value || '').trim();
+  return compactValue.length > 80 && /^[A-Za-z0-9+/]+={0,2}$/.test(compactValue);
+};
+
+const getBase64ImageMimeType = (value) => {
+  const compactValue = String(value || '').trim();
+
+  if (compactValue.startsWith('/9j/')) return 'image/jpeg';
+  if (compactValue.startsWith('iVBORw0KGgo')) return 'image/png';
+  if (compactValue.startsWith('R0lGOD')) return 'image/gif';
+  if (compactValue.startsWith('UklGR')) return 'image/webp';
+  return 'image/jpeg';
+};
+
 const getImageUrl = (file) => {
   if (!file) return '';
-  if (typeof file === 'string') return file;
+  if (typeof file === 'string') {
+    const image = file.trim();
+    if (/^(data:image\/|https?:\/\/|blob:)/i.test(image)) return image;
+    if (looksLikeBase64Image(image)) return `data:${getBase64ImageMimeType(image)};base64,${image}`;
+    return image;
+  }
   if (file.url) return file.url;
   if (file.preview) return file.preview;
+  if (file.base64) return getImageUrl(file.base64);
+  if (file.image) return getImageUrl(file.image);
   if (file instanceof File) return URL.createObjectURL(file);
   return '';
 };
 
 const getImageName = (file, index) => {
   if (!file) return `Image ${index + 1}`;
-  if (typeof file === 'string') return file.split('/').pop() || `Image ${index + 1}`;
+  if (typeof file === 'string') {
+    if (looksLikeBase64Image(file) || file.startsWith('data:image/')) return `Cargo API Image ${index + 1}`;
+    return file.split('/').pop() || `Image ${index + 1}`;
+  }
   return file.name || file.filename || `Image ${index + 1}`;
+};
+
+const openImagePreviewTab = (imageUrl, title = 'Image Preview') => {
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) return false;
+
+  previewWindow.document.title = title;
+  previewWindow.document.body.style.margin = '0';
+  previewWindow.document.body.style.minHeight = '100vh';
+  previewWindow.document.body.style.background = '#111';
+  previewWindow.document.body.style.display = 'flex';
+  previewWindow.document.body.style.alignItems = 'center';
+  previewWindow.document.body.style.justifyContent = 'center';
+  previewWindow.document.body.style.padding = '24px';
+  previewWindow.document.body.style.boxSizing = 'border-box';
+
+  const image = previewWindow.document.createElement('img');
+  image.src = imageUrl;
+  image.alt = title;
+  image.style.maxWidth = '100%';
+  image.style.maxHeight = 'calc(100vh - 48px)';
+  image.style.objectFit = 'contain';
+  image.style.background = '#fff';
+
+  previewWindow.document.body.appendChild(image);
+  previewWindow.document.close();
+  return true;
 };
 
 const getRowValue = (row, fields, fallback = '') => {
@@ -190,7 +289,8 @@ export default function WarehouseCheckInPage({
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const draftRestoredRef = useRef(false);
-  const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
+  const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, parcelCarrierDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
+  const { customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
@@ -217,13 +317,23 @@ export default function WarehouseCheckInPage({
     formId: null,
     itemId: null,
   });
+  const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '' });
   const [stagedFiles, setStagedFiles] = useState([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false);
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
   const [packageDropdownContext, setPackageDropdownContext] = useState({ key: null, formId: null, itemId: null });
+  const [cargoApiLoadingItems, setCargoApiLoadingItems] = useState({});
   const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
+  const [printerContext, setPrinterContext] = useState(null);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [parcelForm, setParcelForm] = useState(createParcelForm());
+  const [parcelErrors, setParcelErrors] = useState(createParcelErrors());
+  const [parcelCarrierSearchValue, setParcelCarrierSearchValue] = useState('');
+  const [parcelCustomerSearchValue, setParcelCustomerSearchValue] = useState('');
+  const isSelectingParcelCarrierRef = useRef(false);
+  const isSelectingParcelCustomerRef = useRef(false);
 
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
@@ -251,8 +361,15 @@ export default function WarehouseCheckInPage({
     setCameraDialogOpen(false);
     setPackageDropdownAnchor(null);
     setPackageDropdownContext({ key: null, formId: null, itemId: null });
+    setCargoApiLoadingItems({});
     setPrinterDialogOpen(false);
     setSelectedPrinterId('');
+    setPrinterContext(null);
+    setPrintLoading(false);
+    setParcelForm(createParcelForm());
+    setParcelErrors(createParcelErrors());
+    setParcelCarrierSearchValue('');
+    setParcelCustomerSearchValue('');
     setProceededReceipts([]);
   };
 
@@ -264,6 +381,46 @@ export default function WarehouseCheckInPage({
     cameraStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     cameraStreamRef.current = null;
   }, []);
+
+  // useEffect(() => {
+  //   if (!cameraDialogOpen || !cameraStreamRef.current || !cameraVideoRef.current) return;
+
+  //   const video = cameraVideoRef.current;
+  //   video.srcObject = cameraStreamRef.current;
+  //   video.muted = true;
+  //   video.playsInline = true;
+  //   const playVideo = () => video.play?.().catch(() => {});
+  //   playVideo();
+  //   const retryTimer = window.setTimeout(playVideo, 300);
+
+  //   return () => window.clearTimeout(retryTimer);
+  // }, [cameraDialogOpen]);
+
+  useEffect(() => {
+    if (isSelectingParcelCarrierRef.current) {
+      isSelectingParcelCarrierRef.current = false;
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      dispatch(searchParcelCarriers(parcelCarrierSearchValue));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, parcelCarrierSearchValue]);
+
+  useEffect(() => {
+    if (isSelectingParcelCustomerRef.current) {
+      isSelectingParcelCustomerRef.current = false;
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      dispatch(searchCustomers(parcelCustomerSearchValue));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, parcelCustomerSearchValue]);
 
   useEffect(() => {
     draftRestoredRef.current = false;
@@ -289,6 +446,8 @@ export default function WarehouseCheckInPage({
     setRejectedRowIds(warehouseCheckInDraft.rejectedRowIds || []);
     setIsSearchDisabled(Boolean(warehouseCheckInDraft.isSearchDisabled));
     setReceiptErrors(warehouseCheckInDraft.receiptErrors || {});
+    setParcelForm(warehouseCheckInDraft.parcelForm || createParcelForm());
+    setParcelErrors(warehouseCheckInDraft.parcelErrors || createParcelErrors());
     setProceededReceipts(warehouseCheckInDraft.proceededReceipts || []);
   }, [warehouseCheckInDraft]);
 
@@ -311,13 +470,17 @@ export default function WarehouseCheckInPage({
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
     setSavedResults(warehouseReceiptSearch.data);
+    const normalizedRow = {
+      ...row,
+      driverName: getRowValue(row, ['driverName', 'driver'], ''),
+    };
     const formDefaults = {
-      destination: getRowValue(row, ['destination', 'finalDestination'], ''),
-      customerRefNoPackageId: getRowValue(row, ['packageId', 'packageNumber'], ''),
+      destination: getRowValue(normalizedRow, ['destination', 'finalDestination'], ''),
+      customerRefNoPackageId: getRowValue(normalizedRow, ['packageId', 'packageNumber'], ''),
     };
     setProceededReceipts((prev) => [
       ...prev,
-      { key, proNumber: warehouseReceiptSearch.data.proNumber, row, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1, null, formDefaults)] },
+      { key, proNumber: warehouseReceiptSearch.data.proNumber, row: normalizedRow, receivedBy: '', location: 'OH', sectionCollapsed: false, forms: [createForm(1, null, formDefaults)] },
     ]);
     setIsSearchDisabled(true);
     // Clear search results
@@ -333,6 +496,10 @@ export default function WarehouseCheckInPage({
     setProceededReceipts((prev) => prev.filter((p) => p.key !== key));
     setIsSearchDisabled(false);
     setSearchValue('');
+    setParcelForm(createParcelForm());
+    setParcelErrors(createParcelErrors());
+    setParcelCarrierSearchValue('');
+    setParcelCustomerSearchValue('');
     if (savedResults) {
       // Restore the previous search results
       // Note: This is a simple restoration from saved state
@@ -426,7 +593,7 @@ export default function WarehouseCheckInPage({
         destination: getRowValue(receipt.row, ['destination', 'finalDestination'], ''),
         customerRefNoPackageId: getRowValue(receipt.row, ['packageId', 'packageNumber'], ''),
       };
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(p.forms.length + 1, receiptNumber, formDefaults)] }));
+      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(getNextFormId(p.forms), receiptNumber, formDefaults)] }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -453,7 +620,7 @@ export default function WarehouseCheckInPage({
   const addItem = (key, formId) =>
     updateReceipt(key, (p) => ({
       forms: p.forms.map((f) =>
-        f.id === formId ? { ...f, items: [...f.items, createItem(f.items.length + 1)] } : f
+        f.id === formId ? { ...f, items: [...f.items, createItem(getNextItemId(f.items))] } : f
       ),
     }));
 
@@ -537,6 +704,15 @@ export default function WarehouseCheckInPage({
 
   const handleCloseImagePreview = () => {
     setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+    setFullImageDialog({ open: false, image: null, title: '' });
+  };
+
+  const handleOpenFullImage = (image, title) => {
+    setFullImageDialog({ open: true, image, title });
+  };
+
+  const handleCloseFullImage = () => {
+    setFullImageDialog({ open: false, image: null, title: '' });
   };
 
   const handleRemovePreviewImage = (index) => {
@@ -570,19 +746,12 @@ export default function WarehouseCheckInPage({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
+        video: true,
         audio: false,
       });
 
       cameraStreamRef.current = stream;
       setCameraDialogOpen(true);
-
-      setTimeout(() => {
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-          cameraVideoRef.current.play?.();
-        }
-      }, 0);
     } catch (error) {
       setSnackbar({
         open: true,
@@ -593,6 +762,9 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCloseCamera = () => {
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
     stopCameraStream();
     setCameraDialogOpen(false);
   };
@@ -649,15 +821,19 @@ export default function WarehouseCheckInPage({
     setStagedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleViewStagedFile = (file) => {
+  const handleViewStagedFile = (file, index = 0) => {
     if (!file) return;
 
-    const previewUrl = URL.createObjectURL(file);
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    const previewUrl = getImageUrl(file);
+    if (!previewUrl) return;
 
-    setTimeout(() => {
-      URL.revokeObjectURL(previewUrl);
-    }, 1000);
+    const opened = openImagePreviewTab(previewUrl, getImageName(file, index));
+
+    if (opened && file instanceof File) {
+      setTimeout(() => {
+        URL.revokeObjectURL(previewUrl);
+      }, 1000);
+    }
   };
 
   const handleUploadImages = () => {
@@ -671,6 +847,14 @@ export default function WarehouseCheckInPage({
     const data = Array.isArray(dimensions) ? dimensions[0] : dimensions;
     const field = fields.find((name) => data?.[name] !== undefined && data?.[name] !== null && data?.[name] !== '');
     return field ? data[field] : null;
+  };
+
+  const getDimensionImages = (dimensions) => {
+    const data = Array.isArray(dimensions) ? dimensions[0] : dimensions;
+    const images = data?.images || data?.cargoImages || data?.apiImages || data?.imageList;
+
+    if (!images) return [];
+    return Array.isArray(images) ? images.filter(Boolean) : [images].filter(Boolean);
   };
 
   const applyCargoDimensions = (dimensionsResponse) => {
@@ -693,6 +877,11 @@ export default function WarehouseCheckInPage({
         clearItemError(key, formId, itemId, field, String(value));
       }
     });
+
+    const images = getDimensionImages(dimensions);
+    if (images.length > 0) {
+      updateItem(key, formId, itemId, 'images', images);
+    }
   };
 
   const handlePackageDetailsClick = (event, key, formId, itemId) => {
@@ -706,53 +895,234 @@ export default function WarehouseCheckInPage({
 
   const handlePackageOptionSelect = async (option) => {
     const apiId = option?.apiId || option?.id || option?.value;
+    const { key, formId, itemId } = packageDropdownContext;
 
     if (!apiId) {
       handleClosePackageDropdown();
       return;
     }
 
-    const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
-    applyCargoDimensions(dimensionsResponse);
-
-    if (dimensionsResponse?.message) {
-      setSnackbar({
-        open: true,
-        message: dimensionsResponse.message,
-        severity: dimensionsResponse.error || dimensionsResponse.success === false
-          ? 'error'
-          : dimensionsResponse.warning
-            ? 'warning'
-            : 'success',
-      });
+    if (!key || !formId || !itemId) {
+      handleClosePackageDropdown();
+      return;
     }
 
+    const loadingKey = getCargoApiLoadingKey(key, formId, itemId);
     handleClosePackageDropdown();
+
+    setCargoApiLoadingItems((prev) => ({ ...prev, [loadingKey]: true }));
+
+    try {
+      const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
+      applyCargoDimensions(dimensionsResponse);
+
+      if (dimensionsResponse?.message) {
+        setSnackbar({
+          open: true,
+          message: dimensionsResponse.message,
+          severity: dimensionsResponse.error || dimensionsResponse.success === false
+            ? 'error'
+            : dimensionsResponse.warning
+              ? 'warning'
+              : 'success',
+        });
+      }
+    } finally {
+      setCargoApiLoadingItems((prev) => {
+        const next = { ...prev };
+        delete next[loadingKey];
+        return next;
+      });
+    }
   };
 
-  const handleOpenPrinterDialog = () => {
+  const buildLabelPrintPayload = (receipt, form) => {
+    const row = receipt?.row || {};
+    const items = form?.items || [];
+    const customerDisplay = getRowValue(row, ['customerName', 'customer'], '');
+    const carrierDisplay = getRowValue(row, ['carrierName', 'carrier'], '');
+
+    return {
+      customerName: String(customerDisplay || '').split('|')[0].trim(),
+      packageId: form?.customerRefNoPackageId || getRowValue(row, ['packageId', 'packageNumber'], ''),
+      shipper: getRowValue(row, ['shipper', 'shipperName', 'shipperCompany'], ''),
+      carrierName: String(carrierDisplay || '').split('|')[0].trim(),
+      proNumber: getRowValue(row, 'proNumber', receipt?.proNumber || ''),
+      destination: form?.destination || getRowValue(row, ['destination', 'finalDestination'], ''),
+      pieces: items.reduce((sum, item) => sum + Number(item.pieces || 0), 0),
+      labelCount: items.length,
+    };
+  };
+
+  const isTrailerFormReadyForPrint = (form) =>
+    Boolean(String(form?.destination || '').trim()) &&
+    Boolean(String(form?.customerRefNoPackageId || '').trim()) &&
+    (form?.items || []).length > 0 &&
+    (form?.items || []).every((item) =>
+      REQUIRED_ITEM_FIELDS.every(({ field }) => String(item[field] || '').trim())
+    );
+
+  const handleOpenPrinterDialog = (receipt = null, form = null) => {
     setPrinterDialogOpen(true);
     setSelectedPrinterId('');
+    setPrinterContext(receipt && form ? { receipt, form } : null);
     dispatch(fetchPrintersDropdown());
   };
 
   const handleClosePrinterDialog = () => {
     setPrinterDialogOpen(false);
     setSelectedPrinterId('');
+    setPrinterContext(null);
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const printer = printersDropdown.data.find((item) => String(item.printerId) === String(selectedPrinterId));
+
+    if (!printer) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a printer',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const receiptNumber =
+      printerContext?.form?.receiptNumber || printerContext?.receipt?.row?.receiptNumber || printerContext?.receipt?.row?.receiptNo || '';
+
+    if (!receiptNumber) {
+      setSnackbar({
+        open: true,
+        message: 'Receipt number is required to print the label',
+        severity: 'error',
+      });
+      return;
+    }
+
+    setPrintLoading(true);
+    const response = await dispatch(
+      printWarehouseReceiptLabel({
+        printerIP: printer.printerIP,
+        printerPort: printer.printerPort,
+        receiptNumber,
+        payload: buildLabelPrintPayload(printerContext?.receipt, printerContext?.form),
+      })
+    );
+    setPrintLoading(false);
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to print label',
+        severity: 'error',
+      });
+      return;
+    }
 
     setSnackbar({
       open: true,
-      message: printer ? `Print requested for ${printer.printerName}` : 'Please select a printer',
-      severity: printer ? 'success' : 'error',
+      message: response?.message || `Print requested for ${printer.printerName}`,
+      severity: 'success',
     });
+    handleClosePrinterDialog();
+  };
 
-    if (printer) {
-      handleClosePrinterDialog();
+  const handleParcelFormChange = (field, value) => {
+    setParcelForm((prev) => ({ ...prev, [field]: value }));
+    if (value && String(value).trim()) {
+      setParcelErrors((prev) => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const validateParcelForm = () => {
+    const nextErrors = createParcelErrors();
+
+    if (!String(parcelForm.proNumber || '').trim()) nextErrors.proNumber = 'Pro is required';
+    if (!parcelForm.carrier) nextErrors.carrier = 'Carrier is required';
+    if (!parcelForm.customer) nextErrors.customer = 'Customer is required';
+    if (!String(parcelForm.shipper || '').trim()) nextErrors.shipper = 'Shipper is required';
+    if (!String(parcelForm.driverName || '').trim()) nextErrors.driverName = 'Driver Name is required';
+    if (!String(parcelForm.pieces || '').trim()) nextErrors.pieces = 'Pieces is required';
+    if (!String(parcelForm.weight || '').trim()) nextErrors.weight = 'Weight is required';
+
+    setParcelErrors(nextErrors);
+    return !Object.values(nextErrors).some(Boolean);
+  };
+
+  const handleParcelSubmit = async () => {
+    if (!validateParcelForm()) {
+      setSnackbar({
+        open: true,
+        message: 'Please fill all mandatory parcel fields',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const payload = {
+      verificationId: 0,
+      shipper: parcelForm.shipper || '',
+      customerId: parcelForm.customer?.customerId || 0,
+      stationId: parcelForm.customer?.stationId || 0,
+      carrierId: parcelForm.carrier?.carrierId || 0,
+      status: 'INITIATE',
+      receivedBy: '',
+      location: '',
+      destination: '',
+      proNumber: parcelForm.proNumber || '',
+      packageId: '',
+    };
+
+    const response = await dispatch(createTempWarehouseReceipt(payload));
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to create temporary warehouse receipt',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const receiptData = response?.data || {};
+    const row = {
+      id: receiptData.receiptNumber || receiptData.verificationId || Date.now(),
+      receiptNumber: receiptData.receiptNumber || '',
+      carrier: receiptData.carrierName || '',
+      customer: receiptData.customerName
+        ? `${receiptData.customerName}${receiptData.stationName ? ` | ${receiptData.stationName}` : ''}`
+        : '',
+      piecesInland: parcelForm.pieces,
+      weightInland: parcelForm.weight,
+      driverName: parcelForm.driverName || '',
+      ...receiptData,
+    };
+    const key = `${receiptData.proNumber || parcelForm.proNumber}-${row.id}`;
+    const form = createForm(1, receiptData.receiptNumber);
+    const parcelItem = createItem(1);
+
+    setSavedResults({
+      proNumber: receiptData.proNumber || parcelForm.proNumber,
+      rows: [row],
+    });
+    setProceededReceipts([
+      {
+        key,
+        proNumber: receiptData.proNumber || parcelForm.proNumber,
+        row,
+        receivedBy: receiptData.receivedBy || '',
+        location: receiptData.location || 'OH',
+        sectionCollapsed: false,
+        forms: [{ ...form, items: [parcelItem] }],
+      },
+    ]);
+    setIsSearchDisabled(true);
+
+    setSnackbar({
+      open: true,
+      message: response?.message || 'Temporary warehouse receipt created successfully',
+      severity: 'success',
+    });
   };
 
   const handleRejectOpen = (row) => {
@@ -918,6 +1288,8 @@ export default function WarehouseCheckInPage({
       rejectedRowIds,
       isSearchDisabled,
       receiptErrors: nextErrors,
+      parcelForm,
+      parcelErrors,
       proceededReceipts,
     }, draftKey));
 
@@ -964,7 +1336,9 @@ export default function WarehouseCheckInPage({
       sortable: false,
       renderCell: (params) => (
         <Stack direction="row" spacing={1} alignItems="center" sx={{ height: '100%' }}>
-          <Button size="small" sx={actionBtnSx} onClick={() => handleRejectOpen(params.row)}>Reject</Button>
+          {searchType !== 'rmDriver' && (
+            <Button size="small" sx={actionBtnSx} onClick={() => handleRejectOpen(params.row)}>Reject</Button>
+          )}
           <Button size="small" sx={actionBtnSx} onClick={() => handleProceed(params.row)}>Proceed</Button>
         </Stack>
       ),
@@ -1018,52 +1392,213 @@ export default function WarehouseCheckInPage({
             )}
           </RadioGroup>
 
-          {/* Search row */}
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
-            {searchType !== 'rmDriver' && (
-              <Stack spacing={0.5} sx={{ minWidth: 160 }}>
-                <Typography sx={{ fontSize: 12, color: '#555' }}>
-                  Search By <span style={{ color: 'red' }}>*</span>
-                </Typography>
+          {searchType === 'parcel' ? (
+            <Stack spacing={3}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
                 <StyledTextField
-                  select
                   variant="standard"
                   size="small"
-                  value={searchBy}
-                  onChange={(e) => setSearchBy(e.target.value)}
+                  required
+                  label="Pro"
+                  value={parcelForm.proNumber}
+                  onChange={(event) => handleParcelFormChange('proNumber', event.target.value)}
                   disabled={isSearchDisabled}
-                  sx={{ minWidth: 160 }}
-                >
-                  {SEARCH_BY_OPTIONS.map((opt) => (
-                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                  ))}
-                </StyledTextField>
+                  error={Boolean(parcelErrors.proNumber)}
+                  helperText={parcelErrors.proNumber || ' '}
+                  sx={{ minWidth: 220 }}
+                />
+                <Autocomplete
+                  disabled={isSearchDisabled}
+                  options={parcelCarrierDropdown.data}
+                  value={parcelForm.carrier}
+                  getOptionLabel={getCarrierOptionLabel}
+                  isOptionEqualToValue={(option, value) =>
+                    option.carrierId === value.carrierId || option.carrierName === value.carrierName
+                  }
+                  onChange={(event, newValue) => {
+                    isSelectingParcelCarrierRef.current = true;
+                    handleParcelFormChange('carrier', newValue);
+                    setParcelCarrierSearchValue('');
+                    if (!newValue) {
+                      dispatch(searchParcelCarriers(''));
+                    }
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    if (reason !== 'reset') {
+                      setParcelCarrierSearchValue(newInputValue);
+                      if (!newInputValue || !newInputValue.trim()) {
+                        dispatch(searchParcelCarriers(''));
+                      }
+                    }
+                  }}
+                  loading={parcelCarrierDropdown.loading}
+                  loadingText="Searching carriers..."
+                  noOptionsText={parcelCarrierSearchValue ? 'No carriers found' : 'Type to search for carriers'}
+                  clearIcon={parcelCarrierSearchValue ? <CloseIcon fontSize="small" /> : null}
+                  sx={{ minWidth: 220 }}
+                  renderInput={(params) => (
+                    <StyledTextField
+                      {...params}
+                      variant="standard"
+                      size="small"
+                      required
+                      label="Select Carrier"
+                      error={Boolean(parcelErrors.carrier)}
+                      helperText={parcelErrors.carrier || ' '}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {parcelCarrierDropdown.loading ? <CircularProgress color="inherit" size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+                <Autocomplete
+                  disabled={isSearchDisabled}
+                  options={customerOptions}
+                  value={parcelForm.customer}
+                  getOptionLabel={getCustomerOptionLabel}
+                  isOptionEqualToValue={(option, value) =>
+                    option.customerId === value.customerId && option.stationId === value.stationId
+                  }
+                  onChange={(event, newValue) => {
+                    isSelectingParcelCustomerRef.current = true;
+                    handleParcelFormChange('customer', newValue);
+                    setParcelCustomerSearchValue('');
+                    if (!newValue) {
+                      dispatch(searchCustomers(''));
+                    }
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    if (reason !== 'reset') {
+                      setParcelCustomerSearchValue(newInputValue);
+                      if (!newInputValue || !newInputValue.trim()) {
+                        dispatch(searchCustomers(''));
+                      }
+                    }
+                  }}
+                  loading={customerLoading}
+                  loadingText="Searching customers..."
+                  noOptionsText={parcelCustomerSearchValue ? 'No customers found' : 'Type to search for customers'}
+                  clearIcon={parcelCustomerSearchValue ? <CloseIcon fontSize="small" /> : null}
+                  sx={{ minWidth: 220 }}
+                  renderInput={(params) => (
+                    <StyledTextField
+                      {...params}
+                      variant="standard"
+                      size="small"
+                      required
+                      label="Select Customer"
+                      error={Boolean(parcelErrors.customer)}
+                      helperText={parcelErrors.customer || ' '}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {customerLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+                <StyledTextField
+                  variant="standard"
+                  size="small"
+                  required
+                  label="Shipper"
+                  value={parcelForm.shipper}
+                  onChange={(event) => handleParcelFormChange('shipper', event.target.value)}
+                  disabled={isSearchDisabled}
+                  error={Boolean(parcelErrors.shipper)}
+                  helperText={parcelErrors.shipper || ' '}
+                  sx={{ minWidth: 220 }}
+                />
               </Stack>
-            )}
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
+                {[
+                  { field: 'driverName', label: 'Driver Name' },
+                  { field: 'pieces', label: 'Pieces' },
+                  { field: 'weight', label: 'Weight' },
+                ].map(({ field, label }) => (
+                  <StyledTextField
+                    key={field}
+                    variant="standard"
+                    size="small"
+                    required
+                    label={label}
+                    value={parcelForm[field]}
+                    onChange={(event) => handleParcelFormChange(field, event.target.value)}
+                    disabled={isSearchDisabled}
+                    error={Boolean(parcelErrors[field])}
+                    helperText={parcelErrors[field] || ' '}
+                    sx={{ minWidth: 220 }}
+                  />
+                ))}
+              </Stack>
+              <Box>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleParcelSubmit}
+                  disabled={isSearchDisabled}
+                  sx={{ ...actionBtnSx, minWidth: 76 }}
+                >
+                  Submit
+                </Button>
+              </Box>
+            </Stack>
+          ) : (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
+              {searchType !== 'rmDriver' && (
+                <Stack spacing={0.5} sx={{ minWidth: 160 }}>
+                  <Typography sx={{ fontSize: 12, color: '#555' }}>
+                    Search By <span style={{ color: 'red' }}>*</span>
+                  </Typography>
+                  <StyledTextField
+                    select
+                    variant="standard"
+                    size="small"
+                    value={searchBy}
+                    onChange={(e) => setSearchBy(e.target.value)}
+                    disabled={isSearchDisabled}
+                    sx={{ minWidth: 160 }}
+                  >
+                    {SEARCH_BY_OPTIONS.map((opt) => (
+                      <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                    ))}
+                  </StyledTextField>
+                </Stack>
+              )}
 
-            {/* PRO / value input */}
-            <StyledTextField
-              variant="standard"
-              size="small"
-              required
-              label={searchType === 'rmDriver' ? 'Pro' : searchBy}
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              disabled={isSearchDisabled}
-              sx={{ minWidth: 200 }}
-            />
+              <StyledTextField
+                variant="standard"
+                size="small"
+                required
+                label={searchType === 'rmDriver' ? 'Pro' : searchBy}
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                disabled={isSearchDisabled}
+                sx={{ minWidth: 200 }}
+              />
 
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleSearch}
-              disabled={isSearchDisabled}
-              sx={{ ...actionBtnSx, minWidth: 90, height: 36 }}
-            >
-              Search
-            </Button>
-          </Stack>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleSearch}
+                disabled={isSearchDisabled}
+                sx={{ ...actionBtnSx, minWidth: 90, height: 36 }}
+              >
+                Search
+              </Button>
+            </Stack>
+          )}
         </fieldset>
 
         {/* Results */}
@@ -1109,6 +1644,7 @@ export default function WarehouseCheckInPage({
                     columns={columns}
                     autoHeight
                     disableRowSelectionOnClick
+                    disableColumnFilter
                     hideFooter
                     sx={{
                       border: 'none',
@@ -1330,23 +1866,28 @@ export default function WarehouseCheckInPage({
                                     />
                                   </Stack>
                                 </Stack>
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  startIcon={<Iconify icon="mdi:printer" width={16} />}
-                                  onClick={handleOpenPrinterDialog}
-                                  sx={{ ...actionBtnSx, minWidth: 76, alignSelf: { xs: 'flex-end', md: 'flex-start' } }}
-                                >
-                                  Print
-                                </Button>
+                                {isTrailerFormReadyForPrint(form) && (
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    startIcon={<Iconify icon="mdi:printer" width={16} />}
+                                    onClick={() => handleOpenPrinterDialog(pr, form)}
+                                    sx={{ ...actionBtnSx, minWidth: 76, alignSelf: { xs: 'flex-end', md: 'flex-start' } }}
+                                  >
+                                    Print
+                                  </Button>
+                                )}
                               </Stack>
                             )}
-                            {form.items.map((item, iIdx) => (
+                            {form.items.map((item, iIdx) => {
+                              const isCargoApiProcessing = !!cargoApiLoadingItems[getCargoApiLoadingKey(pr.key, form.id, item.id)];
+
+                              return (
                               <Stack
                                 key={item.id}
                                 direction="row"
                                 spacing={1.5}
-                                alignItems="flex-end"
+                                alignItems="flex-start"
                                 sx={{ width: '100%' }}
                               >
                                 {/* Box icon + label */}
@@ -1354,7 +1895,7 @@ export default function WarehouseCheckInPage({
                                   direction="row"
                                   alignItems="center"
                                   spacing={0.5}
-                                  sx={{ minWidth: 64, pb: 0.5 }}
+                                  sx={{ minWidth: 64, pt: '22px' }}
                                 >
                                   <Iconify icon="mdi:package-variant-closed" width={22} sx={{ color: '#555' }} />
                                   <Typography sx={{ fontSize: 12, whiteSpace: 'nowrap' }}>
@@ -1398,6 +1939,24 @@ export default function WarehouseCheckInPage({
                                     error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'type')]}
                                     helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, 'type')] || ' '}
                                     inputProps={{ style: { fontSize: 13 } }}
+                                    SelectProps={{
+                                      sx: {
+                                        '& .MuiSelect-select.MuiInputBase-input.MuiInput-input': {
+                                          pt: 0,
+                                          pb: '3px',
+                                          minHeight: '1.4375em',
+                                          lineHeight: '1.4375em',
+                                        },
+                                        '& .MuiSelect-icon': {
+                                          top: 'calc(50% - 0.7em)',
+                                        },
+                                      },
+                                    }}
+                                    sx={{
+                                      '& .MuiInputBase-root': {
+                                        alignItems: 'flex-start',
+                                      },
+                                    }}
                                   >
                                     {FREIGHT_TYPE_OPTIONS.map((opt) => (
                                       <MenuItem key={opt} value={opt}>{opt}</MenuItem>
@@ -1432,7 +1991,7 @@ export default function WarehouseCheckInPage({
                                 ))}
 
                                 {/* Action icons */}
-                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pb: 0.5 }}>
+                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pt: '19px' }}>
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}
@@ -1449,17 +2008,23 @@ export default function WarehouseCheckInPage({
                                     size="small"
                                     title="Package details"
                                     onClick={(event) => handlePackageDetailsClick(event, pr.key, form.id, item.id)}
+                                    disabled={isCargoApiProcessing}
                                     sx={{ p: 0.4 }}
                                   >
-                                    <Iconify icon="mdi:cube" width={28} sx={{ color: '#000' }} />
+                                    <Iconify icon="mdi:cube" width={28} sx={{ color: isCargoApiProcessing ? '#9e9e9e' : '#000' }} />
                                   </IconButton>
                                   <IconButton
                                     size="small"
                                     title="Upload image"
                                     onClick={() => handleOpenImageUpload(pr.key, form.id, item.id, item.images || [])}
+                                    disabled={isCargoApiProcessing}
                                     sx={{ p: 0.4 }}
                                   >
-                                    <Iconify icon="mdi:image-plus" width={28} sx={{ color: '#000' }} />
+                                    {isCargoApiProcessing ? (
+                                      <CircularProgress size={22} sx={{ color: '#A22' }} />
+                                    ) : (
+                                      <Iconify icon="mdi:image-plus" width={28} sx={{ color: '#000' }} />
+                                    )}
                                   </IconButton>
                                   {(item.images?.length || 0) > 0 && (
                                     <IconButton
@@ -1498,8 +2063,25 @@ export default function WarehouseCheckInPage({
                                     </IconButton>
                                   )}
                                 </Stack>
+                                {isCargoApiProcessing && (
+                                  <Stack
+                                    direction="row"
+                                    spacing={0.8}
+                                    alignItems="center"
+                                    sx={{
+                                      minWidth: 150,
+                                      pt: '23px',
+                                      color: '#A22',
+                                    }}
+                                  >
+                                    <Typography sx={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                      Cargo API processing...
+                                    </Typography>
+                                  </Stack>
+                                )}
                               </Stack>
-                            ))}
+                              );
+                            })}
 
                             {!showTrailerFreightHeader && (
                               <Box>
@@ -1622,7 +2204,7 @@ export default function WarehouseCheckInPage({
                 size="small"
                 value={selectedPrinterId}
                 onChange={(event) => setSelectedPrinterId(event.target.value)}
-                disabled={printersDropdown.loading}
+                disabled={printersDropdown.loading || printLoading}
                 helperText={printersDropdown.error || ''}
                 error={Boolean(printersDropdown.error)}
                 sx={{ width: '100%' }}
@@ -1649,11 +2231,11 @@ export default function WarehouseCheckInPage({
               variant="contained"
               size="small"
               startIcon={<Iconify icon="mdi:printer" width={16} />}
-              disabled={printersDropdown.loading || !selectedPrinterId}
+              disabled={printersDropdown.loading || printLoading || !selectedPrinterId}
               onClick={handlePrint}
               sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' } }}
             >
-              Print
+              {printLoading ? 'Printing...' : 'Print'}
             </Button>
           </Stack>
         </DialogContent>
@@ -1734,7 +2316,8 @@ export default function WarehouseCheckInPage({
                           component="img"
                           src={imageUrl}
                           alt={getImageName(file, index)}
-                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onClick={() => handleOpenFullImage(file, getImageName(file, index))}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'zoom-in' }}
                         />
                       ) : (
                         <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', opacity: 0.5 }}>
@@ -1776,6 +2359,41 @@ export default function WarehouseCheckInPage({
             OK
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={fullImageDialog.open} onClose={handleCloseFullImage} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          {fullImageDialog.title || 'Image Preview'}
+          <IconButton
+            onClick={handleCloseFullImage}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#111', p: 2 }}>
+          {getImageUrl(fullImageDialog.image) ? (
+            <Box
+              component="img"
+              src={getImageUrl(fullImageDialog.image)}
+              alt={fullImageDialog.title || 'Image Preview'}
+              sx={{
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '75vh',
+                mx: 'auto',
+                objectFit: 'contain',
+                bgcolor: '#fff',
+              }}
+            />
+          ) : (
+            <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320, color: '#fff' }} spacing={1}>
+              <Iconify icon="mdi:image-off" width={32} />
+              <Typography sx={{ fontSize: 13 }}>Image preview unavailable.</Typography>
+            </Stack>
+          )}
+        </DialogContent>
       </Dialog>
 
       {/* Image Upload Dialog */}
@@ -1883,9 +2501,9 @@ export default function WarehouseCheckInPage({
                   <Box sx={{ maxHeight: 180, overflowY: 'auto', pr: 1 }}>
                     {stagedFiles.map((file, idx) => (
                       <FileItem
-                        key={`${file.name}-${file.lastModified || idx}-${idx}`}
-                        filename={file.name}
-                        onView={() => handleViewStagedFile(file)}
+                        key={`${getImageName(file, idx)}-${file.lastModified || idx}-${idx}`}
+                        filename={getImageName(file, idx)}
+                        onView={() => handleViewStagedFile(file, idx)}
                         onRemove={uploadDialog.mode === 'view' ? undefined : () => handleRemoveStagedFile(idx)}
                         hideRemove={uploadDialog.mode === 'view'}
                       />
@@ -1932,10 +2550,18 @@ export default function WarehouseCheckInPage({
         <DialogContent dividers>
           <Box
             component="video"
-            ref={cameraVideoRef}
+            ref={(node) => {
+            cameraVideoRef.current = node;
+            if (node && cameraStreamRef.current && node.srcObject !== cameraStreamRef.current) {
+            node.srcObject = cameraStreamRef.current;
+            node.play?.().catch(() => {});
+             }
+             }}
             autoPlay
             playsInline
             muted
+            onLoadedMetadata={(event) => event.currentTarget.play?.().catch(() => {})}
+            onCanPlay={(event) => event.currentTarget.play?.().catch(() => {})}
             sx={{
               width: '100%',
               height: { xs: '60vh', md: '70vh' },

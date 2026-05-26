@@ -215,6 +215,44 @@ export async function getReceiptSummary(req: Request, res: Response, conn: Conne
 }
 
 /**
+ * PRINT LABEL
+ * Endpoint: POST /warehouse-receipt/label-print
+ * Supports either full payload data or only receiptNumber
+ * Requires printerPort and printerIP always
+ */
+export async function printLabel(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const { receiptNumber } = req.query;
+        const { printerPort, printerIP } = req.query;
+        const payload = req.body;
+
+        if (!printerPort || !printerIP || !receiptNumber) {
+            res.status(400).json({ success: false, message: "printerPort, printerIP, and receiptNumber are required" });
+            return;
+        }
+
+        const result = await warehouseReceiptService.printWarehouseReceiptLabelService(
+            conn,
+            {
+                printerPort,
+                printerIP,
+                receiptNumber: Number(receiptNumber),
+                ...payload
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Label print sent successfully",
+            data: result
+        });
+    } catch (error: any) {
+        logger.error("Error printing label", error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+}
+
+/**
  * CREATE TEMPORARY WAREHOUSE RECEIPT
  * Endpoint: POST /warehouse-receipt/temp
  * Returns all created temp receipt data
@@ -226,7 +264,7 @@ export async function createTemporaryWarehouseReceipt(req: Request, res: Respons
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
         // Validate required fields
-        const requiredFields = ['customerId', 'stationId', 'carrierId', 'status', 'shipper', 'receivedBy', 'location', 'proNumber'];
+        const requiredFields = ['customerId', 'stationId', 'carrierId', 'status', 'shipper', 'proNumber'];
         const missingFields = requiredFields.filter(field => !tempData[field]);
 
         if (missingFields.length > 0) {
@@ -311,10 +349,27 @@ export async function createWarehouseReceiptWithFreight(req: Request, res: Respo
  * Process array of receipts - update if receiptId exists, create if not
  * Auto-generated: receiptNumber, documentId, createdBy (from req.user), createdAt
  */
-export async function batchProcessWarehouseReceipts(req: Request, res: Response, conn: Connection): Promise<void> {
+export async function batchProcessWarehouseReceiptsWithoutImages(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
-        const { receipts } = req.body;
+        // Accept either { batchData: {...} } or raw body containing the batch data (or an array)
+        const rawBatch = (req.body && (req.body.batchData ?? req.body)) as any;
         const userId = (req as any).user?.userId || (req as any).user?.id;
+
+        console.log("Received batch process request", rawBatch);
+
+        // Normalize: if rawBatch is a JSON string, parse it
+        let parsedBatch: any = rawBatch;
+        if (typeof parsedBatch === 'string') {
+            try {
+                parsedBatch = JSON.parse(parsedBatch);
+            } catch (err) {
+                res.status(400).json({ success: false, message: "Invalid batchData JSON format" });
+                return;
+            }
+        }
+
+        // Ensure we have an object with a `receipts` array. If the client posted an array directly, wrap it.
+        const receipts = Array.isArray(parsedBatch) ? parsedBatch : parsedBatch?.receipts;
 
         if (!Array.isArray(receipts) || receipts.length === 0) {
             res.status(400).json({
@@ -352,16 +407,18 @@ export async function batchProcessWarehouseReceipts(req: Request, res: Response,
 
 /**
  * BATCH PROCESS WAREHOUSE RECEIPTS WITH IMAGE UPLOADS
- * Endpoint: POST /warehouse-receipt/batch-with-images
+ * Endpoint: POST /warehouse-receipt/batch
  * 
  * Handles multipart/form-data with:
  * - Field: batchData (JSON string with receipts array)
- * - Files: Multiple images with fieldname format: freight-{receiptIndex}-{freightIndex}-{imageIndex}
+ * - Freight images: fieldname format freight-{receiptIndex}-{freightIndex}-{imageIndex}
+ * - Bad freight images: fieldname format bad-freight-image-{receiptIndex}-{imageIndex}
  * 
  * Example:
- * - Field name: freight-0-0-0 → receipts[0].freightDetails[0].images[0]
- * - Field name: freight-0-0-1 → receipts[0].freightDetails[0].images[1]
- * - Field name: freight-0-1-0 → receipts[0].freightDetails[1].images[0]
+ * - freight-0-0-0 → receipts[0].freightDetails[0].images[0]
+ * - freight-0-0-1 → receipts[0].freightDetails[0].images[1]
+ * - bad-freight-image-0-0 → receipts[0].badFreightImages[0]
+ * - bad-freight-image-0-1 → receipts[0].badFreightImages[1]
  */
 export async function batchProcessWarehouseReceiptsWithImages(
     req: Request,
@@ -372,20 +429,13 @@ export async function batchProcessWarehouseReceiptsWithImages(
 
         console.log("Received batch process with images request");
 
-        const { batchData } = req.body;
+        // Accept either { batchData: {...} } or raw body containing the batch data (or an array)
+        const rawBatch = (req.body && (req.body.batchData ?? req.body)) as any;
         const userId = (req as any).user?.userId || (req as any).user?.id;
         const uploadedFiles = (req as any).files || [];
 
-        console.log("Batch data:", batchData);
+        console.log("Batch data:", rawBatch);
         console.log("Uploaded files:", uploadedFiles);
-
-        if (!batchData) {
-            res.status(400).json({
-                success: false,
-                message: "batchData field is required (JSON string)"
-            });
-            return;
-        }
 
         if (!userId) {
             res.status(401).json({
@@ -395,21 +445,23 @@ export async function batchProcessWarehouseReceiptsWithImages(
             return;
         }
 
-        // Parse batch data from string
-        let parsedData;
-        try {
-            parsedData = typeof batchData === 'string' ? JSON.parse(batchData) : batchData;
-        } catch (parseError) {
-            res.status(400).json({
-                success: false,
-                message: "Invalid batchData JSON format"
-            });
-            return;
+        // Parse batch data from string if necessary and normalize
+        let parsedData: any = rawBatch;
+        if (typeof parsedData === 'string') {
+            try {
+                parsedData = JSON.parse(parsedData);
+            } catch (parseError) {
+                res.status(400).json({ success: false, message: "Invalid batchData JSON format" });
+                return;
+            }
         }
+
+        // Normalize to object with receipts array
+        const normalized = Array.isArray(parsedData) ? { receipts: parsedData } : parsedData || {};
 
         // Validate batch data structure
         const { processUploadedImages, validateBatchData } = await import("../../services/warehouse-receipt/image-handler");
-        const validation = validateBatchData(parsedData);
+        const validation = validateBatchData(normalized);
         if (!validation.valid) {
             res.status(400).json({
                 success: false,
@@ -419,8 +471,20 @@ export async function batchProcessWarehouseReceiptsWithImages(
             return;
         }
 
-        // Process uploaded images and map them to freight items
-        const processedData = processUploadedImages(parsedData, uploadedFiles);
+        // Process uploaded images and map them to freight items and bad freight items
+        const processedData = processUploadedImages(normalized, uploadedFiles);
+
+        console.log("Uploaded files mapped to batch data:", uploadedFiles);
+
+        console.log("Processed batch data with image paths:", processedData);
+
+        console.log("Actual frieght and bad freight images in processed data:",
+            processedData.receipts?.map((item: any) => ({
+                receiptId: item.receipt?.receiptId,
+                freightImages: item.freightDetails?.map((freight: any) => freight.images),
+                badFreightImages: item.badFreightImages
+            }))
+        );
 
         if (!Array.isArray(processedData.receipts) || processedData.receipts.length === 0) {
             res.status(400).json({
@@ -454,8 +518,12 @@ export async function batchProcessWarehouseReceiptsWithImages(
  * BATCH PROCESS WAREHOUSE RECEIPTS V2 (HYBRID)
  * Handles Base64 string interception from body, converting them to physical files,
  * then routes to either standard batch processing or batch with images.
+ * 
+ * Supports both:
+ * - Freight images: fieldname format freight-{receiptIndex}-{freightIndex}-{imageIndex}
+ * - Bad freight images: fieldname format bad-freight-image-{receiptIndex}-{imageIndex}
  */
-export async function batchProcessWarehouseReceiptsV2(
+export async function batchProcessWarehouseReceipts(
     req: Request,
     res: Response,
     conn: Connection
@@ -465,15 +533,46 @@ export async function batchProcessWarehouseReceiptsV2(
             (req as any).files = [];
         }
 
-        // HYBRID HANDLING: Process Base64 strings sent as text fields in FormData
-        const uploadDir = path.join(process.cwd(), 'uploads', 'freight-images');
-        let dirCreated = false;
+        const freightImageDir = process.env.FREIGHT_IMAGE_PATH;
+        const badFreightImageDir = process.env.BAD_FREIGHT_IMAGE_PATH;
 
+        if (!freightImageDir || !badFreightImageDir) {
+            res.status(400).json({
+                success: false,
+                message: "Upload directories not configured"
+            });
+            return;
+        }
+
+        const ensureDirExists = async (dir: string) => {
+            try {
+                await fs.access(dir);
+            } catch {
+                await fs.mkdir(dir, { recursive: true });
+            }
+        };
+
+        let freightDirCreated = false;
+        let badFreightDirCreated = false;
+
+        // HYBRID HANDLING: Process Base64 strings sent as text fields in FormData
         for (const [key, value] of Object.entries(req.body || {})) {
+
+            console.log(`Processing field: ${key}`);
+            console.log(`Value type: ${typeof value}, value preview: ${typeof value === 'string' ? value.substring(0, 30) : 'N/A'}`);
+
             if (typeof value === 'string' && (value.startsWith('data:image/') || value.startsWith('base64,'))) {
-                if (!dirCreated) {
-                    await fs.mkdir(uploadDir, { recursive: true });
-                    dirCreated = true;
+                // Determine which directory based on field name pattern
+                const isBadFreight = key.startsWith('bad-freight-image-');
+                const uploadDir = isBadFreight ? badFreightImageDir : freightImageDir;
+
+                // Create directories if needed
+                if (isBadFreight && !badFreightDirCreated) {
+                    await ensureDirExists(badFreightImageDir);
+                    badFreightDirCreated = true;
+                } else if (!isBadFreight && !freightDirCreated) {
+                    await ensureDirExists(freightImageDir);
+                    freightDirCreated = true;
                 }
 
                 // Strip out data URL prefix if it exists
@@ -481,9 +580,9 @@ export async function batchProcessWarehouseReceiptsV2(
                 const buffer = Buffer.from(base64Data, 'base64');
                 const fileName = `base64-${Date.now()}-${Math.round(Math.random() * 1E9)}.jpg`;
                 const filePath = path.join(uploadDir, fileName);
-                
+
                 await fs.writeFile(filePath, buffer);
-                
+
                 // Inject mock Multer file into req.files so downstream logic handles it naturally
                 ((req as any).files).push({
                     fieldname: key,
@@ -493,7 +592,7 @@ export async function batchProcessWarehouseReceiptsV2(
                     size: buffer.length,
                     mimetype: 'image/jpeg'
                 });
-                
+
                 delete req.body[key]; // Keep body clean for JSON parsing downstream
             }
         }
@@ -503,7 +602,7 @@ export async function batchProcessWarehouseReceiptsV2(
         if (hasImages) {
             await batchProcessWarehouseReceiptsWithImages(req, res, conn);
         } else {
-            await batchProcessWarehouseReceipts(req, res, conn);
+            await batchProcessWarehouseReceiptsWithoutImages(req, res, conn);
         }
     } catch (error: any) {
         console.log(error);
@@ -558,13 +657,14 @@ export async function rejectWarehouseReceipt(req: Request, res: Response, conn: 
 export async function getProHeaderDetails(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const proNumber = Array.isArray(req.params.pro) ? req.params.pro[0] : req.params.pro;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
 
         if (!proNumber) {
             res.status(400).json({ success: false, message: "PRO number is required" });
             return;
         }
 
-        const proDetails = await warehouseReceiptService.getProHeaderDetailsService(conn, proNumber);
+        const proDetails = await warehouseReceiptService.getProHeaderDetailsService(conn, proNumber, userId);
 
         res.status(200).json({
             success: true,

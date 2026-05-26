@@ -30,3 +30,13 @@ export async function listCarrierDropdown(req: Request, res: Response, conn: Con
         res.status(400).json({ success: false, message: error.message });
     }
 }
+
+export async function listParcelCarrierDropdown(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const search = (req.query.search as string) || "";
+        const carriers = await carrierService.listParcelCarrierDropdownService(conn, search);
+        res.status(200).json({ success: true, data: carriers });
+    } catch (error: any) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+}

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { authenticateJWT } from "../../middleware/auth";
 import * as warehouseReceiptController from "../../controllers/warehouse-receipt";
-import { upload } from "../../config/multer";
+import { uploaders } from "../../config/multer";
 import { db } from "../../config/db2";
 
 const router = Router();
@@ -19,31 +19,43 @@ router.post("/temp", authenticateJWT, async (req: Request, res: Response) => {
 
 // Batch process: Update reference receipt and create multiple new receipts
 // Supports both JSON and multipart/form-data with images
-router.post("/batch", authenticateJWT, upload.any(), async (req: Request, res: Response) => {
+// router.post("/batch", authenticateJWT, upload.any(), async (req: Request, res: Response) => {
+//     const conn = await db();
+//     try {
+//         // Check if images are present in request
+//         const hasImages = (req as any).files && (req as any).files.length > 0;
+//         if (hasImages) {
+//             await warehouseReceiptController.batchProcessWarehouseReceiptsWithImages(req, res, conn);
+//         } else {
+//             await warehouseReceiptController.batchProcessWarehouseReceiptsWithoutImages(req, res, conn);
+//         }
+//     } finally {
+//         if (conn) conn.close();
+//     }
+// });
+
+// Batch process V2 (Hybrid Image Uploads): Update reference receipt and create multiple new receipts
+// Supports standard JSON, multipart/form-data with actual file images, and Base64 strings sent as text fields
+// Accepts both freight and bad freight images in same request using different field names
+router.post("/batch", authenticateJWT, uploaders.warehouse.combinedImages.any(), async (req: Request, res: Response) => {
     const conn = await db();
     try {
-        // Check if images are present in request
-        const hasImages = (req as any).files && (req as any).files.length > 0;
-        if (hasImages) {
-            await warehouseReceiptController.batchProcessWarehouseReceiptsWithImages(req, res, conn);
-        } else {
-            await warehouseReceiptController.batchProcessWarehouseReceipts(req, res, conn);
-        }
+        await warehouseReceiptController.batchProcessWarehouseReceipts(req, res, conn);
     } finally {
         if (conn) conn.close();
     }
 });
 
-// Batch process V2 (Hybrid Image Uploads): Update reference receipt and create multiple new receipts
-// Supports standard JSON, multipart/form-data with actual file images, and Base64 strings sent as text fields
-router.post("/batch-v2", authenticateJWT, upload.any(), async (req: Request, res: Response) => {
+// Print label via ZPL
+router.post("/label-print", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
-        await warehouseReceiptController.batchProcessWarehouseReceiptsV2(req, res, conn);
+        await warehouseReceiptController.printLabel(req, res, conn);
     } finally {
         if (conn) conn.close();
     }
 });
+
 
 // Create warehouse receipt with freight info
 router.post("/", authenticateJWT, async (req: Request, res: Response) => {
