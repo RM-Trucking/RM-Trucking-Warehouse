@@ -381,19 +381,51 @@ function ReceiptInfoRow({ label, value, editable = false, onChange }) {
   );
 }
 
+const looksLikeBase64Image = (value) => {
+  const compactValue = String(value || '').trim();
+  return compactValue.length > 80 && /^[A-Za-z0-9+/]+={0,2}$/.test(compactValue);
+};
+
+const getBase64ImageMimeType = (value) => {
+  const compactValue = String(value || '').trim();
+
+  if (compactValue.startsWith('/9j/')) return 'image/jpeg';
+  if (compactValue.startsWith('iVBORw0KGgo')) return 'image/png';
+  if (compactValue.startsWith('R0lGOD')) return 'image/gif';
+  if (compactValue.startsWith('UklGR')) return 'image/webp';
+  return 'image/jpeg';
+};
+
 const getImageUrl = (file) => {
   if (!file) return '';
-  if (typeof file === 'string') return file;
+  if (typeof file === 'string') {
+    const image = file.trim();
+    if (/^(data:image\/|https?:\/\/|blob:)/i.test(image)) return image;
+    if (looksLikeBase64Image(image)) return `data:${getBase64ImageMimeType(image)};base64,${image}`;
+    return image;
+  }
   if (file.url) return file.url;
   if (file.preview) return file.preview;
+  if (file.base64) return getImageUrl(file.base64);
+  if (file.image) return getImageUrl(file.image);
   if (file instanceof File) return URL.createObjectURL(file);
   return '';
 };
 
 const getImageName = (file, index) => {
   if (!file) return `Image ${index + 1}`;
-  if (typeof file === 'string') return file.split('/').pop() || `Image ${index + 1}`;
+  if (typeof file === 'string') {
+    if (looksLikeBase64Image(file) || file.startsWith('data:image/')) return `Cargo API Image ${index + 1}`;
+    return file.split('/').pop() || `Image ${index + 1}`;
+  }
   return file.name || file.filename || `Image ${index + 1}`;
+};
+
+const getSubmittedImageValue = async (image) => {
+  const base64Image = await fileToBase64(image);
+  if (!base64Image) return '';
+
+  return base64Image.startsWith('base64,') ? base64Image : `base64,${base64Image}`;
 };
 
 const getReceiptNumbersFromResponse = (response) => {
@@ -423,6 +455,7 @@ export default function WarehouseReceiptFormPage() {
   const [receiptForms, setReceiptForms] = useState(initialReceiptForms);
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
   const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '' });
+  const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '' });
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -527,6 +560,15 @@ export default function WarehouseReceiptFormPage() {
 
   const handleCloseImages = () => {
     setImageDialog({ open: false, images: [], itemLabel: '' });
+    setFullImageDialog({ open: false, image: null, title: '' });
+  };
+
+  const handleOpenFullImage = (image, title) => {
+    setFullImageDialog({ open: true, image, title });
+  };
+
+  const handleCloseFullImage = () => {
+    setFullImageDialog({ open: false, image: null, title: '' });
   };
 
   const handleRemovePreviewImage = (index) => {
@@ -714,7 +756,6 @@ export default function WarehouseReceiptFormPage() {
     const formData = new FormData();
 
     formData.append('batchData', JSON.stringify(payload));
-    formData.append('receipts', JSON.stringify(payload.receipts));
 
     await Promise.all(
       receiptForms.flatMap((form, receiptIndex) => {
@@ -722,15 +763,10 @@ export default function WarehouseReceiptFormPage() {
         const freightItemImageTasks = (form.items || []).flatMap((item, freightIndex) =>
           (item.images || []).map(async (image, imageIndex) => {
             const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
-            const renamedImage = await toRenamedImageFile(image, fieldName);
-            const base64Image = await fileToBase64(image);
+            const imageValue = await getSubmittedImageValue(image);
 
-            if (renamedImage instanceof File || renamedImage instanceof Blob) {
-              formData.append(fieldName, renamedImage);
-            }
-
-            if (base64Image) {
-              formData.append(`${fieldName}-base64`, base64Image);
+            if (imageValue) {
+              formData.append(fieldName, imageValue);
             }
           })
         );
@@ -1317,12 +1353,14 @@ export default function WarehouseReceiptFormPage() {
                           component="img"
                           src={imageUrl}
                           alt={getImageName(file, index)}
+                          onClick={() => handleOpenFullImage(file, getImageName(file, index))}
                           sx={{
                             width: 160,
                             height: 120,
                             objectFit: 'cover',
                             border: '1px solid #d0d0d0',
                             borderRadius: 1,
+                            cursor: 'zoom-in',
                           }}
                         />
                       ) : (
@@ -1371,6 +1409,40 @@ export default function WarehouseReceiptFormPage() {
             OK
           </Button>
         </DialogActions>
+      </Dialog>
+      <Dialog open={fullImageDialog.open} onClose={handleCloseFullImage} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+          {fullImageDialog.title || 'Image Preview'}
+          <IconButton
+            onClick={handleCloseFullImage}
+            size="small"
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <Iconify icon="mdi:close" width={18} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ bgcolor: '#111', p: 2 }}>
+          {getImageUrl(fullImageDialog.image) ? (
+            <Box
+              component="img"
+              src={getImageUrl(fullImageDialog.image)}
+              alt={fullImageDialog.title || 'Image Preview'}
+              sx={{
+                display: 'block',
+                maxWidth: '100%',
+                maxHeight: '75vh',
+                mx: 'auto',
+                objectFit: 'contain',
+                bgcolor: '#fff',
+              }}
+            />
+          ) : (
+            <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320, color: '#fff' }} spacing={1}>
+              <Iconify icon="mdi:image-off" width={32} />
+              <Typography sx={{ fontSize: 13 }}>Image preview unavailable.</Typography>
+            </Stack>
+          )}
+        </DialogContent>
       </Dialog>
       <Dialog open={freightCameraOpen} onClose={handleCloseFreightCamera} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Capture Bad Freight Image</DialogTitle>
