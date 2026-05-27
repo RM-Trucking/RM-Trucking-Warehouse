@@ -15,9 +15,14 @@ export default function ShipmentFormLayout({
     showCancel = true,
     showSubmit = true,
     submitLoading = false,
+    plain = false,
     topInfoPanel,
     children
 }) {
+    if (plain) {
+        return <>{children}</>;
+    }
+
     return (
         <Box sx={{ p: 2, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
             {/* Header */}
@@ -100,6 +105,7 @@ ShipmentFormLayout.propTypes = {
     showCancel: PropTypes.bool,
     showSubmit: PropTypes.bool,
     submitLoading: PropTypes.bool,
+    plain: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     children: PropTypes.node.isRequired,
 };

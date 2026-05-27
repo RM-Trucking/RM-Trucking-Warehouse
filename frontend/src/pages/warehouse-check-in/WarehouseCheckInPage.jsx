@@ -23,6 +23,7 @@ import {
   Autocomplete,
   Alert,
   Snackbar,
+  useMediaQuery,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { DataGrid } from '@mui/x-data-grid';
@@ -46,6 +47,7 @@ import {
 import { searchCustomers } from '../../redux/slices/enroute';
 import axios from '../../utils/axios';
 import { PATH_DASHBOARD } from '../../routes/paths';
+import WarehouseCheckInScanGunPage from './WarehouseCheckInScanGunPage';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -292,6 +294,11 @@ export default function WarehouseCheckInPage({
   const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, parcelCarrierDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
   const { customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
+  const isScanGunScreen = useMediaQuery(
+    '(max-width:900px), (pointer: coarse) and (max-width:1024px)',
+    { noSsr: true }
+  );
+  const showScanGunPage = isScanGunScreen && !showTrailerFreightHeader;
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
@@ -1353,8 +1360,57 @@ export default function WarehouseCheckInPage({
       onCancel={handleCancel}
       onSubmit={handleNext}
       submitLabel="Next"
+      plain={showScanGunPage}
     >
-      <Stack spacing={3}>
+      {showScanGunPage ? (
+        <WarehouseCheckInScanGunPage
+          title={title}
+          onCancel={handleCancel}
+          onNext={handleNext}
+          searchType={searchType}
+          setSearchType={setSearchType}
+          searchBy={searchBy}
+          setSearchBy={setSearchBy}
+          searchValue={searchValue}
+          setSearchValue={setSearchValue}
+          handleSearch={handleSearch}
+          warehouseReceiptSearch={warehouseReceiptSearch}
+          isSearchDisabled={isSearchDisabled}
+          showParcelOption={showParcelOption}
+          parcelForm={parcelForm}
+          parcelErrors={parcelErrors}
+          parcelCarrierDropdown={parcelCarrierDropdown}
+          customerOptions={customerOptions}
+          customerLoading={customerLoading}
+          parcelCarrierSearchValue={parcelCarrierSearchValue}
+          setParcelCarrierSearchValue={setParcelCarrierSearchValue}
+          parcelCustomerSearchValue={parcelCustomerSearchValue}
+          setParcelCustomerSearchValue={setParcelCustomerSearchValue}
+          getCarrierOptionLabel={getCarrierOptionLabel}
+          getCustomerOptionLabel={getCustomerOptionLabel}
+          handleParcelFormChange={handleParcelFormChange}
+          handleParcelSubmit={handleParcelSubmit}
+          proceededReceipts={proceededReceipts}
+          receiptErrors={receiptErrors}
+          updateReceipt={updateReceipt}
+          removeReceipt={removeReceipt}
+          addForm={addForm}
+          addItem={addItem}
+          removeItem={removeItem}
+          updateItem={updateItem}
+          clearItemError={clearItemError}
+          handlePackageDetailsClick={handlePackageDetailsClick}
+          handleOpenImageUpload={handleOpenImageUpload}
+          handleOpenImagePreview={handleOpenImagePreview}
+          cargoApiLoadingItems={cargoApiLoadingItems}
+          getCargoApiLoadingKey={getCargoApiLoadingKey}
+          freightTypeOptions={FREIGHT_TYPE_OPTIONS}
+          tempReceiptLoading={tempReceiptLoading}
+          handleProceed={handleProceed}
+          dispatchClearReceiptSearch={() => dispatch(clearReceiptSearch())}
+        />
+      ) : (
+        <Stack spacing={3}>
         {/* Warehouse Receipt fieldset */}
         <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px' }}>
           <legend>
@@ -2125,8 +2181,8 @@ export default function WarehouseCheckInPage({
             </Collapse>
           </Box>
         ))}
-
-      </Stack>
+        </Stack>
+      )}
       {/* Reject Freight Dialog */}
       <Dialog open={rejectOpen} onClose={handleRejectClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
