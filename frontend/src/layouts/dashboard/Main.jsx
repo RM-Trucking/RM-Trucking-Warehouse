@@ -2,10 +2,8 @@ import PropTypes from 'prop-types';
 import { useLocation } from 'react-router-dom';
 // @mui
 import { Box } from '@mui/material';
-// hooks
-import useResponsive from '../../hooks/useResponsive';
 // config
-import { HEADER, NAV } from '../../config';
+import { HEADER } from '../../config';
 
 // ----------------------------------------------------------------------
 
@@ -24,12 +22,13 @@ export default function Main({ children, sx, ...other }) {
       sx={{
         flexGrow: 1,
         // py: `${HEADER.H_MOBILE + SPACING}px`,
-        px: 2,
+        px: { xs: 0, sm: 2 },
         py: `${HEADER.H_DASHBOARD_DESKTOP + SPACING}px`,
         // width: `calc(100% - ${NAV.W_DASHBOARD}px)`,
-        width: `calc(100% - 312px)`,
+        width: { xs: '100%', sm: `calc(100% - 312px)` },
+        boxSizing: 'border-box',
         position : 'absolute',
-        left : {sm: '280px'},
+        left : { xs: 0, sm: '280px' },
         ...sx,
         bgcolor : (pathname.includes('customer-view') || pathname.includes('station-view') || pathname.includes('rate-view') || pathname.includes('carrier-view') || pathname.includes('terminal-view')) ? 'rgb(229, 229, 229)' : '#fff',
       }}

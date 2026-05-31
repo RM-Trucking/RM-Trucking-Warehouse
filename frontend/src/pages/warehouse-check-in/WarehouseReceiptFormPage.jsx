@@ -1139,7 +1139,12 @@ export default function WarehouseReceiptFormPage() {
                         control={
                           <Checkbox
                             checked={activeFreightInfo.badFreightCondition}
-                            onChange={(event) => updateActiveFreightInfo({ badFreightCondition: event.target.checked })}
+                            onChange={(event) =>
+                              updateActiveFreightInfo({
+                                badFreightCondition: event.target.checked,
+                                ...(event.target.checked ? {} : { freightConditionImages: [] }),
+                              })
+                            }
                             size="small"
                             sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
                           />

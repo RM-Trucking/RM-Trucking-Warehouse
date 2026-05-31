@@ -93,7 +93,17 @@ const createParcelErrors = () => ({
 });
 
 // ─── Helpers to create blank form / item ────────────────────────────
-const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
+const createItem = (id) => ({
+  id,
+  pieces: '',
+  type: '',
+  length: '',
+  width: '',
+  height: '',
+  weight: '',
+  images: [],
+  badFreightImages: [],
+});
 const createForm = (id, receiptNumber = null, defaults = {}) => ({
   id,
   collapsed: false,
@@ -315,7 +325,7 @@ export default function WarehouseCheckInPage({
   const [isSearchDisabled, setIsSearchDisabled] = useState(false);
   const [tempReceiptLoading, setTempReceiptLoading] = useState({});
   const [receiptErrors, setReceiptErrors] = useState({});
-  const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+  const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null, imageField: 'images' });
   const [imagePreviewDialog, setImagePreviewDialog] = useState({
     open: false,
     images: [],
@@ -692,14 +702,14 @@ export default function WarehouseCheckInPage({
     });
   };
 
-  const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload') => {
-    setUploadDialog({ open: true, mode, key, formId, itemId });
+  const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload', imageField = 'images') => {
+    setUploadDialog({ open: true, mode, key, formId, itemId, imageField });
     setStagedFiles(existingFiles);
     setIsDraggingFiles(false);
   };
 
   const handleCloseImageUpload = () => {
-    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null, imageField: 'images' });
     setStagedFiles([]);
     setIsDraggingFiles(false);
     handleCloseCamera();
@@ -723,11 +733,11 @@ export default function WarehouseCheckInPage({
   };
 
   const handleRemovePreviewImage = (index) => {
-    const { key, formId, itemId } = imagePreviewDialog;
+    const { key, formId, itemId, imageField = 'images' } = imagePreviewDialog;
     if (!key || !formId || !itemId) return;
 
     const nextImages = imagePreviewDialog.images.filter((_, imageIndex) => imageIndex !== index);
-    updateItem(key, formId, itemId, 'images', nextImages);
+    updateItem(key, formId, itemId, imageField, nextImages);
     setImagePreviewDialog((prev) => ({ ...prev, images: nextImages }));
   };
 
@@ -846,7 +856,7 @@ export default function WarehouseCheckInPage({
   const handleUploadImages = () => {
     if (!uploadDialog.key || !uploadDialog.formId || !uploadDialog.itemId) return;
 
-    updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, 'images', stagedFiles);
+    updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, uploadDialog.imageField || 'images', stagedFiles);
     handleCloseImageUpload();
   };
 
@@ -1391,6 +1401,7 @@ export default function WarehouseCheckInPage({
           handleParcelFormChange={handleParcelFormChange}
           handleParcelSubmit={handleParcelSubmit}
           proceededReceipts={proceededReceipts}
+          rejectedRowIds={rejectedRowIds}
           receiptErrors={receiptErrors}
           updateReceipt={updateReceipt}
           removeReceipt={removeReceipt}
@@ -1406,6 +1417,7 @@ export default function WarehouseCheckInPage({
           getCargoApiLoadingKey={getCargoApiLoadingKey}
           freightTypeOptions={FREIGHT_TYPE_OPTIONS}
           tempReceiptLoading={tempReceiptLoading}
+          handleRejectOpen={handleRejectOpen}
           handleProceed={handleProceed}
           dispatchClearReceiptSearch={() => dispatch(clearReceiptSearch())}
         />
