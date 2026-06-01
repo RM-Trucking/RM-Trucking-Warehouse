@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -8,6 +9,7 @@ import {
   CircularProgress,
   FormControlLabel,
   IconButton,
+  Menu,
   MenuItem,
   Radio,
   RadioGroup,
@@ -314,9 +316,12 @@ export default function WarehouseCheckInScanGunPage({
   updateReceipt,
   removeReceipt,
   addForm,
+  removeForm,
   addItem,
   removeItem,
+  updateFormField,
   updateItem,
+  clearFormFieldError,
   clearItemError,
   handlePackageDetailsClick,
   handleOpenImageUpload,
@@ -324,12 +329,30 @@ export default function WarehouseCheckInScanGunPage({
   cargoApiLoadingItems,
   getCargoApiLoadingKey,
   freightTypeOptions,
+  showTrailerFreightHeader = false,
   tempReceiptLoading,
   handleRejectOpen,
   handleProceed,
+  onScreenSelect,
   dispatchClearReceiptSearch,
 }) {
   const visibleRows = (warehouseReceiptSearch.data?.rows || []).filter((row) => !rejectedRowIds.includes(row.id));
+  const [screenMenuAnchor, setScreenMenuAnchor] = useState(null);
+  const screenMenuOpen = Boolean(screenMenuAnchor);
+
+  const handleOpenScreenMenu = (event) => {
+    setScreenMenuAnchor(event.currentTarget);
+  };
+
+  const handleCloseScreenMenu = () => {
+    setScreenMenuAnchor(null);
+  };
+
+  const handleScreenSelect = (screenType) => {
+    handleCloseScreenMenu();
+    onScreenSelect?.(screenType);
+  };
+
   const toggleFreightOption = (receiptKey, formId, itemId, option) => {
     const receipt = proceededReceipts.find((currentReceipt) => currentReceipt.key === receiptKey);
     const form = receipt?.forms?.find((currentForm) => currentForm.id === formId);
@@ -350,12 +373,36 @@ export default function WarehouseCheckInScanGunPage({
     <Box sx={{ width: '100vw', minHeight: '100dvh', bgcolor: '#fff', fontSize: 12, overflowX: 'hidden' }}>
       <Box sx={{ width: '100vw', maxWidth: 'none', mx: 0, bgcolor: '#fff', minHeight: '100dvh' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75 }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{`< ${title}`}</Typography>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0.4}
+            onClick={handleOpenScreenMenu}
+            sx={{ minWidth: 0, cursor: 'pointer', color: '#111' }}
+          >
+            <Iconify icon="eva:arrow-ios-back-fill" width={16} />
+            <Typography sx={{ fontSize: 12, fontWeight: 700, minWidth: 0 }}>
+              {title}
+            </Typography>
+          </Stack>
           <Stack direction="row" spacing={1}>
             <Button variant="outlined" size="small" onClick={onCancel} sx={{ color: '#111', borderColor: '#111', height: 24, fontSize: 11, textTransform: 'none' }}>Cancel</Button>
             <Button variant="contained" size="small" onClick={onNext} sx={scanActionBtnSx}>Next</Button>
           </Stack>
         </Stack>
+        <Menu
+          anchorEl={screenMenuAnchor}
+          open={screenMenuOpen}
+          onClose={handleCloseScreenMenu}
+          MenuListProps={{ dense: true }}
+        >
+          <MenuItem selected={!showTrailerFreightHeader} onClick={() => handleScreenSelect('regular')}>
+            Regular
+          </MenuItem>
+          <MenuItem selected={showTrailerFreightHeader} onClick={() => handleScreenSelect('trailer')}>
+            Trailer
+          </MenuItem>
+        </Menu>
 
         <Box sx={{ p: 1 }}>
           <Accordion defaultExpanded disableGutters sx={{ boxShadow: 'none', border: '1px solid #777', mb: 1 }}>
@@ -500,12 +547,51 @@ export default function WarehouseCheckInScanGunPage({
                   {receipt.forms.map((form, formIndex) => (
                     <Accordion key={form.id} defaultExpanded={formIndex === receipt.forms.length - 1} disableGutters sx={{ boxShadow: 'none', border: '1px solid #999' }}>
                       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: '#d0d0d0', minHeight: 34, '& .MuiAccordionSummary-content': { my: 0.4 } }}>
-                        <Typography sx={{ fontSize: 12, fontWeight: 700 }}>
-                          {`New Form ${formIndex + 1} - ${form.receiptNumber || receipt.row.receiptNumber}`}
-                        </Typography>
+                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ width: '100%', minWidth: 0, pr: 0.5 }}>
+                          <Typography sx={{ fontSize: 12, fontWeight: 700, flex: 1, minWidth: 0 }}>
+                            {`New Form ${formIndex + 1} - ${form.receiptNumber || receipt.row.receiptNumber}`}
+                          </Typography>
+                          {receipt.forms.length > 1 && (
+                            <IconButton
+                              size="small"
+                              title="Remove form"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeForm(receipt.key, form.id);
+                              }}
+                              sx={{ p: 0.25, color: '#A22' }}
+                            >
+                              <Iconify icon="mdi:close" width={16} />
+                            </IconButton>
+                          )}
+                        </Stack>
                       </AccordionSummary>
                       <AccordionDetails sx={{ p: 1 }}>
                         <Stack spacing={1}>
+                          {showTrailerFreightHeader && (
+                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                              <ScanField
+                                label="Destination"
+                                required
+                                value={form.destination || ''}
+                                error={receiptErrors[receipt.key]?.formFields?.[`${form.id}-destination`]}
+                                onChange={(event) => {
+                                  updateFormField(receipt.key, form.id, 'destination', event.target.value);
+                                  clearFormFieldError(receipt.key, form.id, 'destination', event.target.value);
+                                }}
+                              />
+                              <ScanField
+                                label="Package ID"
+                                required
+                                value={form.customerRefNoPackageId || ''}
+                                error={receiptErrors[receipt.key]?.formFields?.[`${form.id}-customerRefNoPackageId`]}
+                                onChange={(event) => {
+                                  updateFormField(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
+                                  clearFormFieldError(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
+                                }}
+                              />
+                            </Box>
+                          )}
                           {(form.items || []).map((item, itemIndex) => (
                             <Box key={item.id}>
                               <ScanItem
@@ -523,31 +609,35 @@ export default function WarehouseCheckInScanGunPage({
                                 isCargoApiProcessing={!!cargoApiLoadingItems[getCargoApiLoadingKey(receipt.key, form.id, item.id)]}
                                 freightTypeOptions={freightTypeOptions}
                               />
-                              <FreightOptionButtons
-                                selectedOptions={item.freightOptions || []}
-                                onToggle={(option) => toggleFreightOption(receipt.key, form.id, item.id, option)}
-                                badFreightImageCount={(item.badFreightImages || []).length}
-                                onBadFreightUpload={() =>
-                                  handleOpenImageUpload(
-                                    receipt.key,
-                                    form.id,
-                                    item.id,
-                                    item.badFreightImages || [],
-                                    'upload',
-                                    'badFreightImages'
-                                  )
-                                }
-                                onBadFreightPreview={() =>
-                                  handleOpenImagePreview(
-                                    item.badFreightImages || [],
-                                    `Bad Freight - Item ${String(itemIndex + 1).padStart(2, '0')}`,
-                                    { key: receipt.key, formId: form.id, itemId: item.id, imageField: 'badFreightImages' }
-                                  )
-                                }
-                              />
+                              {!showTrailerFreightHeader && (
+                                <FreightOptionButtons
+                                  selectedOptions={item.freightOptions || []}
+                                  onToggle={(option) => toggleFreightOption(receipt.key, form.id, item.id, option)}
+                                  badFreightImageCount={(item.badFreightImages || []).length}
+                                  onBadFreightUpload={() =>
+                                    handleOpenImageUpload(
+                                      receipt.key,
+                                      form.id,
+                                      item.id,
+                                      item.badFreightImages || [],
+                                      'upload',
+                                      'badFreightImages'
+                                    )
+                                  }
+                                  onBadFreightPreview={() =>
+                                    handleOpenImagePreview(
+                                      item.badFreightImages || [],
+                                      `Bad Freight - Item ${String(itemIndex + 1).padStart(2, '0')}`,
+                                      { key: receipt.key, formId: form.id, itemId: item.id, imageField: 'badFreightImages' }
+                                    )
+                                  }
+                                />
+                              )}
                             </Box>
                           ))}
-                          <Button variant="contained" size="small" onClick={() => addItem(receipt.key, form.id)} sx={{ ...scanActionBtnSx, alignSelf: 'flex-start' }}>Add Item</Button>
+                          {!showTrailerFreightHeader && (
+                            <Button variant="contained" size="small" onClick={() => addItem(receipt.key, form.id)} sx={{ ...scanActionBtnSx, alignSelf: 'flex-start' }}>Add Item</Button>
+                          )}
                         </Stack>
                       </AccordionDetails>
                     </Accordion>

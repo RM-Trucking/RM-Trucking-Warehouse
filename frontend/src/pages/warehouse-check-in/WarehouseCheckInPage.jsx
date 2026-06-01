@@ -308,7 +308,7 @@ export default function WarehouseCheckInPage({
     '(max-width:900px), (pointer: coarse) and (max-width:1024px)',
     { noSsr: true }
   );
-  const showScanGunPage = isScanGunScreen && !showTrailerFreightHeader;
+  const showScanGunPage = isScanGunScreen;
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
@@ -1217,6 +1217,15 @@ export default function WarehouseCheckInPage({
     dispatch(clearReceiptSearch());
   };
 
+  const handleMobileScreenSelect = (screenType) => {
+    const nextPath =
+      screenType === 'trailer'
+        ? PATH_DASHBOARD.warehouseCheckInTrailer
+        : PATH_DASHBOARD.warehouseCheckInRegular;
+
+    navigate(nextPath);
+  };
+
   const handleNext = () => {
     if (proceededReceipts.length === 0) {
       setSnackbar({ open: true, message: 'Please proceed with a warehouse receipt before continuing', severity: 'error' });
@@ -1406,9 +1415,12 @@ export default function WarehouseCheckInPage({
           updateReceipt={updateReceipt}
           removeReceipt={removeReceipt}
           addForm={addForm}
+          removeForm={removeForm}
           addItem={addItem}
           removeItem={removeItem}
+          updateFormField={updateFormField}
           updateItem={updateItem}
+          clearFormFieldError={clearFormFieldError}
           clearItemError={clearItemError}
           handlePackageDetailsClick={handlePackageDetailsClick}
           handleOpenImageUpload={handleOpenImageUpload}
@@ -1416,9 +1428,11 @@ export default function WarehouseCheckInPage({
           cargoApiLoadingItems={cargoApiLoadingItems}
           getCargoApiLoadingKey={getCargoApiLoadingKey}
           freightTypeOptions={FREIGHT_TYPE_OPTIONS}
+          showTrailerFreightHeader={showTrailerFreightHeader}
           tempReceiptLoading={tempReceiptLoading}
           handleRejectOpen={handleRejectOpen}
           handleProceed={handleProceed}
+          onScreenSelect={handleMobileScreenSelect}
           dispatchClearReceiptSearch={() => dispatch(clearReceiptSearch())}
         />
       ) : (

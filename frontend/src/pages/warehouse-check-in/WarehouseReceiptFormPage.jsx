@@ -26,6 +26,7 @@ import {
   TextField,
   Typography,
   Autocomplete,
+  useMediaQuery,
 } from '@mui/material';
 import Iconify from '../../components/iconify';
 import StyledTextField from '../../sections/shared/StyledTextField';
@@ -231,6 +232,45 @@ const buildFallbackForms = () => [
   },
 ];
 
+const FREIGHT_OPTION_FIELD_MAP = {
+  'Banded Skid': 'Banded Skid',
+  'Shrink Wrapped Skid': 'Shrink Wrapped Skid',
+  'SHT / IPPC Skid': 'SHPT / PPC Skid',
+  'SHPT / PPC Skid': 'SHPT / PPC Skid',
+  'Plastic Skid': 'Plastic Skid',
+  Document: 'Document',
+};
+
+const buildFreightInfoFromItems = (items = []) => {
+  const freightInfo = createFreightInfo();
+
+  items.forEach((item) => {
+    (item.freightOptions || []).forEach((option) => {
+      if (option === 'Bad Freight Condition') {
+        freightInfo.badFreightCondition = true;
+        return;
+      }
+
+      if (option === 'Haz Mat') {
+        freightInfo.hazMat = true;
+        return;
+      }
+
+      const conditionKey = FREIGHT_OPTION_FIELD_MAP[option];
+      if (conditionKey) {
+        freightInfo.conditions[conditionKey] = true;
+      }
+    });
+
+    if (item.badFreightImages?.length) {
+      freightInfo.badFreightCondition = true;
+      freightInfo.freightConditionImages.push(...item.badFreightImages);
+    }
+  });
+
+  return freightInfo;
+};
+
 const getFormsFromState = (receipts = []) =>
   receipts.flatMap((receipt, receiptIndex) =>
     receipt.forms.map((form, formIndex) => {
@@ -249,7 +289,7 @@ const getFormsFromState = (receipts = []) =>
         receivedBy: receipt.receivedBy,
         location: receipt.location,
         customerSelection: buildCustomerSelection(row),
-        freightInfo: createFreightInfo(),
+        freightInfo: buildFreightInfoFromItems(form.items),
         row,
         items: form.items,
       };
@@ -443,6 +483,7 @@ export default function WarehouseReceiptFormPage() {
   const { state } = useLocation();
   const { customerOptions, customerLoading } = useSelector((reduxState) => reduxState.enroutedata);
   const { warehouseReceiptBatch, printersDropdown } = useSelector((reduxState) => reduxState.warehousedata);
+  const isMobileReceiptForm = useMediaQuery('(max-width:900px)', { noSsr: true });
   const isSelectingCustomerRef = useRef(false);
   const freightCameraVideoRef = useRef(null);
   const freightCameraStreamRef = useRef(null);
@@ -1104,6 +1145,7 @@ export default function WarehouseReceiptFormPage() {
                         control={
                           <Checkbox
                             checked={Boolean(activeFreightInfo.conditions[label])}
+                            disabled={isMobileReceiptForm}
                             onChange={(event) =>
                               updateActiveFreightInfo((info) => ({
                                 conditions: { ...info.conditions, [label]: event.target.checked },
@@ -1139,6 +1181,7 @@ export default function WarehouseReceiptFormPage() {
                         control={
                           <Checkbox
                             checked={activeFreightInfo.badFreightCondition}
+                            disabled={isMobileReceiptForm}
                             onChange={(event) =>
                               updateActiveFreightInfo({
                                 badFreightCondition: event.target.checked,
@@ -1157,6 +1200,7 @@ export default function WarehouseReceiptFormPage() {
                             size="small"
                             title="Capture freight condition image"
                             onClick={handleOpenFreightCamera}
+                            disabled={isMobileReceiptForm}
                             sx={{
                               bgcolor: '#A22',
                               color: '#fff',
@@ -1172,6 +1216,7 @@ export default function WarehouseReceiptFormPage() {
                             size="small"
                             title="Upload freight condition image"
                             onClick={handleOpenFreightUpload}
+                            disabled={isMobileReceiptForm}
                             sx={{
                               bgcolor: '#A22',
                               color: '#fff',
@@ -1377,7 +1422,7 @@ export default function WarehouseReceiptFormPage() {
                           <Iconify icon="mdi:image-off" width={28} />
                         </Stack>
                       )}
-                      {imageDialog.itemLabel === 'Bad Freight Condition' && (
+                      {imageDialog.itemLabel === 'Bad Freight Condition' && !isMobileReceiptForm && (
                         <IconButton
                           size="small"
                           title="Remove image"
