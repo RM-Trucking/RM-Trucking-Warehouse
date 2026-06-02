@@ -9,7 +9,7 @@ import {
 import { useDispatch } from '../../../redux/store';
 
 // 1. Recursive Item Component
-function NavItem({ item, depth = 0 }) {
+function NavItem({ item, depth = 0, onItemClick }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -36,6 +36,7 @@ function NavItem({ item, depth = 0 }) {
         dispatch(setCurrentRateRoutedFrom('carrier'));
       }
       navigate(item.path);
+      onItemClick?.();
     }
 
     // 2. If it has children, toggle the sub-menu open/closed
@@ -71,7 +72,7 @@ function NavItem({ item, depth = 0 }) {
         <Collapse in={open} timeout="auto" unmountOnExit>
           <Stack sx={{ width: '100%' }}>
             {item.children.map((child) => (
-              <NavItem key={child.title + child.path} item={child} depth={depth + 1} />
+              <NavItem key={child.title + child.path} item={child} depth={depth + 1} onItemClick={onItemClick} />
             ))}
           </Stack>
         </Collapse>
@@ -82,12 +83,12 @@ function NavItem({ item, depth = 0 }) {
 
 
 // 2. Main Section Component
-export default function NavSectionVertical({ data, ...other }) {
+export default function NavSectionVertical({ data, onItemClick, ...other }) {
   return (
     <Stack sx={{ pt: 2, width: '100%' }} {...other}>
       <List disablePadding sx={{ px: 1 }}>
         {data.map((group) => (
-          <NavItem key={group.title} item={group} />
+          <NavItem key={group.title} item={group} onItemClick={onItemClick} />
         ))}
       </List>
     </Stack>

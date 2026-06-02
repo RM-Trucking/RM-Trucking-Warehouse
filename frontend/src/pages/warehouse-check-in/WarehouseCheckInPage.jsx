@@ -102,7 +102,6 @@ const createItem = (id) => ({
   height: '',
   weight: '',
   images: [],
-  badFreightImages: [],
 });
 const createForm = (id, receiptNumber = null, defaults = {}) => ({
   id,
@@ -111,6 +110,8 @@ const createForm = (id, receiptNumber = null, defaults = {}) => ({
   receiptNumber,
   destination: defaults.destination || '',
   customerRefNoPackageId: defaults.customerRefNoPackageId || '',
+  freightOptions: [],
+  badFreightImages: [],
 });
 
 const getNextFormId = (forms = []) =>
@@ -720,7 +721,7 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCloseImagePreview = () => {
-    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null, imageField: 'images' });
     setFullImageDialog({ open: false, image: null, title: '' });
   };
 
@@ -734,10 +735,14 @@ export default function WarehouseCheckInPage({
 
   const handleRemovePreviewImage = (index) => {
     const { key, formId, itemId, imageField = 'images' } = imagePreviewDialog;
-    if (!key || !formId || !itemId) return;
+    if (!key || !formId) return;
 
     const nextImages = imagePreviewDialog.images.filter((_, imageIndex) => imageIndex !== index);
-    updateItem(key, formId, itemId, imageField, nextImages);
+    if (itemId) {
+      updateItem(key, formId, itemId, imageField, nextImages);
+    } else {
+      updateFormField(key, formId, imageField, nextImages);
+    }
     setImagePreviewDialog((prev) => ({ ...prev, images: nextImages }));
   };
 
@@ -854,9 +859,13 @@ export default function WarehouseCheckInPage({
   };
 
   const handleUploadImages = () => {
-    if (!uploadDialog.key || !uploadDialog.formId || !uploadDialog.itemId) return;
+    if (!uploadDialog.key || !uploadDialog.formId) return;
 
-    updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, uploadDialog.imageField || 'images', stagedFiles);
+    if (uploadDialog.itemId) {
+      updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, uploadDialog.imageField || 'images', stagedFiles);
+    } else {
+      updateFormField(uploadDialog.key, uploadDialog.formId, uploadDialog.imageField || 'images', stagedFiles);
+    }
     handleCloseImageUpload();
   };
 
@@ -1217,15 +1226,6 @@ export default function WarehouseCheckInPage({
     dispatch(clearReceiptSearch());
   };
 
-  const handleMobileScreenSelect = (screenType) => {
-    const nextPath =
-      screenType === 'trailer'
-        ? PATH_DASHBOARD.warehouseCheckInTrailer
-        : PATH_DASHBOARD.warehouseCheckInRegular;
-
-    navigate(nextPath);
-  };
-
   const handleNext = () => {
     if (proceededReceipts.length === 0) {
       setSnackbar({ open: true, message: 'Please proceed with a warehouse receipt before continuing', severity: 'error' });
@@ -1432,7 +1432,6 @@ export default function WarehouseCheckInPage({
           tempReceiptLoading={tempReceiptLoading}
           handleRejectOpen={handleRejectOpen}
           handleProceed={handleProceed}
-          onScreenSelect={handleMobileScreenSelect}
           dispatchClearReceiptSearch={() => dispatch(clearReceiptSearch())}
         />
       ) : (

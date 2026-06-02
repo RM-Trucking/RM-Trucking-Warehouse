@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -9,7 +8,6 @@ import {
   CircularProgress,
   FormControlLabel,
   IconButton,
-  Menu,
   MenuItem,
   Radio,
   RadioGroup,
@@ -333,39 +331,21 @@ export default function WarehouseCheckInScanGunPage({
   tempReceiptLoading,
   handleRejectOpen,
   handleProceed,
-  onScreenSelect,
   dispatchClearReceiptSearch,
 }) {
   const visibleRows = (warehouseReceiptSearch.data?.rows || []).filter((row) => !rejectedRowIds.includes(row.id));
-  const [screenMenuAnchor, setScreenMenuAnchor] = useState(null);
-  const screenMenuOpen = Boolean(screenMenuAnchor);
-
-  const handleOpenScreenMenu = (event) => {
-    setScreenMenuAnchor(event.currentTarget);
-  };
-
-  const handleCloseScreenMenu = () => {
-    setScreenMenuAnchor(null);
-  };
-
-  const handleScreenSelect = (screenType) => {
-    handleCloseScreenMenu();
-    onScreenSelect?.(screenType);
-  };
-
-  const toggleFreightOption = (receiptKey, formId, itemId, option) => {
+  const toggleFreightOption = (receiptKey, formId, option) => {
     const receipt = proceededReceipts.find((currentReceipt) => currentReceipt.key === receiptKey);
     const form = receipt?.forms?.find((currentForm) => currentForm.id === formId);
-    const item = form?.items?.find((currentItem) => currentItem.id === itemId);
-    const selectedOptions = item?.freightOptions || [];
+    const selectedOptions = form?.freightOptions || [];
     const isSelected = selectedOptions.includes(option);
     const nextOptions = isSelected
       ? selectedOptions.filter((selectedOption) => selectedOption !== option)
       : [...selectedOptions, option];
 
-    updateItem(receiptKey, formId, itemId, 'freightOptions', nextOptions);
+    updateFormField(receiptKey, formId, 'freightOptions', nextOptions);
     if (option === 'Bad Freight Condition' && isSelected) {
-      updateItem(receiptKey, formId, itemId, 'badFreightImages', []);
+      updateFormField(receiptKey, formId, 'badFreightImages', []);
     }
   };
 
@@ -377,32 +357,18 @@ export default function WarehouseCheckInScanGunPage({
             direction="row"
             alignItems="center"
             spacing={0.4}
-            onClick={handleOpenScreenMenu}
-            sx={{ minWidth: 0, cursor: 'pointer', color: '#111' }}
+            sx={{ minWidth: 0, color: '#111' }}
           >
             <Iconify icon="eva:arrow-ios-back-fill" width={16} />
             <Typography sx={{ fontSize: 12, fontWeight: 700, minWidth: 0 }}>
               {title}
             </Typography>
           </Stack>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={0.75} alignItems="center">
             <Button variant="outlined" size="small" onClick={onCancel} sx={{ color: '#111', borderColor: '#111', height: 24, fontSize: 11, textTransform: 'none' }}>Cancel</Button>
             <Button variant="contained" size="small" onClick={onNext} sx={scanActionBtnSx}>Next</Button>
           </Stack>
         </Stack>
-        <Menu
-          anchorEl={screenMenuAnchor}
-          open={screenMenuOpen}
-          onClose={handleCloseScreenMenu}
-          MenuListProps={{ dense: true }}
-        >
-          <MenuItem selected={!showTrailerFreightHeader} onClick={() => handleScreenSelect('regular')}>
-            Regular
-          </MenuItem>
-          <MenuItem selected={showTrailerFreightHeader} onClick={() => handleScreenSelect('trailer')}>
-            Trailer
-          </MenuItem>
-        </Menu>
 
         <Box sx={{ p: 1 }}>
           <Accordion defaultExpanded disableGutters sx={{ boxShadow: 'none', border: '1px solid #777', mb: 1 }}>
@@ -609,34 +575,34 @@ export default function WarehouseCheckInScanGunPage({
                                 isCargoApiProcessing={!!cargoApiLoadingItems[getCargoApiLoadingKey(receipt.key, form.id, item.id)]}
                                 freightTypeOptions={freightTypeOptions}
                               />
-                              {!showTrailerFreightHeader && (
-                                <FreightOptionButtons
-                                  selectedOptions={item.freightOptions || []}
-                                  onToggle={(option) => toggleFreightOption(receipt.key, form.id, item.id, option)}
-                                  badFreightImageCount={(item.badFreightImages || []).length}
-                                  onBadFreightUpload={() =>
-                                    handleOpenImageUpload(
-                                      receipt.key,
-                                      form.id,
-                                      item.id,
-                                      item.badFreightImages || [],
-                                      'upload',
-                                      'badFreightImages'
-                                    )
-                                  }
-                                  onBadFreightPreview={() =>
-                                    handleOpenImagePreview(
-                                      item.badFreightImages || [],
-                                      `Bad Freight - Item ${String(itemIndex + 1).padStart(2, '0')}`,
-                                      { key: receipt.key, formId: form.id, itemId: item.id, imageField: 'badFreightImages' }
-                                    )
-                                  }
-                                />
-                              )}
                             </Box>
                           ))}
                           {!showTrailerFreightHeader && (
                             <Button variant="contained" size="small" onClick={() => addItem(receipt.key, form.id)} sx={{ ...scanActionBtnSx, alignSelf: 'flex-start' }}>Add Item</Button>
+                          )}
+                          {!showTrailerFreightHeader && (
+                            <FreightOptionButtons
+                              selectedOptions={form.freightOptions || []}
+                              onToggle={(option) => toggleFreightOption(receipt.key, form.id, option)}
+                              badFreightImageCount={(form.badFreightImages || []).length}
+                              onBadFreightUpload={() =>
+                                handleOpenImageUpload(
+                                  receipt.key,
+                                  form.id,
+                                  null,
+                                  form.badFreightImages || [],
+                                  'upload',
+                                  'badFreightImages'
+                                )
+                              }
+                              onBadFreightPreview={() =>
+                                handleOpenImagePreview(
+                                  form.badFreightImages || [],
+                                  `Bad Freight - Form ${String(formIndex + 1).padStart(2, '0')}`,
+                                  { key: receipt.key, formId: form.id, itemId: null, imageField: 'badFreightImages' }
+                                )
+                              }
+                            />
                           )}
                         </Stack>
                       </AccordionDetails>

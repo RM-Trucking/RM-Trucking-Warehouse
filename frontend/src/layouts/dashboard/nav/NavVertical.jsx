@@ -18,7 +18,7 @@ import { PATH_DASHBOARD } from '../../../routes/paths';
 
 // ----------------------------------------------------------------------
 
-const navConfig = [
+export const navConfig = [
   { title: 'Home',                  path: PATH_DASHBOARD.general.home,        icon: null },
   { title: 'Driver Check-In',       path: PATH_DASHBOARD.driverCheckIn,       icon: null },
   {
