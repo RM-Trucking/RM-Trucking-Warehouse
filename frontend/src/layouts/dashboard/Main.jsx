@@ -22,13 +22,13 @@ export default function Main({ children, sx, ...other }) {
       sx={{
         flexGrow: 1,
         // py: `${HEADER.H_MOBILE + SPACING}px`,
-        px: { xs: 0, sm: 2 },
+        px: { xs: 0, lg: 2 },
         py: `${HEADER.H_DASHBOARD_DESKTOP + SPACING}px`,
         // width: `calc(100% - ${NAV.W_DASHBOARD}px)`,
-        width: { xs: '100%', sm: `calc(100% - 312px)` },
+        width: { xs: '100%', lg: `calc(100% - 312px)` },
         boxSizing: 'border-box',
         position : 'absolute',
-        left : { xs: 0, sm: '280px' },
+        left : { xs: 0, lg: '280px' },
         ...sx,
         bgcolor : (pathname.includes('customer-view') || pathname.includes('station-view') || pathname.includes('rate-view') || pathname.includes('carrier-view') || pathname.includes('terminal-view')) ? 'rgb(229, 229, 229)' : '#fff',
       }}

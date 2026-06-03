@@ -305,10 +305,7 @@ export default function WarehouseCheckInPage({
   const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, parcelCarrierDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
   const { customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
-  const isScanGunScreen = useMediaQuery(
-    '(max-width:900px), (pointer: coarse) and (max-width:1024px)',
-    { noSsr: true }
-  );
+  const isScanGunScreen = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const showScanGunPage = isScanGunScreen;
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
@@ -1475,7 +1472,12 @@ export default function WarehouseCheckInPage({
 
           {searchType === 'parcel' ? (
             <Stack spacing={3}>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={4}
+                alignItems={{ xs: 'stretch', sm: 'flex-end' }}
+                sx={{ flexWrap: { sm: 'wrap' }, rowGap: 1 }}
+              >
                 <StyledTextField
                   variant="standard"
                   size="small"
@@ -1601,7 +1603,12 @@ export default function WarehouseCheckInPage({
                   sx={{ minWidth: 220 }}
                 />
               </Stack>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={4}
+                alignItems={{ xs: 'stretch', sm: 'flex-end' }}
+                sx={{ flexWrap: { sm: 'wrap' }, rowGap: 1 }}
+              >
                 {[
                   { field: 'driverName', label: 'Driver Name' },
                   { field: 'pieces', label: 'Pieces' },
@@ -1969,7 +1976,7 @@ export default function WarehouseCheckInPage({
                                 direction="row"
                                 spacing={1.5}
                                 alignItems="flex-start"
-                                sx={{ width: '100%' }}
+                                sx={{ width: '100%', flexWrap: { xs: 'wrap', lg: 'nowrap' }, rowGap: 1 }}
                               >
                                 {/* Box icon + label */}
                                 <Stack
@@ -2072,7 +2079,17 @@ export default function WarehouseCheckInPage({
                                 ))}
 
                                 {/* Action icons */}
-                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pt: '19px' }}>
+                                <Stack
+                                  direction="row"
+                                  spacing={0.7}
+                                  alignItems="center"
+                                  sx={{
+                                    pt: '19px',
+                                    width: { xs: '100%', lg: 'auto' },
+                                    ml: { xs: 0, lg: 0 },
+                                    justifyContent: 'flex-end',
+                                  }}
+                                >
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}

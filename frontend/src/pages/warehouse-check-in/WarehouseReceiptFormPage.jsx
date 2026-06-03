@@ -474,7 +474,7 @@ export default function WarehouseReceiptFormPage() {
   const { state } = useLocation();
   const { customerOptions, customerLoading } = useSelector((reduxState) => reduxState.enroutedata);
   const { warehouseReceiptBatch, printersDropdown, warehouseCheckInDrafts } = useSelector((reduxState) => reduxState.warehousedata);
-  const isMobileReceiptForm = useMediaQuery('(max-width:900px)', { noSsr: true });
+  const isMobileReceiptForm = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const isSelectingCustomerRef = useRef(false);
   const freightCameraVideoRef = useRef(null);
   const freightCameraStreamRef = useRef(null);
@@ -1112,11 +1112,29 @@ export default function WarehouseReceiptFormPage() {
 
           <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ mt: 1.5, minWidth: 0 }}>
             <Box sx={{ flex: 1.2, minWidth: 0, border: '1px solid #c6c6c6', borderRadius: 1, overflowX: 'auto' }}>
-              <Table size="small">
+              <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
                     {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
-                      <TableCell key={head} sx={{ py: 0.6, px: 0.8, fontSize: 12, fontWeight: 700 }}>
+                      <TableCell
+                        key={head}
+                        sx={{
+                          py: 0.6,
+                          px: 0.8,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          ...(head === 'Actions'
+                            ? {
+                                position: 'sticky',
+                                right: 0,
+                                zIndex: 2,
+                                bgcolor: '#d9d9d9',
+                                textAlign: 'center',
+                                width: 72,
+                              }
+                            : {}),
+                        }}
+                      >
                         {head}
                       </TableCell>
                     ))}
@@ -1135,7 +1153,18 @@ export default function WarehouseReceiptFormPage() {
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
                         {formatMeasurement(calculateItemCbm(item))}
                       </TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8 }}>
+                      <TableCell
+                        sx={{
+                          py: 0.35,
+                          px: 0.8,
+                          position: 'sticky',
+                          right: 0,
+                          zIndex: 1,
+                          bgcolor: '#fff',
+                          textAlign: 'center',
+                          width: 72,
+                        }}
+                      >
                         <IconButton
                           size="small"
                           title="View uploaded images"
@@ -1158,7 +1187,7 @@ export default function WarehouseReceiptFormPage() {
 
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Section title="Freight Information" sx={{ height: '100%' }}>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ minWidth: 0 }}>
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ minWidth: 0 }}>
                   <Stack sx={{ flex: 1, minWidth: 0 }}>
                     {FREIGHT_CONDITION_OPTIONS.map((label) => (
                       <FormControlLabel
@@ -1197,7 +1226,7 @@ export default function WarehouseReceiptFormPage() {
                       style={{ display: 'none' }}
                       onChange={handleFreightCameraFileSelection}
                     />
-                    <Stack direction="row" alignItems="center" spacing={1}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0 }}>
                       <FormControlLabel
                         control={
                           <Checkbox

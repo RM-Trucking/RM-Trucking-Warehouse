@@ -122,18 +122,27 @@ function ScanItem({
 
   return (
     <Box sx={{ bgcolor: '#dff0fa', border: '1px solid #b8d2df', borderRadius: 0.75, p: 1 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
-        <Stack direction="row" alignItems="center" spacing={0.7}>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 0.75 }}>
+        <Stack direction="row" alignItems="center" spacing={0.7} sx={{ minWidth: 0 }}>
           <Iconify icon="mdi:package-variant-closed" width={18} />
           <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Item {itemIndex + 1}</Typography>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={(event) => handlePackageDetailsClick(event, receipt.key, form.id, item.id)}
+            disabled={isCargoApiProcessing}
+            sx={{
+              ...scanActionBtnSx,
+              alignSelf: 'flex-start',
+              minWidth: 44,
+              height: 24,
+              px: 1,
+            }}
+          >
+            DIMS
+          </Button>
         </Stack>
         <Stack direction="row" spacing={0.5}>
-          <IconButton size="small" onClick={() => removeItem(receipt.key, form.id, item.id)} sx={{ bgcolor: '#c46b7a', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
-            <Iconify icon="mdi:trash-can" width={15} />
-          </IconButton>
-          <IconButton size="small" onClick={(event) => handlePackageDetailsClick(event, receipt.key, form.id, item.id)} disabled={isCargoApiProcessing} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
-            <Iconify icon="mdi:cube" width={15} />
-          </IconButton>
           <IconButton size="small" onClick={() => handleOpenImageUpload(receipt.key, form.id, item.id, item.images || [])} disabled={isCargoApiProcessing} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
             {isCargoApiProcessing ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <Iconify icon="mdi:image-plus" width={15} />}
           </IconButton>
@@ -142,6 +151,9 @@ function ScanItem({
               <Iconify icon="mdi:image-multiple" width={15} />
             </IconButton>
           )}
+          <IconButton size="small" onClick={() => removeItem(receipt.key, form.id, item.id)} sx={{ bgcolor: '#c46b7a', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
+            <Iconify icon="mdi:trash-can" width={15} />
+          </IconButton>
         </Stack>
       </Stack>
 

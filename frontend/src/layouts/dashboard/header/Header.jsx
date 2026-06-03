@@ -33,7 +33,7 @@ export default function Header() {
           <IconButton
             size="small"
             onClick={() => setMobileMenuOpen(true)}
-            sx={{ display: { xs: 'inline-flex', sm: 'none' }, color: '#111', p: 0.5 }}
+            sx={{ display: { xs: 'inline-flex', lg: 'none' }, color: '#111', p: 0.5 }}
           >
             <Iconify icon="mdi:menu" width={24} />
           </IconButton>

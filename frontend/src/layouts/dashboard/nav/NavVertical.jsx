@@ -72,7 +72,7 @@ export default function NavVertical({ }) {
             bgcolor: '#A22',
             border: "none",
             marginTop: 7.4,
-            display: { xs: "none", sm: "block" }
+            display: { xs: "none", lg: "block" }
           }
         }}
       >
