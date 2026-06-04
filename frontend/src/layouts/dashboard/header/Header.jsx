@@ -16,9 +16,22 @@ import { HEADER } from '../../../config';
 import UserAccount from './UserAccount';
 import Scrollbar from '../../../components/scrollbar';
 import { NavSectionVertical } from '../../../components/nav-section';
-import { navConfig } from '../nav/NavVertical';
+import { PATH_DASHBOARD } from '../../../routes/paths';
 
 // ----------------------------------------------------------------------
+
+const mobileNavConfig = [
+  { title: 'Home', path: PATH_DASHBOARD.general.home, icon: null },
+  {
+    title: 'Warehouse Check-In',
+    path: PATH_DASHBOARD.warehouseCheckIn,
+    icon: null,
+    children: [
+      { title: 'Regular', path: PATH_DASHBOARD.warehouseCheckInRegular, icon: null },
+      { title: 'Trailer', path: PATH_DASHBOARD.warehouseCheckInTrailer, icon: null },
+    ],
+  },
+];
 
 Header.propTypes = {
 };
@@ -95,7 +108,7 @@ export default function Header() {
           }}
         >
           <Box sx={{ py: 1 }}>
-            <NavSectionVertical data={navConfig} onItemClick={() => setMobileMenuOpen(false)} />
+            <NavSectionVertical data={mobileNavConfig} onItemClick={() => setMobileMenuOpen(false)} />
           </Box>
         </Scrollbar>
       </Drawer>

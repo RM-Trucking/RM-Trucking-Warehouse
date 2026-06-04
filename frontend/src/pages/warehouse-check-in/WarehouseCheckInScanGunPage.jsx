@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -6,6 +7,10 @@ import {
   Box,
   Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   IconButton,
   MenuItem,
@@ -147,11 +152,31 @@ function ScanItem({
             {isCargoApiProcessing ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <Iconify icon="mdi:image-plus" width={15} />}
           </IconButton>
           {(item.images?.length || 0) > 0 && (
-            <IconButton size="small" onClick={() => handleOpenImagePreview(item.images || [], `Item ${String(itemIndex + 1).padStart(2, '0')}`, { key: receipt.key, formId: form.id, itemId: item.id })} sx={{ bgcolor: '#102a63', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
+            <IconButton size="small" onClick={() => handleOpenImagePreview(item.images || [], `Item ${String(itemIndex + 1).padStart(2, '0')}`, { key: receipt.key, formId: form.id, itemId: item.id })} sx={{ bgcolor: '#102a63', color: '#fff', borderRadius: 0.5, p: 0.45, position: 'relative' }}>
               <Iconify icon="mdi:image-multiple" width={15} />
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: -6,
+                  right: -6,
+                  minWidth: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  bgcolor: '#A22',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                {item.images.length}
+              </Box>
             </IconButton>
           )}
-          <IconButton size="small" onClick={() => removeItem(receipt.key, form.id, item.id)} sx={{ bgcolor: '#c46b7a', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
+          <IconButton size="small" onClick={() => removeItem(receipt.key, form.id, item.id, itemIndex)} sx={{ bgcolor: '#c46b7a', color: '#fff', borderRadius: 0.5, p: 0.45 }}>
             <Iconify icon="mdi:trash-can" width={15} />
           </IconButton>
         </Stack>
@@ -296,7 +321,7 @@ function FreightOptionButtons({
 export default function WarehouseCheckInScanGunPage({
   title,
   onCancel,
-  onNext,
+  onComplete,
   searchType,
   setSearchType,
   searchBy,
@@ -340,12 +365,27 @@ export default function WarehouseCheckInScanGunPage({
   getCargoApiLoadingKey,
   freightTypeOptions,
   showTrailerFreightHeader = false,
+  handleTrailerMobilePrintLabelAndSubmit = () => {},
   tempReceiptLoading,
   handleRejectOpen,
   handleProceed,
   dispatchClearReceiptSearch,
 }) {
   const visibleRows = (warehouseReceiptSearch.data?.rows || []).filter((row) => !rejectedRowIds.includes(row.id));
+  const [deleteItemDialog, setDeleteItemDialog] = useState(null);
+  const requestRemoveItem = (receiptKey, formId, itemId, itemIndex) => {
+    setDeleteItemDialog({ receiptKey, formId, itemId, itemIndex });
+  };
+  const handleCancelRemoveItem = () => {
+    setDeleteItemDialog(null);
+  };
+  const handleConfirmRemoveItem = () => {
+    if (!deleteItemDialog) return;
+
+    removeItem(deleteItemDialog.receiptKey, deleteItemDialog.formId, deleteItemDialog.itemId);
+    setDeleteItemDialog(null);
+  };
+
   const toggleFreightOption = (receiptKey, formId, option) => {
     const receipt = proceededReceipts.find((currentReceipt) => currentReceipt.key === receiptKey);
     const form = receipt?.forms?.find((currentForm) => currentForm.id === formId);
@@ -378,7 +418,7 @@ export default function WarehouseCheckInScanGunPage({
           </Stack>
           <Stack direction="row" spacing={0.75} alignItems="center">
             <Button variant="outlined" size="small" onClick={onCancel} sx={{ color: '#111', borderColor: '#111', height: 24, fontSize: 11, textTransform: 'none' }}>Cancel</Button>
-            <Button variant="contained" size="small" onClick={onNext} sx={scanActionBtnSx}>Next</Button>
+            <Button variant="contained" size="small" onClick={onComplete} sx={scanActionBtnSx}>Finish</Button>
           </Stack>
         </Stack>
 
@@ -580,7 +620,7 @@ export default function WarehouseCheckInScanGunPage({
                                 receiptErrors={receiptErrors}
                                 updateItem={updateItem}
                                 clearItemError={clearItemError}
-                                removeItem={removeItem}
+                                removeItem={requestRemoveItem}
                                 handlePackageDetailsClick={handlePackageDetailsClick}
                                 handleOpenImageUpload={handleOpenImageUpload}
                                 handleOpenImagePreview={handleOpenImagePreview}
@@ -592,45 +632,83 @@ export default function WarehouseCheckInScanGunPage({
                           {!showTrailerFreightHeader && (
                             <Button variant="contained" size="small" onClick={() => addItem(receipt.key, form.id)} sx={{ ...scanActionBtnSx, alignSelf: 'flex-start' }}>Add Item</Button>
                           )}
-                          {!showTrailerFreightHeader && (
-                            <FreightOptionButtons
-                              selectedOptions={form.freightOptions || []}
-                              onToggle={(option) => toggleFreightOption(receipt.key, form.id, option)}
-                              badFreightImageCount={(form.badFreightImages || []).length}
-                              onBadFreightUpload={() =>
-                                handleOpenImageUpload(
-                                  receipt.key,
-                                  form.id,
-                                  null,
-                                  form.badFreightImages || [],
-                                  'upload',
-                                  'badFreightImages'
-                                )
-                              }
-                              onBadFreightPreview={() =>
-                                handleOpenImagePreview(
-                                  form.badFreightImages || [],
-                                  `Bad Freight - Form ${String(formIndex + 1).padStart(2, '0')}`,
-                                  { key: receipt.key, formId: form.id, itemId: null, imageField: 'badFreightImages' }
-                                )
-                              }
-                            />
-                          )}
+                          <FreightOptionButtons
+                            selectedOptions={form.freightOptions || []}
+                            onToggle={(option) => toggleFreightOption(receipt.key, form.id, option)}
+                            badFreightImageCount={(form.badFreightImages || []).length}
+                            onBadFreightUpload={() =>
+                              handleOpenImageUpload(
+                                receipt.key,
+                                form.id,
+                                null,
+                                form.badFreightImages || [],
+                                'upload',
+                                'badFreightImages'
+                              )
+                            }
+                            onBadFreightPreview={() =>
+                              handleOpenImagePreview(
+                                form.badFreightImages || [],
+                                `Bad Freight - Form ${String(formIndex + 1).padStart(2, '0')}`,
+                                { key: receipt.key, formId: form.id, itemId: null, imageField: 'badFreightImages' }
+                              )
+                            }
+                          />
                         </Stack>
                       </AccordionDetails>
                     </Accordion>
                   ))}
                 </Stack>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                  <Button variant="contained" size="small" disabled={!!tempReceiptLoading[receipt.key]} onClick={() => addForm(receipt.key)} sx={scanActionBtnSx}>
-                    {tempReceiptLoading[receipt.key] ? 'Adding...' : 'Add New Form'}
-                  </Button>
-                </Box>
+                {showTrailerFreightHeader ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      disabled={!!tempReceiptLoading[receipt.key]}
+                      onClick={() => handleTrailerMobilePrintLabelAndSubmit(receipt.key)}
+                      sx={{ ...scanActionBtnSx, minWidth: 132 }}
+                    >
+                      {tempReceiptLoading[receipt.key] ? 'Submitting...' : 'Print Label and Submit'}
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                    <Button variant="contained" size="small" disabled={!!tempReceiptLoading[receipt.key]} onClick={() => addForm(receipt.key)} sx={scanActionBtnSx}>
+                      {tempReceiptLoading[receipt.key] ? 'Adding...' : 'Add New Form'}
+                    </Button>
+                  </Box>
+                )}
               </Box>
             </Stack>
           ))}
         </Box>
       </Box>
+      <Dialog open={Boolean(deleteItemDialog)} onClose={handleCancelRemoveItem} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>Delete Item</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 13 }}>
+            Are you sure you want to delete Item {(deleteItemDialog?.itemIndex ?? 0) + 1}?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCancelRemoveItem}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleConfirmRemoveItem}
+            sx={{ ...scanActionBtnSx, height: 32 }}
+          >
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
