@@ -320,7 +320,6 @@ function FreightOptionButtons({
 
 export default function WarehouseCheckInScanGunPage({
   title,
-  onCancel,
   onComplete,
   searchType,
   setSearchType,
@@ -417,8 +416,10 @@ export default function WarehouseCheckInScanGunPage({
             </Typography>
           </Stack>
           <Stack direction="row" spacing={0.75} alignItems="center">
-            <Button variant="outlined" size="small" onClick={onCancel} sx={{ color: '#111', borderColor: '#111', height: 24, fontSize: 11, textTransform: 'none' }}>Cancel</Button>
-            <Button variant="contained" size="small" onClick={onComplete} sx={scanActionBtnSx}>Finish</Button>
+            {/* <Button variant="outlined" size="small" onClick={onCancel} sx={{ color: '#111', borderColor: '#111', height: 24, fontSize: 11, textTransform: 'none' }}>Cancel</Button> */}
+            <Button variant="contained" size="small" onClick={onComplete} sx={scanActionBtnSx}>
+              {showTrailerFreightHeader ? 'Complete' : 'Submit'}
+            </Button>
           </Stack>
         </Stack>
 
@@ -563,7 +564,13 @@ export default function WarehouseCheckInScanGunPage({
                 <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 0.75, borderBottom: '1px solid #777' }}>Freight Information</Typography>
                 <Stack spacing={1}>
                   {receipt.forms.map((form, formIndex) => (
-                    <Accordion key={form.id} defaultExpanded={formIndex === receipt.forms.length - 1} disableGutters sx={{ boxShadow: 'none', border: '1px solid #999' }}>
+                    <Accordion
+                      key={form.id}
+                      expanded={!form.collapsed}
+                      onChange={(event, expanded) => updateFormField(receipt.key, form.id, 'collapsed', !expanded)}
+                      disableGutters
+                      sx={{ boxShadow: 'none', border: '1px solid #999' }}
+                    >
                       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: '#d0d0d0', minHeight: 34, '& .MuiAccordionSummary-content': { my: 0.4 } }}>
                         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ width: '100%', minWidth: 0, pr: 0.5 }}>
                           <Typography sx={{ fontSize: 12, fontWeight: 700, flex: 1, minWidth: 0 }}>

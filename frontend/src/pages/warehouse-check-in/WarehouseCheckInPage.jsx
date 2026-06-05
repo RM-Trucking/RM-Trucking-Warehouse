@@ -180,6 +180,36 @@ const getSubmittedImageValue = async (image) => {
   return base64Image.startsWith('base64,') ? base64Image : `base64,${base64Image}`;
 };
 
+const getReceiptPrintEntriesFromResponse = (response) => {
+  const receiptNumbers = response?.data?.receiptNumbers || [];
+  if (receiptNumbers.length) {
+    return [...new Set(receiptNumbers.filter(Boolean))].map((receiptNumber) => ({
+      label: receiptNumber,
+      receiptNumber,
+    }));
+  }
+
+  const receipts = [
+    ...(response?.data?.updated || []),
+    ...(response?.data?.created || []),
+  ];
+
+  return receipts
+    .map((receipt) => {
+      const receiptNumber = receipt.receiptNumber || receipt.receiptNo || '';
+      const verificationId = receipt.verificationId || receipt.verificationID || receipt.id || '';
+      const label = verificationId || receiptNumber;
+
+      return label
+        ? {
+            label,
+            receiptNumber: receiptNumber || label,
+          }
+        : null;
+    })
+    .filter(Boolean);
+};
+
 const getFileExtension = (file) => {
   if (file?.name?.includes('.')) return file.name.split('.').pop();
   if (file?.type?.includes('/')) return file.type.split('/').pop();
@@ -425,6 +455,7 @@ export default function WarehouseCheckInPage({
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printerContext, setPrinterContext] = useState(null);
   const [printLoading, setPrintLoading] = useState(false);
+  const [mobileRegularSuccessDialog, setMobileRegularSuccessDialog] = useState({ open: false, message: '', entries: [] });
   const [parcelForm, setParcelForm] = useState(createParcelForm());
   const [parcelErrors, setParcelErrors] = useState(createParcelErrors());
   const [parcelCarrierSearchValue, setParcelCarrierSearchValue] = useState('');
@@ -463,6 +494,7 @@ export default function WarehouseCheckInPage({
     setSelectedPrinterId('');
     setPrinterContext(null);
     setPrintLoading(false);
+    setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
     setParcelForm(createParcelForm());
     setParcelErrors(createParcelErrors());
     setParcelCarrierSearchValue('');
@@ -690,7 +722,12 @@ export default function WarehouseCheckInPage({
         destination: getRowValue(receipt.row, ['destination', 'finalDestination'], ''),
         customerRefNoPackageId: getRowValue(receipt.row, ['packageId', 'packageNumber'], ''),
       };
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(getNextFormId(p.forms), receiptNumber, formDefaults)] }));
+      updateReceipt(key, (p) => ({
+        forms: [
+          ...p.forms.map((form) => ({ ...form, collapsed: true })),
+          createForm(getNextFormId(p.forms), receiptNumber, formDefaults),
+        ],
+      }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -1198,6 +1235,48 @@ export default function WarehouseCheckInPage({
     return formData;
   };
 
+  const buildMobileSubmitPayload = (receipts = []) => ({
+    receipts: receipts.flatMap((receipt) =>
+      (receipt.forms || []).map((form) => buildTrailerMobileSubmitPayload(receipt, form).receipts[0])
+    ),
+  });
+
+  const hasMobileSubmitImages = (receipts = []) =>
+    receipts.some((receipt) =>
+      (receipt.forms || []).some((form) => hasTrailerMobileSubmitImages(form))
+    );
+
+  const buildMobileSubmitFormData = async (receipts = []) => {
+    const forms = receipts.flatMap((receipt) => (receipt.forms || []).map((form) => ({ receipt, form })));
+    const formData = new FormData();
+    formData.append('batchData', JSON.stringify(buildMobileSubmitPayload(receipts)));
+
+    await Promise.all(
+      forms.flatMap(({ form }, receiptIndex) => [
+          ...(form.items || []).flatMap((item, freightIndex) =>
+            (item.images || []).map(async (image, imageIndex) => {
+              const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
+              const imageValue = await getSubmittedImageValue(image);
+
+              if (imageValue) {
+                formData.append(fieldName, imageValue);
+              }
+            })
+          ),
+          ...(form.badFreightImages || []).map(async (image, imageIndex) => {
+            const fieldName = `bad-freight-image-${receiptIndex}-${imageIndex}`;
+            const renamedImage = await toRenamedImageFile(image, fieldName);
+
+            if (renamedImage instanceof File || renamedImage instanceof Blob) {
+              formData.append(fieldName, renamedImage);
+            }
+          }),
+        ])
+    );
+
+    return formData;
+  };
+
   const validateTrailerMobileFreightForm = (receipt, form) => {
     const receivedBy = !String(receipt?.receivedBy || '').trim() ? 'Received By is mandatory' : '';
     const formFields = {};
@@ -1330,24 +1409,6 @@ export default function WarehouseCheckInPage({
           : currentReceipt
       );
 
-      setProceededReceipts(nextProceededReceipts);
-      setReceiptErrors(nextReceiptErrors);
-      dispatch(setWarehouseCheckInDraft({
-        searchType,
-        searchBy,
-        searchValue,
-        savedResults,
-        collapsed,
-        rejectedRowIds,
-        isSearchDisabled,
-        receiptErrors: nextReceiptErrors,
-        parcelForm,
-        parcelErrors,
-        proceededReceipts: nextProceededReceipts,
-      }, draftKey));
-      handleClosePrinterDialog();
-      navigate(PATH_DASHBOARD.warehouseCheckInTrailer, { replace: true });
-
       const printResponse = await dispatch(
         printWarehouseReceiptLabel({
           printerIP: printer.printerIP,
@@ -1366,11 +1427,28 @@ export default function WarehouseCheckInPage({
         return;
       }
 
+      setProceededReceipts(nextProceededReceipts);
+      setReceiptErrors(nextReceiptErrors);
+      dispatch(setWarehouseCheckInDraft({
+        searchType,
+        searchBy,
+        searchValue,
+        savedResults,
+        collapsed,
+        rejectedRowIds,
+        isSearchDisabled,
+        receiptErrors: nextReceiptErrors,
+        parcelForm,
+        parcelErrors,
+        proceededReceipts: nextProceededReceipts,
+      }, draftKey));
+      handleClosePrinterDialog();
       setSnackbar({
         open: true,
-        message: 'Warehouse receipt submitted, label printed, and new temporary receipt created successfully',
+        message: printResponse?.message || 'Label print sent successfully',
         severity: 'success',
       });
+      navigate(PATH_DASHBOARD.warehouseCheckInTrailer, { replace: true });
     } finally {
       setTempReceiptLoading((prev) => ({ ...prev, [receiptKey]: false }));
       setPrintLoading(false);
@@ -1396,7 +1474,11 @@ export default function WarehouseCheckInPage({
     }
 
     const receiptNumber =
-      printerContext?.form?.receiptNumber || printerContext?.receipt?.row?.receiptNumber || printerContext?.receipt?.row?.receiptNo || '';
+      printerContext?.receiptNumber ||
+      printerContext?.form?.receiptNumber ||
+      printerContext?.receipt?.row?.receiptNumber ||
+      printerContext?.receipt?.row?.receiptNo ||
+      '';
 
     if (!receiptNumber) {
       setSnackbar({
@@ -1408,12 +1490,15 @@ export default function WarehouseCheckInPage({
     }
 
     setPrintLoading(true);
+    const printPayload = printerContext?.receipt && printerContext?.form
+      ? buildLabelPrintPayload(printerContext.receipt, printerContext.form)
+      : undefined;
     const response = await dispatch(
       printWarehouseReceiptLabel({
         printerIP: printer.printerIP,
         printerPort: printer.printerPort,
         receiptNumber,
-        payload: buildLabelPrintPayload(printerContext?.receipt, printerContext?.form),
+        payload: printPayload,
       })
     );
     setPrintLoading(false);
@@ -1707,6 +1792,111 @@ export default function WarehouseCheckInPage({
   };
 
   // ── Search handler ─────────────────────────────────────────────────
+  const validateRegularMobileSubmit = () => {
+    if (proceededReceipts.length === 0) {
+      setSnackbar({ open: true, message: 'Please proceed with a warehouse receipt before submitting', severity: 'error' });
+      return false;
+    }
+
+    const nextErrors = {};
+    let hasErrors = false;
+
+    proceededReceipts.forEach((receipt) => {
+      const receiptError = { formFields: {}, items: {} };
+
+      if (!String(receipt.receivedBy || '').trim()) {
+        receiptError.receivedBy = 'Received By is mandatory';
+        hasErrors = true;
+      }
+
+      (receipt.forms || []).forEach((form) => {
+        (form.items || []).forEach((item) => {
+          REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
+            if (!String(item[field] || '').trim()) {
+              receiptError.items[getItemErrorKey(form.id, item.id, field)] = `${label} is mandatory`;
+              hasErrors = true;
+            }
+          });
+        });
+      });
+
+      if (
+        receiptError.receivedBy ||
+        Object.keys(receiptError.formFields).length > 0 ||
+        Object.keys(receiptError.items).length > 0
+      ) {
+        nextErrors[receipt.key] = receiptError;
+      }
+    });
+
+    setReceiptErrors(nextErrors);
+
+    if (hasErrors) {
+      setProceededReceipts((prev) =>
+        prev.map((receipt) => {
+          const receiptError = nextErrors[receipt.key];
+          if (!receiptError) return receipt;
+
+          return {
+            ...receipt,
+            sectionCollapsed: false,
+            forms: receipt.forms.map((form) => ({
+              ...form,
+              collapsed: form.items.some((item) =>
+                REQUIRED_ITEM_FIELDS.some(({ field }) => receiptError.items[getItemErrorKey(form.id, item.id, field)])
+              )
+                ? false
+                : form.collapsed,
+            })),
+          };
+        })
+      );
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before submitting', severity: 'error' });
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleRegularMobileSubmit = async () => {
+    if (!validateRegularMobileSubmit()) return;
+
+    const payload = hasMobileSubmitImages(proceededReceipts)
+      ? await buildMobileSubmitFormData(proceededReceipts)
+      : buildMobileSubmitPayload(proceededReceipts);
+    const response = await dispatch(submitWarehouseReceiptBatch(payload));
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to submit warehouse receipts',
+        severity: 'error',
+      });
+      return;
+    }
+
+    setMobileRegularSuccessDialog({
+      open: true,
+      message: response?.message || 'Warehouse receipts submitted successfully',
+      entries: getReceiptPrintEntriesFromResponse(response),
+    });
+  };
+
+  const handleMobileRegularSuccessOk = () => {
+    setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
+    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    draftRestoredRef.current = false;
+    resetCheckInState();
+    dispatch(clearReceiptSearch());
+  };
+
+  const handleOpenMobileRegularPrintDialog = (entry) => {
+    setPrinterDialogOpen(true);
+    setSelectedPrinterId('');
+    setPrinterContext({ receiptNumber: entry.receiptNumber, mode: 'mobileRegularSuccessPrint' });
+    dispatch(fetchPrintersDropdown());
+  };
+
   const handleComplete = () => {
     dispatch(clearWarehouseCheckInDraft({ draftKey }));
     draftRestoredRef.current = false;
@@ -1776,8 +1966,7 @@ export default function WarehouseCheckInPage({
       {showScanGunPage ? (
         <WarehouseCheckInScanGunPage
           title={title}
-          onCancel={handleCancel}
-          onComplete={handleComplete}
+          onComplete={showTrailerFreightHeader ? handleComplete : handleRegularMobileSubmit}
           searchType={searchType}
           setSearchType={setSearchType}
           searchBy={searchBy}
@@ -2672,6 +2861,49 @@ export default function WarehouseCheckInPage({
             ) : (
               'Reject'
             )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={mobileRegularSuccessDialog.open} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Success</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 14 }}>{mobileRegularSuccessDialog.message}</Typography>
+          {mobileRegularSuccessDialog.entries.length > 0 && (
+            <Stack spacing={1} sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Verification IDs</Typography>
+              {mobileRegularSuccessDialog.entries.map((entry) => (
+                <Stack
+                  key={`${entry.label}-${entry.receiptNumber}`}
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  spacing={2}
+                  sx={{ border: '1px solid #e2e2e2', borderRadius: 1, px: 1.2, py: 0.8 }}
+                >
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{entry.label}</Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<Iconify icon="mdi:printer" width={16} />}
+                    onClick={() => handleOpenMobileRegularPrintDialog(entry)}
+                    sx={{ ...actionBtnSx, height: 30, minWidth: 78 }}
+                  >
+                    Print
+                  </Button>
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleMobileRegularSuccessOk}
+            sx={{ ...actionBtnSx, height: 32, minWidth: 70 }}
+          >
+            OK
           </Button>
         </DialogActions>
       </Dialog>
