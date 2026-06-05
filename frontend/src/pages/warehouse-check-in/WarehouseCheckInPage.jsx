@@ -23,6 +23,7 @@ import {
   Autocomplete,
   Alert,
   Snackbar,
+  useMediaQuery,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { DataGrid } from '@mui/x-data-grid';
@@ -39,6 +40,7 @@ import {
   fetchCargoApiDimensions,
   fetchPrintersDropdown,
   printWarehouseReceiptLabel,
+  submitWarehouseReceiptBatch,
   searchParcelCarriers,
   setWarehouseCheckInDraft,
   clearWarehouseCheckInDraft,
@@ -46,6 +48,7 @@ import {
 import { searchCustomers } from '../../redux/slices/enroute';
 import axios from '../../utils/axios';
 import { PATH_DASHBOARD } from '../../routes/paths';
+import WarehouseCheckInScanGunPage from './WarehouseCheckInScanGunPage';
 
 // ─── Styling helpers ────────────────────────────────────────────────
 const actionBtnSx = {
@@ -91,7 +94,16 @@ const createParcelErrors = () => ({
 });
 
 // ─── Helpers to create blank form / item ────────────────────────────
-const createItem = (id) => ({ id, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] });
+const createItem = (id) => ({
+  id,
+  pieces: '',
+  type: '',
+  length: '',
+  width: '',
+  height: '',
+  weight: '',
+  images: [],
+});
 const createForm = (id, receiptNumber = null, defaults = {}) => ({
   id,
   collapsed: false,
@@ -99,6 +111,8 @@ const createForm = (id, receiptNumber = null, defaults = {}) => ({
   receiptNumber,
   destination: defaults.destination || '',
   customerRefNoPackageId: defaults.customerRefNoPackageId || '',
+  freightOptions: [],
+  badFreightImages: [],
 });
 
 const getNextFormId = (forms = []) =>
@@ -108,6 +122,117 @@ const getNextItemId = (items = []) =>
   items.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) + 1;
 
 const getCargoApiLoadingKey = (key, formId, itemId) => `${key}-${formId}-${itemId}`;
+
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isNaN(number) ? null : number;
+};
+
+const toValueOrNull = (value) => {
+  if (value === null || value === undefined) return null;
+  const stringValue = String(value).trim();
+  return stringValue ? stringValue : null;
+};
+
+const toYesNo = (value) => (value ? 'Y' : 'N');
+
+const calculateItemCbm = (item) =>
+  (Number(item.length) * Number(item.width) * Number(item.height) * Number(item.pieces || 1)) / 1000000 || 0;
+
+const formatMeasurement = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '0';
+  return Number(number.toFixed(3)).toString();
+};
+
+const normalizeEmailList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((email) => email.trim()).filter(Boolean);
+  return [];
+};
+
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+
+    if (typeof file === 'string') {
+      resolve(file.includes(',') ? file.split(',').pop() : file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.split(',').pop() : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+const getSubmittedImageValue = async (image) => {
+  const base64Image = await fileToBase64(image);
+  if (!base64Image) return '';
+
+  return base64Image.startsWith('base64,') ? base64Image : `base64,${base64Image}`;
+};
+
+const getReceiptPrintEntriesFromResponse = (response) => {
+  const receiptNumbers = response?.data?.receiptNumbers || [];
+  if (receiptNumbers.length) {
+    return [...new Set(receiptNumbers.filter(Boolean))].map((receiptNumber) => ({
+      label: receiptNumber,
+      receiptNumber,
+    }));
+  }
+
+  const receipts = [
+    ...(response?.data?.updated || []),
+    ...(response?.data?.created || []),
+  ];
+
+  return receipts
+    .map((receipt) => {
+      const receiptNumber = receipt.receiptNumber || receipt.receiptNo || '';
+      const verificationId = receipt.verificationId || receipt.verificationID || receipt.id || '';
+      const label = verificationId || receiptNumber;
+
+      return label
+        ? {
+            label,
+            receiptNumber: receiptNumber || label,
+          }
+        : null;
+    })
+    .filter(Boolean);
+};
+
+const getFileExtension = (file) => {
+  if (file?.name?.includes('.')) return file.name.split('.').pop();
+  if (file?.type?.includes('/')) return file.type.split('/').pop();
+  return 'jpg';
+};
+
+const toRenamedImageFile = async (image, fieldName) => {
+  if (image instanceof File) {
+    return new File([image], `${fieldName}.${getFileExtension(image)}`, {
+      type: image.type || 'image/jpeg',
+    });
+  }
+
+  if (typeof image === 'string' && image.startsWith('data:')) {
+    const response = await fetch(image);
+    const blob = await response.blob();
+    return new File([blob], `${fieldName}.${getFileExtension(blob)}`, {
+      type: blob.type || 'image/jpeg',
+    });
+  }
+
+  return image;
+};
 
 const getDropdownOptionLabel = (option) => {
   if (option === null || option === undefined) return '';
@@ -292,6 +417,8 @@ export default function WarehouseCheckInPage({
   const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, parcelCarrierDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
   const { customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
+  const isScanGunScreen = useMediaQuery('(max-width:599.95px)', { noSsr: true });
+  const showScanGunPage = isScanGunScreen;
 
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
@@ -308,7 +435,7 @@ export default function WarehouseCheckInPage({
   const [isSearchDisabled, setIsSearchDisabled] = useState(false);
   const [tempReceiptLoading, setTempReceiptLoading] = useState({});
   const [receiptErrors, setReceiptErrors] = useState({});
-  const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+  const [uploadDialog, setUploadDialog] = useState({ open: false, mode: 'upload', key: null, formId: null, itemId: null, imageField: 'images' });
   const [imagePreviewDialog, setImagePreviewDialog] = useState({
     open: false,
     images: [],
@@ -328,6 +455,7 @@ export default function WarehouseCheckInPage({
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printerContext, setPrinterContext] = useState(null);
   const [printLoading, setPrintLoading] = useState(false);
+  const [mobileRegularSuccessDialog, setMobileRegularSuccessDialog] = useState({ open: false, message: '', entries: [] });
   const [parcelForm, setParcelForm] = useState(createParcelForm());
   const [parcelErrors, setParcelErrors] = useState(createParcelErrors());
   const [parcelCarrierSearchValue, setParcelCarrierSearchValue] = useState('');
@@ -366,6 +494,7 @@ export default function WarehouseCheckInPage({
     setSelectedPrinterId('');
     setPrinterContext(null);
     setPrintLoading(false);
+    setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
     setParcelForm(createParcelForm());
     setParcelErrors(createParcelErrors());
     setParcelCarrierSearchValue('');
@@ -593,7 +722,12 @@ export default function WarehouseCheckInPage({
         destination: getRowValue(receipt.row, ['destination', 'finalDestination'], ''),
         customerRefNoPackageId: getRowValue(receipt.row, ['packageId', 'packageNumber'], ''),
       };
-      updateReceipt(key, (p) => ({ forms: [...p.forms, createForm(getNextFormId(p.forms), receiptNumber, formDefaults)] }));
+      updateReceipt(key, (p) => ({
+        forms: [
+          ...p.forms.map((form) => ({ ...form, collapsed: true })),
+          createForm(getNextFormId(p.forms), receiptNumber, formDefaults),
+        ],
+      }));
       setSnackbar({
         open: true,
         message: 'Temporary warehouse receipt created successfully',
@@ -685,14 +819,14 @@ export default function WarehouseCheckInPage({
     });
   };
 
-  const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload') => {
-    setUploadDialog({ open: true, mode, key, formId, itemId });
+  const handleOpenImageUpload = (key, formId, itemId, existingFiles = [], mode = 'upload', imageField = 'images') => {
+    setUploadDialog({ open: true, mode, key, formId, itemId, imageField });
     setStagedFiles(existingFiles);
     setIsDraggingFiles(false);
   };
 
   const handleCloseImageUpload = () => {
-    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null });
+    setUploadDialog({ open: false, mode: 'upload', key: null, formId: null, itemId: null, imageField: 'images' });
     setStagedFiles([]);
     setIsDraggingFiles(false);
     handleCloseCamera();
@@ -703,7 +837,7 @@ export default function WarehouseCheckInPage({
   };
 
   const handleCloseImagePreview = () => {
-    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null });
+    setImagePreviewDialog({ open: false, images: [], itemLabel: '', key: null, formId: null, itemId: null, imageField: 'images' });
     setFullImageDialog({ open: false, image: null, title: '' });
   };
 
@@ -716,11 +850,15 @@ export default function WarehouseCheckInPage({
   };
 
   const handleRemovePreviewImage = (index) => {
-    const { key, formId, itemId } = imagePreviewDialog;
-    if (!key || !formId || !itemId) return;
+    const { key, formId, itemId, imageField = 'images' } = imagePreviewDialog;
+    if (!key || !formId) return;
 
     const nextImages = imagePreviewDialog.images.filter((_, imageIndex) => imageIndex !== index);
-    updateItem(key, formId, itemId, 'images', nextImages);
+    if (itemId) {
+      updateItem(key, formId, itemId, imageField, nextImages);
+    } else {
+      updateFormField(key, formId, imageField, nextImages);
+    }
     setImagePreviewDialog((prev) => ({ ...prev, images: nextImages }));
   };
 
@@ -837,9 +975,13 @@ export default function WarehouseCheckInPage({
   };
 
   const handleUploadImages = () => {
-    if (!uploadDialog.key || !uploadDialog.formId || !uploadDialog.itemId) return;
+    if (!uploadDialog.key || !uploadDialog.formId) return;
 
-    updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, 'images', stagedFiles);
+    if (uploadDialog.itemId) {
+      updateItem(uploadDialog.key, uploadDialog.formId, uploadDialog.itemId, uploadDialog.imageField || 'images', stagedFiles);
+    } else {
+      updateFormField(uploadDialog.key, uploadDialog.formId, uploadDialog.imageField || 'images', stagedFiles);
+    }
     handleCloseImageUpload();
   };
 
@@ -969,6 +1111,350 @@ export default function WarehouseCheckInPage({
     dispatch(fetchPrintersDropdown());
   };
 
+  const buildTrailerMobileSubmitPayload = (receipt, form) => {
+    const row = {
+      ...(receipt?.row || {}),
+      ...(String(form?.destination || '').trim() ? { destination: String(form.destination).trim() } : {}),
+      ...(String(form?.customerRefNoPackageId || '').trim()
+        ? { packageId: String(form.customerRefNoPackageId).trim() }
+        : {}),
+    };
+    const selectedOptions = form?.freightOptions || [];
+    const freightDetails = (form?.items || []).map((item) => {
+      const cubicMeter = formatMeasurement(calculateItemCbm(item));
+
+      return {
+        pieces: toNumberOrNull(item.pieces),
+        type: toValueOrNull(item.type),
+        weight: toNumberOrNull(item.weight),
+        length: toNumberOrNull(item.length),
+        width: toNumberOrNull(item.width),
+        height: toNumberOrNull(item.height),
+        cubicMeter,
+      };
+    });
+    const piecesInland = freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
+    const weightInland = freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+    const reWeight = freightDetails.reduce(
+      (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
+      0
+    );
+    const cubicMeter = formatMeasurement(
+      freightDetails.reduce((sum, item) => sum + Number(item.cubicMeter || 0), 0)
+    );
+    const verificationId = toNumberOrNull(row.verificationId);
+    const hasNoVerificationId = verificationId === 0 || verificationId === null;
+    const isTempReceiptForm =
+      Boolean(form?.receiptNumber) && String(form.receiptNumber) !== String(row.receiptNumber || '');
+
+    return {
+      receipts: [
+        {
+          receipt: {
+            receiptId: isTempReceiptForm ? 0 : toNumberOrNull(row.receiptId) || 0,
+            receiptNumber: toNumberOrNull(form?.receiptNumber || row.receiptNumber),
+            receivedBy: toValueOrNull(receipt?.receivedBy),
+            location: toValueOrNull(receipt?.location),
+            shipper: toValueOrNull(getRowValue(row, ['shipper', 'shipperName'], '')),
+            customerId: toNumberOrNull(row.customerId),
+            stationId: toNumberOrNull(row.stationId),
+            verificationId,
+            ...(hasNoVerificationId
+              ? { driverName: toValueOrNull(getRowValue(row, ['driverName', 'driver'], '')) || '' }
+              : {}),
+            carrierId: toNumberOrNull(row.carrierId),
+            piecesInland,
+            weightInland,
+            reWeight,
+            cubicMeter,
+            proNumber: toValueOrNull(getRowValue(row, 'proNumber', receipt?.proNumber || '')),
+            toEmails: normalizeEmailList(getRowValue(row, 'toEmails', [])),
+            invoiceNumber: toValueOrNull(getRowValue(row, ['invoiceNo', 'invoiceNumber'], '')),
+            poNumber: toValueOrNull(getRowValue(row, ['poNumber', 'poNo'], '')),
+            customerRefNumber: toValueOrNull(getRowValue(row, ['customerRefNo', 'customerReference'], '')),
+            freightCondition: selectedOptions.includes('Bad Freight Condition') || (form?.badFreightImages || []).length ? 'Y' : null,
+            handlingDescription: null,
+            destination: toValueOrNull(getRowValue(row, ['destination', 'finalDestination'], '')),
+            originalDgd: null,
+            unNumber: null,
+            class: null,
+            packageId: toValueOrNull(getRowValue(row, ['packageId', 'packageNumber'], '')),
+            properShippingName: null,
+            hazardousDescription: null,
+            status: 'INITIATE',
+            withSkid: toYesNo(
+              selectedOptions.includes('Banded Skid') ||
+                selectedOptions.includes('Shrink Wrapped Skid') ||
+                selectedOptions.includes('SHT / IPPC Skid') ||
+                selectedOptions.includes('Plastic Skid')
+            ),
+            bandedSkid: toYesNo(selectedOptions.includes('Banded Skid')),
+            shrinkWrappedSkid: toYesNo(selectedOptions.includes('Shrink Wrapped Skid')),
+            shtIppcSkid: toYesNo(selectedOptions.includes('SHT / IPPC Skid')),
+            plasticSkid: toYesNo(selectedOptions.includes('Plastic Skid')),
+            hazMat: toYesNo(selectedOptions.includes('Haz Mat')),
+            labelCount: form?.items?.length || 0,
+          },
+          freightDetails,
+        },
+      ],
+    };
+  };
+
+  const hasTrailerMobileSubmitImages = (form) =>
+    (form?.items || []).some((item) => (item.images || []).length > 0) ||
+    (form?.badFreightImages || []).length > 0;
+
+  const buildTrailerMobileSubmitFormData = async (receipt, form) => {
+    const formData = new FormData();
+    formData.append('batchData', JSON.stringify(buildTrailerMobileSubmitPayload(receipt, form)));
+
+    await Promise.all(
+      [
+        ...(form.items || []).flatMap((item, freightIndex) =>
+          (item.images || []).map(async (image, imageIndex) => {
+            const fieldName = `freight-0-${freightIndex}-${imageIndex}`;
+            const imageValue = await getSubmittedImageValue(image);
+
+            if (imageValue) {
+              formData.append(fieldName, imageValue);
+            }
+          })
+        ),
+        ...(form.badFreightImages || []).map(async (image, imageIndex) => {
+          const fieldName = `bad-freight-image-0-${imageIndex}`;
+          const renamedImage = await toRenamedImageFile(image, fieldName);
+
+          if (renamedImage instanceof File || renamedImage instanceof Blob) {
+            formData.append(fieldName, renamedImage);
+          }
+        }),
+      ]
+    );
+
+    return formData;
+  };
+
+  const buildMobileSubmitPayload = (receipts = []) => ({
+    receipts: receipts.flatMap((receipt) =>
+      (receipt.forms || []).map((form) => buildTrailerMobileSubmitPayload(receipt, form).receipts[0])
+    ),
+  });
+
+  const hasMobileSubmitImages = (receipts = []) =>
+    receipts.some((receipt) =>
+      (receipt.forms || []).some((form) => hasTrailerMobileSubmitImages(form))
+    );
+
+  const buildMobileSubmitFormData = async (receipts = []) => {
+    const forms = receipts.flatMap((receipt) => (receipt.forms || []).map((form) => ({ receipt, form })));
+    const formData = new FormData();
+    formData.append('batchData', JSON.stringify(buildMobileSubmitPayload(receipts)));
+
+    await Promise.all(
+      forms.flatMap(({ form }, receiptIndex) => [
+          ...(form.items || []).flatMap((item, freightIndex) =>
+            (item.images || []).map(async (image, imageIndex) => {
+              const fieldName = `freight-${receiptIndex}-${freightIndex}-${imageIndex}`;
+              const imageValue = await getSubmittedImageValue(image);
+
+              if (imageValue) {
+                formData.append(fieldName, imageValue);
+              }
+            })
+          ),
+          ...(form.badFreightImages || []).map(async (image, imageIndex) => {
+            const fieldName = `bad-freight-image-${receiptIndex}-${imageIndex}`;
+            const renamedImage = await toRenamedImageFile(image, fieldName);
+
+            if (renamedImage instanceof File || renamedImage instanceof Blob) {
+              formData.append(fieldName, renamedImage);
+            }
+          }),
+        ])
+    );
+
+    return formData;
+  };
+
+  const validateTrailerMobileFreightForm = (receipt, form) => {
+    const receivedBy = !String(receipt?.receivedBy || '').trim() ? 'Received By is mandatory' : '';
+    const formFields = {};
+    const items = {};
+
+    if (!String(form?.destination || '').trim()) {
+      formFields[getFormErrorKey(form.id, 'destination')] = 'Destination is mandatory';
+    }
+    if (!String(form?.customerRefNoPackageId || '').trim()) {
+      formFields[getFormErrorKey(form.id, 'customerRefNoPackageId')] = 'Package ID is mandatory';
+    }
+
+    (form?.items || []).forEach((item) => {
+      REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
+        if (!String(item[field] || '').trim()) {
+          items[getItemErrorKey(form.id, item.id, field)] = `${label} is mandatory`;
+        }
+      });
+    });
+
+    const hasErrors = Object.keys(formFields).length > 0 || Object.keys(items).length > 0;
+
+    setReceiptErrors((prev) => ({
+      ...prev,
+      [receipt.key]: {
+        ...(prev[receipt.key] || {}),
+        receivedBy,
+        formFields: {
+          ...(prev[receipt.key]?.formFields || {}),
+          ...formFields,
+        },
+        items: {
+          ...(prev[receipt.key]?.items || {}),
+          ...items,
+        },
+      },
+    }));
+
+    if (hasErrors || receivedBy) {
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before continuing', severity: 'error' });
+    }
+
+    return !hasErrors && !receivedBy;
+  };
+
+  const handleTrailerMobilePrintLabelAndSubmit = (receiptKey) => {
+    const receipt = proceededReceipts.find((currentReceipt) => currentReceipt.key === receiptKey);
+    const form = receipt?.forms?.[receipt.forms.length - 1];
+
+    if (!receipt || !form) {
+      setSnackbar({ open: true, message: 'Please add freight information before continuing', severity: 'error' });
+      return;
+    }
+
+    if (!validateTrailerMobileFreightForm(receipt, form)) return;
+
+    setPrinterDialogOpen(true);
+    setSelectedPrinterId('');
+    setPrinterContext({ receipt, form, receiptKey, mode: 'mobileTrailerSubmit' });
+    dispatch(fetchPrintersDropdown());
+  };
+
+  const handleTrailerMobilePrinterSubmit = async () => {
+    const printer = printersDropdown.data.find((item) => String(item.printerId) === String(selectedPrinterId));
+    const { receipt, form, receiptKey } = printerContext || {};
+
+    if (!printer) {
+      setSnackbar({ open: true, message: 'Please select a printer', severity: 'error' });
+      return;
+    }
+
+    if (!receipt || !form || !receiptKey) {
+      setSnackbar({ open: true, message: 'Freight information is required to submit', severity: 'error' });
+      return;
+    }
+
+    if (!validateTrailerMobileFreightForm(receipt, form)) return;
+
+    const receiptNumber = form.receiptNumber || receipt.row?.receiptNumber || receipt.row?.receiptNo || '';
+
+    if (!receiptNumber) {
+      setSnackbar({ open: true, message: 'Receipt number is required to print the label', severity: 'error' });
+      return;
+    }
+
+    setTempReceiptLoading((prev) => ({ ...prev, [receiptKey]: true }));
+    setPrintLoading(true);
+
+    try {
+      const submitPayload = hasTrailerMobileSubmitImages(form)
+        ? await buildTrailerMobileSubmitFormData(receipt, form)
+        : buildTrailerMobileSubmitPayload(receipt, form);
+      const submitResponse = await dispatch(submitWarehouseReceiptBatch(submitPayload));
+
+      if (submitResponse?.error || submitResponse?.success === false) {
+        setSnackbar({
+          open: true,
+          message: submitResponse?.message || 'Failed to submit warehouse receipt',
+          severity: 'error',
+        });
+        return;
+      }
+
+      const tempResponse = await dispatch(createTempWarehouseReceipt(buildTempReceiptPayload(receipt)));
+
+      if (tempResponse?.error || tempResponse?.success === false) {
+        setSnackbar({
+          open: true,
+          message: tempResponse?.message || 'Failed to create temporary warehouse receipt',
+          severity: 'error',
+        });
+        return;
+      }
+
+      const tempReceiptNumber = tempResponse?.data?.receiptNumber;
+      const nextReceiptErrors = {
+        ...receiptErrors,
+        [receiptKey]: {
+          ...(receiptErrors[receiptKey] || {}),
+          formFields: {},
+          items: {},
+        },
+      };
+      const nextProceededReceipts = proceededReceipts.map((currentReceipt) =>
+        currentReceipt.key === receiptKey
+          ? {
+              ...currentReceipt,
+              forms: [createForm(getNextFormId(currentReceipt.forms), tempReceiptNumber)],
+            }
+          : currentReceipt
+      );
+
+      const printResponse = await dispatch(
+        printWarehouseReceiptLabel({
+          printerIP: printer.printerIP,
+          printerPort: printer.printerPort,
+          receiptNumber,
+          payload: buildLabelPrintPayload(receipt, form),
+        })
+      );
+
+      if (printResponse?.error || printResponse?.success === false) {
+        setSnackbar({
+          open: true,
+          message: printResponse?.message || 'Warehouse receipt submitted, but label print failed',
+          severity: 'error',
+        });
+        return;
+      }
+
+      setProceededReceipts(nextProceededReceipts);
+      setReceiptErrors(nextReceiptErrors);
+      dispatch(setWarehouseCheckInDraft({
+        searchType,
+        searchBy,
+        searchValue,
+        savedResults,
+        collapsed,
+        rejectedRowIds,
+        isSearchDisabled,
+        receiptErrors: nextReceiptErrors,
+        parcelForm,
+        parcelErrors,
+        proceededReceipts: nextProceededReceipts,
+      }, draftKey));
+      handleClosePrinterDialog();
+      setSnackbar({
+        open: true,
+        message: printResponse?.message || 'Label print sent successfully',
+        severity: 'success',
+      });
+      navigate(PATH_DASHBOARD.warehouseCheckInTrailer, { replace: true });
+    } finally {
+      setTempReceiptLoading((prev) => ({ ...prev, [receiptKey]: false }));
+      setPrintLoading(false);
+    }
+  };
+
   const handleClosePrinterDialog = () => {
     setPrinterDialogOpen(false);
     setSelectedPrinterId('');
@@ -988,7 +1474,11 @@ export default function WarehouseCheckInPage({
     }
 
     const receiptNumber =
-      printerContext?.form?.receiptNumber || printerContext?.receipt?.row?.receiptNumber || printerContext?.receipt?.row?.receiptNo || '';
+      printerContext?.receiptNumber ||
+      printerContext?.form?.receiptNumber ||
+      printerContext?.receipt?.row?.receiptNumber ||
+      printerContext?.receipt?.row?.receiptNo ||
+      '';
 
     if (!receiptNumber) {
       setSnackbar({
@@ -1000,12 +1490,15 @@ export default function WarehouseCheckInPage({
     }
 
     setPrintLoading(true);
+    const printPayload = printerContext?.receipt && printerContext?.form
+      ? buildLabelPrintPayload(printerContext.receipt, printerContext.form)
+      : undefined;
     const response = await dispatch(
       printWarehouseReceiptLabel({
         printerIP: printer.printerIP,
         printerPort: printer.printerPort,
         receiptNumber,
-        payload: buildLabelPrintPayload(printerContext?.receipt, printerContext?.form),
+        payload: printPayload,
       })
     );
     setPrintLoading(false);
@@ -1026,6 +1519,8 @@ export default function WarehouseCheckInPage({
     });
     handleClosePrinterDialog();
   };
+
+  const isMobileTrailerPrinterSubmit = printerContext?.mode === 'mobileTrailerSubmit';
 
   const handleParcelFormChange = (field, value) => {
     setParcelForm((prev) => ({ ...prev, [field]: value }));
@@ -1297,6 +1792,119 @@ export default function WarehouseCheckInPage({
   };
 
   // ── Search handler ─────────────────────────────────────────────────
+  const validateRegularMobileSubmit = () => {
+    if (proceededReceipts.length === 0) {
+      setSnackbar({ open: true, message: 'Please proceed with a warehouse receipt before submitting', severity: 'error' });
+      return false;
+    }
+
+    const nextErrors = {};
+    let hasErrors = false;
+
+    proceededReceipts.forEach((receipt) => {
+      const receiptError = { formFields: {}, items: {} };
+
+      if (!String(receipt.receivedBy || '').trim()) {
+        receiptError.receivedBy = 'Received By is mandatory';
+        hasErrors = true;
+      }
+
+      (receipt.forms || []).forEach((form) => {
+        (form.items || []).forEach((item) => {
+          REQUIRED_ITEM_FIELDS.forEach(({ field, label }) => {
+            if (!String(item[field] || '').trim()) {
+              receiptError.items[getItemErrorKey(form.id, item.id, field)] = `${label} is mandatory`;
+              hasErrors = true;
+            }
+          });
+        });
+      });
+
+      if (
+        receiptError.receivedBy ||
+        Object.keys(receiptError.formFields).length > 0 ||
+        Object.keys(receiptError.items).length > 0
+      ) {
+        nextErrors[receipt.key] = receiptError;
+      }
+    });
+
+    setReceiptErrors(nextErrors);
+
+    if (hasErrors) {
+      setProceededReceipts((prev) =>
+        prev.map((receipt) => {
+          const receiptError = nextErrors[receipt.key];
+          if (!receiptError) return receipt;
+
+          return {
+            ...receipt,
+            sectionCollapsed: false,
+            forms: receipt.forms.map((form) => ({
+              ...form,
+              collapsed: form.items.some((item) =>
+                REQUIRED_ITEM_FIELDS.some(({ field }) => receiptError.items[getItemErrorKey(form.id, item.id, field)])
+              )
+                ? false
+                : form.collapsed,
+            })),
+          };
+        })
+      );
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before submitting', severity: 'error' });
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleRegularMobileSubmit = async () => {
+    if (!validateRegularMobileSubmit()) return;
+
+    const payload = hasMobileSubmitImages(proceededReceipts)
+      ? await buildMobileSubmitFormData(proceededReceipts)
+      : buildMobileSubmitPayload(proceededReceipts);
+    const response = await dispatch(submitWarehouseReceiptBatch(payload));
+
+    if (response?.error || response?.success === false) {
+      setSnackbar({
+        open: true,
+        message: response?.message || 'Failed to submit warehouse receipts',
+        severity: 'error',
+      });
+      return;
+    }
+
+    setMobileRegularSuccessDialog({
+      open: true,
+      message: response?.message || 'Warehouse receipts submitted successfully',
+      entries: getReceiptPrintEntriesFromResponse(response),
+    });
+  };
+
+  const handleMobileRegularSuccessOk = () => {
+    setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
+    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    draftRestoredRef.current = false;
+    resetCheckInState();
+    dispatch(clearReceiptSearch());
+  };
+
+  const handleOpenMobileRegularPrintDialog = (entry) => {
+    setPrinterDialogOpen(true);
+    setSelectedPrinterId('');
+    setPrinterContext({ receiptNumber: entry.receiptNumber, mode: 'mobileRegularSuccessPrint' });
+    dispatch(fetchPrintersDropdown());
+  };
+
+  const handleComplete = () => {
+    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    draftRestoredRef.current = false;
+    resetCheckInState();
+    dispatch(clearReceiptSearch());
+    navigate(PATH_DASHBOARD.warehouseCheckInRegular);
+  };
+
   const handleSearch = () => {
     if (!searchValue.trim()) {
       return;
@@ -1353,8 +1961,63 @@ export default function WarehouseCheckInPage({
       onCancel={handleCancel}
       onSubmit={handleNext}
       submitLabel="Next"
+      plain={showScanGunPage}
     >
-      <Stack spacing={3}>
+      {showScanGunPage ? (
+        <WarehouseCheckInScanGunPage
+          title={title}
+          onComplete={showTrailerFreightHeader ? handleComplete : handleRegularMobileSubmit}
+          searchType={searchType}
+          setSearchType={setSearchType}
+          searchBy={searchBy}
+          setSearchBy={setSearchBy}
+          searchValue={searchValue}
+          setSearchValue={setSearchValue}
+          handleSearch={handleSearch}
+          warehouseReceiptSearch={warehouseReceiptSearch}
+          isSearchDisabled={isSearchDisabled}
+          showParcelOption={showParcelOption}
+          parcelForm={parcelForm}
+          parcelErrors={parcelErrors}
+          parcelCarrierDropdown={parcelCarrierDropdown}
+          customerOptions={customerOptions}
+          customerLoading={customerLoading}
+          parcelCarrierSearchValue={parcelCarrierSearchValue}
+          setParcelCarrierSearchValue={setParcelCarrierSearchValue}
+          parcelCustomerSearchValue={parcelCustomerSearchValue}
+          setParcelCustomerSearchValue={setParcelCustomerSearchValue}
+          getCarrierOptionLabel={getCarrierOptionLabel}
+          getCustomerOptionLabel={getCustomerOptionLabel}
+          handleParcelFormChange={handleParcelFormChange}
+          handleParcelSubmit={handleParcelSubmit}
+          proceededReceipts={proceededReceipts}
+          rejectedRowIds={rejectedRowIds}
+          receiptErrors={receiptErrors}
+          updateReceipt={updateReceipt}
+          removeReceipt={removeReceipt}
+          addForm={addForm}
+          removeForm={removeForm}
+          addItem={addItem}
+          removeItem={removeItem}
+          updateFormField={updateFormField}
+          updateItem={updateItem}
+          clearFormFieldError={clearFormFieldError}
+          clearItemError={clearItemError}
+          handlePackageDetailsClick={handlePackageDetailsClick}
+          handleOpenImageUpload={handleOpenImageUpload}
+          handleOpenImagePreview={handleOpenImagePreview}
+          cargoApiLoadingItems={cargoApiLoadingItems}
+          getCargoApiLoadingKey={getCargoApiLoadingKey}
+          freightTypeOptions={FREIGHT_TYPE_OPTIONS}
+          showTrailerFreightHeader={showTrailerFreightHeader}
+          handleTrailerMobilePrintLabelAndSubmit={handleTrailerMobilePrintLabelAndSubmit}
+          tempReceiptLoading={tempReceiptLoading}
+          handleRejectOpen={handleRejectOpen}
+          handleProceed={handleProceed}
+          dispatchClearReceiptSearch={() => dispatch(clearReceiptSearch())}
+        />
+      ) : (
+        <Stack spacing={3}>
         {/* Warehouse Receipt fieldset */}
         <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px' }}>
           <legend>
@@ -1394,7 +2057,12 @@ export default function WarehouseCheckInPage({
 
           {searchType === 'parcel' ? (
             <Stack spacing={3}>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={4}
+                alignItems={{ xs: 'stretch', sm: 'flex-end' }}
+                sx={{ flexWrap: { sm: 'wrap' }, rowGap: 1 }}
+              >
                 <StyledTextField
                   variant="standard"
                   size="small"
@@ -1520,7 +2188,12 @@ export default function WarehouseCheckInPage({
                   sx={{ minWidth: 220 }}
                 />
               </Stack>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} alignItems="flex-end">
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={4}
+                alignItems={{ xs: 'stretch', sm: 'flex-end' }}
+                sx={{ flexWrap: { sm: 'wrap' }, rowGap: 1 }}
+              >
                 {[
                   { field: 'driverName', label: 'Driver Name' },
                   { field: 'pieces', label: 'Pieces' },
@@ -1888,7 +2561,7 @@ export default function WarehouseCheckInPage({
                                 direction="row"
                                 spacing={1.5}
                                 alignItems="flex-start"
-                                sx={{ width: '100%' }}
+                                sx={{ width: '100%', flexWrap: { xs: 'wrap', lg: 'nowrap' }, rowGap: 1 }}
                               >
                                 {/* Box icon + label */}
                                 <Stack
@@ -1991,7 +2664,17 @@ export default function WarehouseCheckInPage({
                                 ))}
 
                                 {/* Action icons */}
-                                <Stack direction="row" spacing={0.7} alignItems="center" sx={{ pt: '19px' }}>
+                                <Stack
+                                  direction="row"
+                                  spacing={0.7}
+                                  alignItems="center"
+                                  sx={{
+                                    pt: '19px',
+                                    width: { xs: '100%', lg: 'auto' },
+                                    ml: { xs: 0, lg: 0 },
+                                    justifyContent: 'flex-end',
+                                  }}
+                                >
                                   <IconButton
                                     size="small"
                                     onClick={() => removeItem(pr.key, form.id, item.id)}
@@ -2125,8 +2808,8 @@ export default function WarehouseCheckInPage({
             </Collapse>
           </Box>
         ))}
-
-      </Stack>
+        </Stack>
+      )}
       {/* Reject Freight Dialog */}
       <Dialog open={rejectOpen} onClose={handleRejectClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
@@ -2182,6 +2865,49 @@ export default function WarehouseCheckInPage({
         </DialogActions>
       </Dialog>
 
+      <Dialog open={mobileRegularSuccessDialog.open} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Success</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 14 }}>{mobileRegularSuccessDialog.message}</Typography>
+          {mobileRegularSuccessDialog.entries.length > 0 && (
+            <Stack spacing={1} sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Verification IDs</Typography>
+              {mobileRegularSuccessDialog.entries.map((entry) => (
+                <Stack
+                  key={`${entry.label}-${entry.receiptNumber}`}
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  spacing={2}
+                  sx={{ border: '1px solid #e2e2e2', borderRadius: 1, px: 1.2, py: 0.8 }}
+                >
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{entry.label}</Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<Iconify icon="mdi:printer" width={16} />}
+                    onClick={() => handleOpenMobileRegularPrintDialog(entry)}
+                    sx={{ ...actionBtnSx, height: 30, minWidth: 78 }}
+                  >
+                    Print
+                  </Button>
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleMobileRegularSuccessOk}
+            sx={{ ...actionBtnSx, height: 32, minWidth: 70 }}
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={printerDialogOpen} onClose={handleClosePrinterDialog} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
           Select Printer
@@ -2194,8 +2920,12 @@ export default function WarehouseCheckInPage({
           </IconButton>
         </DialogTitle>
         <DialogContent dividers>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
-            <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            alignItems={{ xs: 'stretch', sm: 'flex-end' }}
+          >
+            <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0, width: '100%' }}>
               <Typography sx={{ fontSize: 12, color: '#555' }}>
                 Printer <span style={{ color: 'red' }}>*</span>
               </Typography>
@@ -2232,8 +2962,8 @@ export default function WarehouseCheckInPage({
               size="small"
               startIcon={<Iconify icon="mdi:printer" width={16} />}
               disabled={printersDropdown.loading || printLoading || !selectedPrinterId}
-              onClick={handlePrint}
-              sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' } }}
+              onClick={isMobileTrailerPrinterSubmit ? handleTrailerMobilePrinterSubmit : handlePrint}
+              sx={{ ...actionBtnSx, height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' }, alignSelf: { xs: 'flex-end', sm: 'auto' } }}
             >
               {printLoading ? 'Printing...' : 'Print'}
             </Button>

@@ -18,7 +18,7 @@ import { PATH_DASHBOARD } from '../../../routes/paths';
 
 // ----------------------------------------------------------------------
 
-const navConfig = [
+export const navConfig = [
   { title: 'Home',                  path: PATH_DASHBOARD.general.home,        icon: null },
   { title: 'Driver Check-In',       path: PATH_DASHBOARD.driverCheckIn,       icon: null },
   {
@@ -72,7 +72,7 @@ export default function NavVertical({ }) {
             bgcolor: '#A22',
             border: "none",
             marginTop: 7.4,
-            display: { xs: "none", sm: "block" }
+            display: { xs: "none", lg: "block" }
           }
         }}
       >

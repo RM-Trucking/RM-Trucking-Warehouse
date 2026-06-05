@@ -1,27 +1,57 @@
+import { useState } from 'react';
 import PropTypes from 'prop-types';
 
 import {
   AppBar,
   Toolbar,
   Stack,
-  Button,
+  Box,
+  Drawer,
+  IconButton,
 } from '@mui/material';
 
 import Logo from '../../../components/logo';
+import Iconify from '../../../components/iconify';
 import { HEADER } from '../../../config';
 import UserAccount from './UserAccount';
+import Scrollbar from '../../../components/scrollbar';
+import { NavSectionVertical } from '../../../components/nav-section';
+import { PATH_DASHBOARD } from '../../../routes/paths';
 
 // ----------------------------------------------------------------------
+
+const mobileNavConfig = [
+  { title: 'Home', path: PATH_DASHBOARD.general.home, icon: null },
+  {
+    title: 'Warehouse Check-In',
+    path: PATH_DASHBOARD.warehouseCheckIn,
+    icon: null,
+    children: [
+      { title: 'Regular', path: PATH_DASHBOARD.warehouseCheckInRegular, icon: null },
+      { title: 'Trailer', path: PATH_DASHBOARD.warehouseCheckInTrailer, icon: null },
+    ],
+  },
+];
 
 Header.propTypes = {
 };
 
 export default function Header() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const renderContent = (
     <>
       <Stack flexDirection={"row"} alignItems={"center"} justifyContent={"space-between"} sx={{width : "100%"}}>
-        <Logo />
+        <Stack direction="row" alignItems="center" spacing={0.75}>
+          <IconButton
+            size="small"
+            onClick={() => setMobileMenuOpen(true)}
+            sx={{ display: { xs: 'inline-flex', lg: 'none' }, color: '#111', p: 0.5 }}
+          >
+            <Iconify icon="mdi:menu" width={24} />
+          </IconButton>
+          <Logo />
+        </Stack>
         <UserAccount/>
       </Stack>
     </>
@@ -55,6 +85,33 @@ export default function Header() {
           {renderContent}
         </Toolbar>
       </AppBar>
+      <Drawer
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        variant="temporary"
+        PaperProps={{
+          sx: {
+            width: 280,
+            bgcolor: '#A22',
+            border: 'none',
+          },
+        }}
+      >
+        <Scrollbar
+          sx={{
+            height: 1,
+            '& .simplebar-content': {
+              height: 1,
+              display: 'flex',
+              flexDirection: 'column',
+            },
+          }}
+        >
+          <Box sx={{ py: 1 }}>
+            <NavSectionVertical data={mobileNavConfig} onItemClick={() => setMobileMenuOpen(false)} />
+          </Box>
+        </Scrollbar>
+      </Drawer>
     </>
   );
 }

@@ -35,7 +35,12 @@ const Logo = forwardRef(({ disabledLink = false, sx, ...other }, ref) => {
         src={
           RMLogo
         }
-        sx={{ width: isMobile ? '40px' : 'max-content', height: isMobile ? '40px' : '40px' }}
+        sx={{
+          width: isMobile ? 'auto' : 'max-content',
+          maxWidth: isMobile ? 72 : 'none',
+          height: isMobile ? 34 : 40,
+          objectFit: 'contain',
+        }}
       />
     </Box>
   );
@@ -45,7 +50,7 @@ const Logo = forwardRef(({ disabledLink = false, sx, ...other }, ref) => {
   }
 
   return (
-    <Button sx={{justifyContent : "flex-start"}}>
+    <Button sx={{ justifyContent: 'flex-start', minWidth: 0, p: 0 }}>
       {logo}
     </Button>
   );
