@@ -557,7 +557,7 @@ export default function WarehouseCheckInScanGunPage({
               <Box sx={sectionSx}>
                 <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Location & Receiver</Typography>
                 <ScanField label="Received By" required value={receipt.receivedBy} error={receiptErrors[receipt.key]?.receivedBy} onChange={(event) => updateReceipt(receipt.key, () => ({ receivedBy: event.target.value }))} />
-                <ScanField label="Location" value={receipt.location} onChange={(event) => updateReceipt(receipt.key, () => ({ location: event.target.value }))} />
+                <ScanField label="Location" required value={receipt.location} error={receiptErrors[receipt.key]?.location} onChange={(event) => updateReceipt(receipt.key, () => ({ location: event.target.value }))} />
               </Box>
 
               <Box>
@@ -680,7 +680,7 @@ export default function WarehouseCheckInScanGunPage({
                   </Box>
                 ) : (
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-                    <Button variant="contained" size="small" disabled={!!tempReceiptLoading[receipt.key]} onClick={() => addForm(receipt.key)} sx={scanActionBtnSx}>
+                    <Button variant="contained" size="small" disabled={!!tempReceiptLoading[receipt.key]} onClick={() => addForm(receipt.key, { collapseExistingForms: true })} sx={scanActionBtnSx}>
                       {tempReceiptLoading[receipt.key] ? 'Adding...' : 'Add New Form'}
                     </Button>
                   </Box>

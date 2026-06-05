@@ -37,6 +37,7 @@ import {
   clearWarehouseCheckInDraft,
   fetchPrintersDropdown,
   printWarehouseReceiptLabel,
+  setWarehouseCheckInDraft,
   submitWarehouseReceiptBatch,
 } from '../../redux/slices/warehouse';
 import { PATH_DASHBOARD } from '../../routes/paths';
@@ -57,7 +58,7 @@ const fieldSx = {
   '& .MuiFormHelperText-root': { display: 'none' },
 };
 
-const FREIGHT_CONDITION_OPTIONS = ['Banded Skid', 'Shrink Wrapped Skid', 'SHPT / PPC Skid', 'Plastic Skid', 'Document'];
+const FREIGHT_CONDITION_OPTIONS = ['Banded Skid', 'Shrink Wrapped Skid', 'SHT / IPPC Skid', 'Plastic Skid', 'Document'];
 
 const createFreightInfo = () => ({
   conditions: {},
@@ -216,8 +217,9 @@ const buildEmptyReceiptForms = () => [
 const FREIGHT_OPTION_FIELD_MAP = {
   'Banded Skid': 'Banded Skid',
   'Shrink Wrapped Skid': 'Shrink Wrapped Skid',
-  'SHT / IPPC Skid': 'SHPT / PPC Skid',
-  'SHPT / PPC Skid': 'SHPT / PPC Skid',
+  'SHT / IPPC Skid': 'SHT / IPPC Skid',
+  'SHT / IPPC Skid': 'SHT / IPPC Skid',
+  'SHPT / PPC Skid': 'SHT / IPPC Skid',
   'Plastic Skid': 'Plastic Skid',
   Document: 'Document',
 };
@@ -384,7 +386,7 @@ function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove
   );
 }
 
-function ReceiptInfoRow({ label, value, editable = false, onChange }) {
+function ReceiptInfoRow({ label, value, editable = false, required = false, error = '', onChange }) {
   return (
     <Stack
       direction="row"
@@ -392,17 +394,22 @@ function ReceiptInfoRow({ label, value, editable = false, onChange }) {
       spacing={1}
       sx={{ py: 0.65, borderBottom: '1px solid #adadad' }}
     >
-      <Typography sx={{ width: 130, flexShrink: 0, fontSize: 15, color: '#111', whiteSpace: 'nowrap' }}>{label} :</Typography>
+      <Typography sx={{ width: 130, flexShrink: 0, fontSize: 15, color: '#111', whiteSpace: 'nowrap' }}>
+        {label} {required && <Box component="span" sx={{ color: '#A22' }}>*</Box>} :
+      </Typography>
       <TextField
         value={value || ''}
         onChange={(event) => onChange?.(event.target.value)}
         size="small"
         fullWidth
+        error={Boolean(error)}
+        helperText={error || ''}
         InputProps={{ readOnly: !editable }}
         sx={{
           '& .MuiInputBase-root': { height: 30, bgcolor: '#fff', borderRadius: 0.8 },
           '& .MuiInputBase-input': { py: 0, fontSize: 15, fontWeight: 700 },
           '& fieldset': { borderColor: '#d6d6d6' },
+          '& .MuiFormHelperText-root': { m: 0, minHeight: 16, fontSize: 11 },
           ...(editable && {
             '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: '#A22' },
           }),
@@ -482,6 +489,9 @@ export default function WarehouseReceiptFormPage() {
   const freightUploadInputRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
   const initialReceiptForms = useMemo(() => {
+    const savedReceiptForms = warehouseCheckInDrafts?.[selectedDraftKey]?.receiptForms || [];
+    if (savedReceiptForms.length) return savedReceiptForms;
+
     const routeReceipts = state?.receipts || [];
     const draftReceipts =
       warehouseCheckInDrafts?.[selectedDraftKey]?.proceededReceipts ||
@@ -496,6 +506,7 @@ export default function WarehouseReceiptFormPage() {
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
   const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '' });
   const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '' });
+  const [receiptInfoErrors, setReceiptInfoErrors] = useState({});
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -504,7 +515,15 @@ export default function WarehouseReceiptFormPage() {
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
+  const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
+  const persistReceiptFormDraft = (forms = receiptForms) => {
+    dispatch(setWarehouseCheckInDraft({
+      ...(selectedDraft || {}),
+      receiptForms: forms,
+    }, selectedDraftKey));
+  };
   const handleBack = () => {
+    persistReceiptFormDraft();
     navigate(
       selectedDraftKey === 'trailer'
         ? PATH_DASHBOARD.warehouseCheckInTrailer
@@ -569,6 +588,15 @@ export default function WarehouseReceiptFormPage() {
     setReceiptForms((prev) =>
       prev.map((form) => (form.id === activeTab ? { ...form, [field]: value } : form))
     );
+    if ((field === 'receivedBy' || field === 'location') && String(value || '').trim()) {
+      setReceiptInfoErrors((prev) => ({
+        ...prev,
+        [activeTab]: {
+          ...(prev[activeTab] || {}),
+          [field]: '',
+        },
+      }));
+    }
   };
 
   const updateActiveRowField = (field, value) => {
@@ -752,6 +780,7 @@ export default function WarehouseReceiptFormPage() {
         receipt: {
           receiptId: receiptId || 0,
           receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(formRow, 'receiptNumber', null)),
+          receiptType: selectedDraftKey === 'trailer' ? 'Trailer' : 'Regular',
           receivedBy: toValueOrNull(form.receivedBy),
           location: toValueOrNull(form.location),
           shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
@@ -773,10 +802,11 @@ export default function WarehouseReceiptFormPage() {
           customerRefNumber: toValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], '')),
           freightCondition: freightInfo.badFreightCondition ? 'Y' : null,
           handlingDescription: toValueOrNull(freightInfo.freightConditionDescription || freightInfo.notes),
+          notes: toValueOrNull(freightInfo.notes),
           destination: toValueOrNull(getRowValue(formRow, ['destination', 'finalDestination'], '')),
           originalDgd: freightInfo.hazMat ? toYesNo(freightInfo.originalDgd) : null,
-          unNumber: freightInfo.hazMat ? toValueOrNull(freightInfo.unNumbers.join(',')) : null,
-          class: freightInfo.hazMat ? toValueOrNull(freightInfo.hazmatClasses.join(',')) : null,
+          unNumber: freightInfo.hazMat ? freightInfo.unNumbers.filter(Boolean) : [],
+          class: freightInfo.hazMat ? freightInfo.hazmatClasses.filter(Boolean) : [],
           packageId: toValueOrNull(getRowValue(formRow, ['packageId', 'packageNumber'], '')),
           properShippingName: toValueOrNull(freightInfo.properShippingName),
           hazardousDescription: toValueOrNull(freightInfo.hazardousDescription),
@@ -784,14 +814,16 @@ export default function WarehouseReceiptFormPage() {
           withSkid: toYesNo(
             freightInfo.conditions['Banded Skid'] ||
               freightInfo.conditions['Shrink Wrapped Skid'] ||
+              freightInfo.conditions['SHT / IPPC Skid'] ||
               freightInfo.conditions['SHPT / PPC Skid'] ||
               freightInfo.conditions['Plastic Skid']
           ),
           bandedSkid: toYesNo(freightInfo.conditions['Banded Skid']),
           shrinkWrappedSkid: toYesNo(freightInfo.conditions['Shrink Wrapped Skid']),
-          shtIppcSkid: toYesNo(freightInfo.conditions['SHPT / PPC Skid']),
+          shtIppcSkid: toYesNo(freightInfo.conditions['SHT / IPPC Skid'] || freightInfo.conditions['SHPT / PPC Skid']),
           plasticSkid: toYesNo(freightInfo.conditions['Plastic Skid']),
           hazMat: toYesNo(freightInfo.hazMat),
+          documents: toYesNo(freightInfo.conditions.Document),
           labelCount: form.items?.length || 0,
         },
         freightDetails,
@@ -807,6 +839,37 @@ export default function WarehouseReceiptFormPage() {
         freightInfo.freightConditionImages.length > 0
       );
     });
+
+  const validateReceiptInfo = () => {
+    const nextErrors = {};
+    let firstInvalidFormId = '';
+
+    receiptForms.forEach((form) => {
+      const formErrors = {};
+
+      if (!String(form.receivedBy || '').trim()) {
+        formErrors.receivedBy = 'Received By is mandatory';
+      }
+      if (!String(form.location || '').trim()) {
+        formErrors.location = 'Location is mandatory';
+      }
+
+      if (Object.keys(formErrors).length > 0) {
+        nextErrors[form.id] = formErrors;
+        if (!firstInvalidFormId) firstInvalidFormId = form.id;
+      }
+    });
+
+    setReceiptInfoErrors(nextErrors);
+
+    if (firstInvalidFormId) {
+      setActiveTab(firstInvalidFormId);
+      setSnackbar({ open: true, message: 'Please fill all mandatory fields before submitting', severity: 'error' });
+      return false;
+    }
+
+    return true;
+  };
 
   const buildReceiptFormData = async () => {
     const payload = buildReceiptPayload();
@@ -844,6 +907,8 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const handleSubmit = async () => {
+    if (!validateReceiptInfo()) return;
+
     const payload = hasReceiptImages() ? await buildReceiptFormData() : buildReceiptPayload();
     const response = await dispatch(submitWarehouseReceiptBatch(payload));
 
@@ -998,12 +1063,16 @@ export default function WarehouseReceiptFormPage() {
                   label="Received By"
                   value={activeForm.receivedBy}
                   editable
+                  required
+                  error={receiptInfoErrors[activeForm.id]?.receivedBy}
                   onChange={(value) => updateActiveFormField('receivedBy', value)}
                 />
                 <ReceiptInfoRow
                   label="Location"
                   value={activeForm.location}
                   editable
+                  required
+                  error={receiptInfoErrors[activeForm.id]?.location}
                   onChange={(value) => updateActiveFormField('location', value)}
                 />
                 <ReceiptInfoRow label="Label Count" value={String(activeForm.items.length).padStart(2, '0')} />
