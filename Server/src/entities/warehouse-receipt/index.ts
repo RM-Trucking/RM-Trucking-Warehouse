@@ -59,18 +59,18 @@ export interface WarehouseReceipt {
     invoiceNumber?: string;
     poNumber?: string;
     customerRefNumber?: string;
-    withSkid?: 'Y' | 'N';
     bandedSkid?: 'Y' | 'N';
     shrinkWrappedSkid?: 'Y' | 'N';
     shtIppcSkid?: 'Y' | 'N';
     plasticSkid?: 'Y' | 'N';
+    documents?: 'Y' | 'N';
     freightCondition?: 'Y' | 'N';
     handlingDescription?: string;
     destination?: string;
     hazMat?: 'Y' | 'N';
     originalDgd?: 'Y' | 'N';
-    unNumber?: string;
-    class?: string;
+    unNumber?: string[];
+    class?: string[];
     packageId?: string;
     properShippingName?: string;
     hazardousDescription?: string;
@@ -79,6 +79,8 @@ export interface WarehouseReceipt {
     entityId: number;
     toEmails?: string[];
     rejectionReason?: string;
+    receiptType?: 'Regular' | 'Trailer';
+    notes?: string;
 }
 
 /**
@@ -104,25 +106,27 @@ export interface CreateWarehouseReceipt {
     invoiceNumber?: string;
     poNumber?: string;
     customerRefNumber?: string;
-    withSkid?: 'Y' | 'N';
     bandedSkid?: 'Y' | 'N';
     shrinkWrappedSkid?: 'Y' | 'N';
     shtIppcSkid?: 'Y' | 'N';
     plasticSkid?: 'Y' | 'N';
     documentId?: number | bigint;
     freightCondition?: 'Y' | 'N';
+    documents?: 'Y' | 'N';
     handlingDescription?: string;
     destination?: string;
     hazMat?: 'Y' | 'N';
     originalDgd?: 'Y' | 'N';
-    unNumber?: string;
-    class?: string;
+    unNumber?: string[];
+    class?: string[];
     packageId?: string;
     properShippingName?: string;
     hazardousDescription?: string;
     status: string;
     noteThreadId?: number;
     entityId: number;
+    receiptType?: 'Regular' | 'Trailer';
+    notes?: string;
 }
 
 /**

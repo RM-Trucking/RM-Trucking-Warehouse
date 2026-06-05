@@ -97,17 +97,19 @@ paths:
                     invoiceNumber: null
                     poNumber: null
                     customerRefNumber: null
-                    freightCondition: null
+                    freightCondition: "Y"
+                    documents: "Y"
                     handlingDescription: null
                     destination: null
                     originalDgd: null
-                    unNumber: null
-                    class: null
+                    unNumber: ["123", "333", "3333"]
+                    class: ["hello", "hi", "Welcome", "next", "wrap", "cook"]
                     packageId: null
                     properShippingName: null
                     hazardousDescription: null
+                    notes: "Handle with care"
                     status: "INITIATE"
-                    withSkid: "Y"
+                    receiptType: "Regular"
                     bandedSkid: "Y"
                     shrinkWrappedSkid: "Y"
                     shtIppcSkid: "Y"
@@ -148,17 +150,19 @@ paths:
                     invoiceNumber: null
                     poNumber: null
                     customerRefNumber: null
-                    freightCondition: null
+                    freightCondition: "Y"
+                    documents: "Y"
                     handlingDescription: null
                     destination: null
                     originalDgd: null
-                    unNumber: null
-                    class: null
+                    unNumber: ["123", "333", "3333"]
+                    class: ["hello", "hi", "Welcome", "next", "wrap", "cook"]
                     packageId: null
                     properShippingName: null
                     hazardousDescription: null
+                    notes: "This is a note for the receipt"
                     status: "INITIATE"
-                    withSkid: "Y"
+                    receiptType: "Regular"
                     bandedSkid: "Y"
                     shrinkWrappedSkid: "Y"
                     shtIppcSkid: "Y"
@@ -1166,6 +1170,40 @@ components:
             carrierId:
               type: integer
               example: 52
+            destination:
+              type: string
+              nullable: true
+              example: "Customer Final Destination"
+            originalDgd:
+              type: string
+              nullable: true
+              example: "Y"
+            unNumber:
+              type: array
+              items:
+                type: string
+              nullable: true
+              example: ["123", "333", "3333"]
+              description: "List of UN numbers"
+            class:
+              type: array
+              items:
+                type: string
+              nullable: true
+              example: ["2", "3"]
+              description: "Hazard class values"
+            properShippingName:
+              type: string
+              nullable: true
+              example: "OXYGEN, COMPRESSED"
+            hazardousDescription:
+              type: string
+              nullable: true
+              example: "Contains extremely hazardous material"
+            notes:
+              type: string
+              nullable: true
+              example: "Handle with care"
             proNumber:
               type: string
               nullable: true
@@ -1178,6 +1216,17 @@ components:
               type: number
               nullable: true
               example: 5000
+            documents:
+              type: string
+              enum: ["Y", "N"]
+              nullable: true
+              example: "Y"
+              description: "Documents present (Y/N)"
+            receiptType:
+              type: string
+              nullable: true
+              example: "Regular"
+              description: "Receipt type (e.g., Regular, Special, etc.)"
             status:
               type: string
               enum: [INITIATE, ON-HAND, REJECTED, HOLD]
@@ -1283,6 +1332,15 @@ components:
           type: integer
           nullable: true
           example: 5000
+        documents:
+          type: string
+          enum: ["Y", "N"]
+          nullable: true
+          example: "Y"
+        receiptType:
+          type: string
+          nullable: true
+          example: "Regular"
         status:
           type: string
           enum: [INITIATE, ON-HAND, REJECTED, HOLD]
@@ -1356,6 +1414,15 @@ components:
           type: integer
           nullable: true
           example: 5050
+        documents:
+          type: string
+          enum: ["Y", "N"]
+          nullable: true
+          example: "Y"
+        receiptType:
+          type: string
+          nullable: true
+          example: "Regular"
         status:
           type: string
           enum: [INITIATE, ON-HAND, REJECTED, HOLD]
@@ -1461,6 +1528,12 @@ components:
                   freightCondition:
                     type: string
                     nullable: true
+                  documents:
+                    type: string
+                    enum: ["Y", "N"]
+                    nullable: true
+                    example: "Y"
+                    description: "Documents present (Y/N)"
                   handlingDescription:
                     type: string
                     nullable: true
@@ -1471,11 +1544,19 @@ components:
                     type: string
                     nullable: true
                   unNumber:
-                    type: string
+                    type: array
+                    items:
+                      type: string
                     nullable: true
+                    example: ["123", "333", "3333"]
+                    description: "List of UN numbers"
                   class:
-                    type: string
+                    type: array
+                    items:
+                      type: string
                     nullable: true
+                    example: ["2", "3"]
+                    description: "Hazard class values"
                   packageId:
                     type: string
                     nullable: true
@@ -1485,10 +1566,19 @@ components:
                   hazardousDescription:
                     type: string
                     nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+                    example: "Handle with care"
                   status:
                     type: string
                     enum: [INITIATE, ON-HAND, REJECTED, HOLD]
                     example: "INITIATE"
+                  receiptType:
+                    type: string
+                    nullable: true
+                    example: "Regular"
+                    description: "Receipt type (e.g., Regular, Special, etc.)"
                   withSkid:
                     type: string
                     enum: ["Y", "N"]

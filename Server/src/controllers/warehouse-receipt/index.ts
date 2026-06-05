@@ -355,8 +355,6 @@ export async function batchProcessWarehouseReceiptsWithoutImages(req: Request, r
         const rawBatch = (req.body && (req.body.batchData ?? req.body)) as any;
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
-        console.log("Received batch process request", rawBatch);
-
         // Normalize: if rawBatch is a JSON string, parse it
         let parsedBatch: any = rawBatch;
         if (typeof parsedBatch === 'string') {
@@ -427,15 +425,10 @@ export async function batchProcessWarehouseReceiptsWithImages(
 ): Promise<void> {
     try {
 
-        console.log("Received batch process with images request");
-
         // Accept either { batchData: {...} } or raw body containing the batch data (or an array)
         const rawBatch = (req.body && (req.body.batchData ?? req.body)) as any;
         const userId = (req as any).user?.userId || (req as any).user?.id;
         const uploadedFiles = (req as any).files || [];
-
-        console.log("Batch data:", rawBatch);
-        console.log("Uploaded files:", uploadedFiles);
 
         if (!userId) {
             res.status(401).json({
@@ -474,17 +467,7 @@ export async function batchProcessWarehouseReceiptsWithImages(
         // Process uploaded images and map them to freight items and bad freight items
         const processedData = processUploadedImages(normalized, uploadedFiles);
 
-        console.log("Uploaded files mapped to batch data:", uploadedFiles);
 
-        console.log("Processed batch data with image paths:", processedData);
-
-        console.log("Actual frieght and bad freight images in processed data:",
-            processedData.receipts?.map((item: any) => ({
-                receiptId: item.receipt?.receiptId,
-                freightImages: item.freightDetails?.map((freight: any) => freight.images),
-                badFreightImages: item.badFreightImages
-            }))
-        );
 
         if (!Array.isArray(processedData.receipts) || processedData.receipts.length === 0) {
             res.status(400).json({

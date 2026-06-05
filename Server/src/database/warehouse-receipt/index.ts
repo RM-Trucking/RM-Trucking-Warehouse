@@ -91,12 +91,12 @@ export async function createWarehouseReceipt(
                 "customerRefNumber",
                 "destination",
                 "packageId",
-                "withSkid",
                 "bandedSkid",
                 "shrinkWrappedSkid",
                 "shtIppcSkid",
                 "plasticSkid",
                 "freightCondition",
+                "documents",
                 "handlingDescription",
                 "hazMat",
                 "originalDgd",
@@ -105,9 +105,11 @@ export async function createWarehouseReceipt(
                 "properShippingName",
                 "hazardousDescription",
                 "toEmails",
-                "cubicMeter"
+                "cubicMeter",
+                "receiptType",
+                "notes"
             )
-            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -132,12 +134,12 @@ export async function createWarehouseReceipt(
         receipt.customerRefNumber ?? '',
         receipt.destination ?? '',
         receipt.packageId ?? '',
-        receipt.withSkid === 'Y' ? 'Y' : 'N',
         receipt.bandedSkid === 'Y' ? 'Y' : 'N',
         receipt.shrinkWrappedSkid === 'Y' ? 'Y' : 'N',
         receipt.shtIppcSkid === 'Y' ? 'Y' : 'N',
         receipt.plasticSkid === 'Y' ? 'Y' : 'N',
         receipt.freightCondition === 'Y' ? 'Y' : 'N',
+        receipt.documents === 'Y' ? 'Y' : 'N',
         receipt.handlingDescription ?? null,
         receipt.hazMat === 'Y' ? 'Y' : 'N',
         receipt.originalDgd === 'Y' ? 'Y' : 'N',
@@ -146,7 +148,9 @@ export async function createWarehouseReceipt(
         receipt.properShippingName ?? '',
         receipt.hazardousDescription ?? '',
         Array.isArray(receipt.toEmails) ? JSON.stringify(receipt.toEmails) : receipt.toEmails ?? null,
-        receipt.cubicMeter !== undefined ? Number(receipt.cubicMeter) : null
+        receipt.cubicMeter !== undefined ? Number(receipt.cubicMeter) : null,
+        receipt.receiptType ?? 'Regular',
+        receipt.notes ?? ''
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -159,9 +163,12 @@ export async function getWarehouseReceiptById(
     receiptId: number
 ): Promise<WarehouseReceipt | null> {
     const query = `
-        SELECT * 
-        FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "receiptId" = ?
+        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
+        FROM ${SCHEMA}."Warehouse_Receipt" "wh"
+        LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
+        LEFT JOIN ${SCHEMA}."Station" "s" ON "wh"."stationId" = "s"."stationId" 
+        WHERE "wh"."receiptId" = ?
     `;
     const result = await conn.query(query, [Number(receiptId)]) as any[];
 
@@ -188,10 +195,13 @@ export async function getWarehouseReceiptsByVerification(
     verificationId: number
 ): Promise<WarehouseReceipt[]> {
     const query = `
-        SELECT * 
-        FROM ${SCHEMA}."Warehouse_Receipt" 
-        WHERE "verificationId" = ? 
-        ORDER BY "receiptNumber" DESC
+        SELECT "wh".*, c."carrierName", cust."customerName", s."stationName"
+        FROM ${SCHEMA}."Warehouse_Receipt" "wh"
+        LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
+        LEFT JOIN ${SCHEMA}."Station" "s" ON "wh"."stationId" = "s"."stationId"
+        WHERE "wh"."verificationId" = ? 
+        ORDER BY "wh"."receiptNumber" DESC
     `;
     const result = await conn.query(query, [Number(verificationId)]) as any[];
 
@@ -354,10 +364,6 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
     }
 
     // Skid related fields
-    if (updates.withSkid !== undefined) {
-        fields.push(`"withSkid" = ?`);
-        params.push(updates.withSkid == 'Y' ? 'Y' : 'N');
-    }
     if (updates.bandedSkid !== undefined) {
         fields.push(`"bandedSkid" = ?`);
         params.push(updates.bandedSkid == 'Y' ? 'Y' : 'N');
@@ -380,6 +386,11 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         fields.push(`"freightCondition" = ?`);
         params.push(updates.freightCondition == 'Y' ? 'Y' : 'N');
     }
+    if (updates.documents !== undefined) {
+        fields.push(`"documents" = ?`);
+        params.push(updates.documents == 'Y' ? 'Y' : 'N');
+    }
+
     if (updates.handlingDescription !== undefined) {
         fields.push(`"handlingDescription" = ?`);
         params.push(updates.handlingDescription ? updates.handlingDescription : '' as string);
@@ -423,6 +434,16 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
     if (updates.rejectionReason !== undefined) {
         fields.push(`"rejectionReason" = ?`);
         params.push(updates.rejectionReason ? updates.rejectionReason : '' as string);
+    }
+
+    if (updates.receiptType !== undefined) {
+        fields.push(`"receiptType" = ?`);
+        params.push(updates.receiptType ?? 'Regular');
+    }
+
+    if (updates.notes !== undefined) {
+        fields.push(`"notes" = ?`);
+        params.push(updates.notes ? updates.notes : '' as string);
     }
 
     if (updates.toEmails !== undefined) {

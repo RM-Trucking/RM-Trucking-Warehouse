@@ -20,11 +20,11 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
     const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, receiptId);
     if (!receipt) return null;
 
-    const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+    const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
 
     // Fetch images for each freight
     const freightWithImages = await Promise.all(
-        freightInfos.map(async (freight) => ({
+        freightInformation.map(async (freight) => ({
             ...freight,
             images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
         }))
@@ -35,7 +35,7 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
 
     return {
         ...receipt,
-        freightInfos: freightWithImages,
+        freightInformation: freightWithImages,
         rate,
         auditLogs
     };
@@ -51,10 +51,10 @@ export async function getWarehouseReceiptsByProService(conn: Connection, proNumb
 
     return Promise.all(
         receipts.map(async (receipt) => {
-            const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+            const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
 
             const freightWithImages = await Promise.all(
-                freightInfos.map(async (freight) => ({
+                freightInformation.map(async (freight) => ({
                     ...freight,
                     images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
                 }))
@@ -65,7 +65,7 @@ export async function getWarehouseReceiptsByProService(conn: Connection, proNumb
 
             return {
                 ...receipt,
-                freightInfos: freightWithImages,
+                freightInformation: freightWithImages,
                 rate,
                 auditLogs
             };
@@ -227,13 +227,13 @@ export async function getReceiptSummaryService(conn: Connection, receiptId: numb
     const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
     if (!receipt) return null;
 
-    const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
-    const totalPieces = freightInfos.reduce((sum, f) => sum + f.pieces, 0);
-    const totalWeight = freightInfos.reduce((sum, f) => sum + (f.weight || 0), 0);
+    const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+    const totalPieces = freightInformation.reduce((sum, f) => sum + f.pieces, 0);
+    const totalWeight = freightInformation.reduce((sum, f) => sum + (f.weight || 0), 0);
 
     // Count total images across all freight items
     let totalImages = 0;
-    for (const freight of freightInfos) {
+    for (const freight of freightInformation) {
         const images = await warehouseReceiptDB.getFreightImages(conn, freight.freightId);
         totalImages += images.length;
     }
@@ -247,7 +247,7 @@ export async function getReceiptSummaryService(conn: Connection, receiptId: numb
         carrierId: receipt.carrierId,
         totalPieces,
         totalWeight,
-        freightCount: freightInfos.length,
+        freightCount: freightInformation.length,
         totalImages,
         createdAt: receipt.createdAt,
         createdBy: receipt.createdBy
@@ -325,11 +325,11 @@ export async function createWarehouseReceiptWithFreightService(
 
         // Get complete receipt with all details
         const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
-        const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+        const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
 
         // Fetch images for each freight
         const freightWithImages = await Promise.all(
-            freightInfos.map(async (freight) => ({
+            freightInformation.map(async (freight) => ({
                 ...freight,
                 images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
             }))
@@ -337,7 +337,7 @@ export async function createWarehouseReceiptWithFreightService(
 
         return {
             ...receipt,
-            freightInfos: freightWithImages
+            freightInformation: freightWithImages
         };
     } catch (err) {
         await conn.rollback();
@@ -363,6 +363,7 @@ export async function batchProcessWarehouseReceiptsService(
     try {
         const updatedReceipts = [];
         const createdReceipts = [];
+        let verificationId = 0;
 
         // Process each receipt in the array
         for (const item of receipts) {
@@ -375,36 +376,46 @@ export async function batchProcessWarehouseReceiptsService(
             // Auto-create ID verification if verificationId not provided
             if (!receipt.verificationId || receipt.verificationId === 0 || receipt.verificationId === null || receipt.verificationId === undefined) {
 
-                if (!receipt.driverName) {
-                    throw new Error("Driver name is required to create ID verification");
+                if (verificationId === 0 || verificationId === null || verificationId === undefined) {
+                    if (!receipt.driverName) {
+                        throw new Error("Driver name is required to create ID verification");
+                    }
+
+                    // Create driver with just driver name (no signature)
+                    const driverId = await idVerificationDB.createDriver(conn, {
+                        driverName: receipt.driverName,
+                        driverSignature: null
+                    });
+
+                    // Create ID verification
+                    verificationId = await idVerificationDB.createIDVerification(conn, {
+                        carrierId: receipt.carrierId,
+                        customerId: receipt.customerId,
+                        stationId: receipt.stationId,
+                        driverId: driverId,
+                        doorNo: receipt.doorNo || "0",
+                        firstIdType: receipt.firstIdType || "UNKNOWN",
+                        secondIdType: receipt.secondIdType || "NA",
+                        firstIdPhotoMatch: receipt.firstIdPhotoMatch ? 'Y' : 'N',
+                        secondIdPhotoMatch: receipt.secondIdPhotoMatch ? 'Y' : 'N',
+                        shipperCompanyName: receipt.shipperCompanyName || "Listed Above",
+                        verifiedByEmployee: "System Auto-Verification",
+                        createdBy: userId
+                    });
+
+                    const proDetailId = await idVerificationDB.createProDetail(conn, {
+                        verificationId,
+                        pieces: receipt.piecesInland,
+                        weight: receipt.weightInland,
+                        shipper: receipt.shipper,
+                        proNumber: receipt.proNumber,
+                    });
+
+                    receipt.verificationId = verificationId;
                 }
-
-                console.log(`Creating new ID verification for driver: ${receipt.driverName}`);
-
-                // Create driver with just driver name (no signature)
-                const driverId = await idVerificationDB.createDriver(conn, {
-                    driverName: receipt.driverName,
-                    driverSignature: null
-                });
-
-                // Create ID verification
-                const verificationId = await idVerificationDB.createIDVerification(conn, {
-                    carrierId: receipt.carrierId,
-                    customerId: receipt.customerId,
-                    stationId: receipt.stationId,
-                    driverId: driverId,
-                    doorNo: receipt.doorNo || "0",
-                    firstIdType: receipt.firstIdType || "UNKNOWN",
-                    secondIdType: receipt.secondIdType || "NA",
-                    firstIdPhotoMatch: receipt.firstIdPhotoMatch ? 'Y' : 'N',
-                    secondIdPhotoMatch: receipt.secondIdPhotoMatch ? 'Y' : 'N',
-                    shipperCompanyName: receipt.shipperCompanyName || "Listed Above",
-                    verifiedByEmployee: "System Auto-Verification",
-                    createdBy: userId
-                });
-
-                console.log(`Created ID verification ID ${verificationId} for driver: ${receipt.driverName}`);
-                receipt.verificationId = verificationId;
+                else {
+                    receipt.verificationId = verificationId;
+                }
             }
 
             receipt.status = "ON_HAND";
@@ -421,7 +432,7 @@ export async function batchProcessWarehouseReceiptsService(
                 }
 
                 // System fields that should NOT be updated
-                const systemFields = ['receiptId', 'receiptNumber', 'createdAt', 'createdBy', 'documentId', 'entityId', 'noteThreadId', 'receiptDate', 'toEmails'];
+                const systemFields = ['receiptId', 'receiptNumber', 'createdAt', 'createdBy', 'documentId', 'entityId', 'noteThreadId', 'receiptDate'];
 
                 // Extract only updateable fields from provided receipt
                 const updateData: any = {};
@@ -438,26 +449,18 @@ export async function batchProcessWarehouseReceiptsService(
                 await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, updateData);
 
 
-                console.log(`Updated receipt ID ${receiptId} with data:`, receipt.badFreightImages);
-
                 if (Array.isArray(receipt.badFreightImages)) {
-                    console.log(`Creating freight images for freight ID ${receiptId}:`, receipt.badFreightImages);
+
                     for (const imagePath of receipt.badFreightImages) {
                         await warehouseReceiptDB.createBadFreightConditionImage(conn, receiptId, imagePath);
                     }
                 }
 
-                console.log(`Updated receipt ID ${receiptId} with data:`, updateData);
-
                 // Delete existing freight details and create new ones
                 await warehouseReceiptDB.deleteFreightInfoByReceipt(conn, receiptId);
 
-                console.log(`Deleted existing freight info for receipt ID ${receiptId}`);
-
                 // Create new freight details with images
                 for (const freight of freightDetails) {
-                    console.log("Freight", freight);
-
                     const { images, ...freightData } = freight;
 
                     const freightId = await warehouseReceiptDB.createFreightInfo(conn, {
@@ -465,17 +468,13 @@ export async function batchProcessWarehouseReceiptsService(
                         receiptId
                     });
 
-                    console.log(`Created freight info ID ${freightId} for receipt ID ${receiptId} with data:`, freightData);
-
                     // Create associated images if provided
                     if (Array.isArray(images)) {
-                        console.log(`Creating freight images for freight ID ${freightId}:`, images);
                         for (const imagePath of images) {
                             await warehouseReceiptDB.createFreightImage(conn, freightId, imagePath);
                         }
                     }
 
-                    console.log(`Completed freight info ID ${freightId} for receipt ID ${receiptId}`);
                 }
 
                 // Get updated receipt with all details
@@ -494,13 +493,17 @@ export async function batchProcessWarehouseReceiptsService(
                 const updatedReceiptData = {
                     ...updatedReceipt,
                     badFreightConditionImages,
-                    freightInfos: updatedFreightWithImages
+                    freightInformation: updatedFreightWithImages
                 }
 
                 updatedReceipts.push(updatedReceiptData);
 
-                const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
 
+
+                //Generate PDF for updated receipt
+                //While calling the procedure you should pass the path with the file name where you want to save the generated PDF. For example: /home/warehouse-app-docs/temp-receipt-output/receipt-123.pdf
+                //If it is the multiple file send you should separate the file path with the ";" For example: /home/warehouse-app-docs/temp-receipt-output/receipt-123.pdf;/home/warehouse-app-docs/temp-receipt-output/receipt-124.pdf
+                const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
                 await createWarehouseReceiptPDF(updatedReceiptData, false, tempReceiptOutPath);
 
                 emitAuditLog({
@@ -513,8 +516,6 @@ export async function batchProcessWarehouseReceiptsService(
                     level: "INFO"
                 });
 
-                console.log("To Emails:", updatedReceiptData.toEmails)
-
                 if (updatedReceiptData.toEmails && Array.isArray(updatedReceiptData.toEmails) && updatedReceiptData.toEmails.length > 0) {
 
                     for (const emailRecipient of updatedReceiptData.toEmails) {
@@ -522,14 +523,15 @@ export async function batchProcessWarehouseReceiptsService(
                         emitEmail({
                             receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
                             to: emailRecipient,
-                            status: updateData.status
+                            status: updateData.status,
+                            hasAttachment: true,
+                            attachmentPath: tempReceiptOutPath + `/${updatedReceiptData.receiptNumber}.pdf`
                         });
                     }
                 }
 
             } else {
 
-                console.log("Creating new receipt with data:", receipt);
                 const entityId = await entityDB.createWarehouseEntity(conn, 'WAREHOUSE_RECEIPT', receipt.receiptNumber.toString());
                 const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
 
@@ -546,14 +548,10 @@ export async function batchProcessWarehouseReceiptsService(
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, dataWithUser);
 
                 if (Array.isArray(dataWithUser.badFreightImages)) {
-                    console.log(`Creating freight images for freight ID ${receiptId}:`, dataWithUser.badFreightImages);
                     for (const imagePath of dataWithUser.badFreightImages) {
                         await warehouseReceiptDB.createBadFreightConditionImage(conn, receiptId, imagePath);
                     }
                 }
-
-
-                console.log(`Created new receipt ID ${receiptId} with data:`, dataWithUser);
 
                 // Create freight info records with images
                 for (const freight of freightDetails) {
@@ -587,10 +585,14 @@ export async function batchProcessWarehouseReceiptsService(
                 const createdReceiptData = {
                     ...createdReceipt,
                     badFreightConditionImages,
-                    freightInfos: createdFreightWithImages
+                    freightInformation: createdFreightWithImages
                 }
 
                 createdReceipts.push(createdReceiptData);
+
+                const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
+                await createWarehouseReceiptPDF(createdReceiptData, false, tempReceiptOutPath);
+
 
 
                 emitAuditLog({
@@ -609,7 +611,9 @@ export async function batchProcessWarehouseReceiptsService(
                         emitEmail({
                             receiptNumber: dataWithUser.receiptNumber,
                             to: emailRecipient,
-                            status: dataWithUser.status
+                            status: dataWithUser.status,
+                            hasAttachment: true,
+                            attachmentPath: tempReceiptOutPath + `/${createdReceiptData.receiptNumber}.pdf`
                         });
                     }
                 }
@@ -689,8 +693,6 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
             if (!csvData) {
                 throw new Error(`No PRO detail found for PRO number: ${proNumber} (not in database or CSV file)`);
             }
-
-            console.log(`PRO detail retrieved from CSV for PRO ${proNumber}:`, csvData);
 
             // Validate CSV data
             const validation = validateProCsvData(csvData);
@@ -881,16 +883,14 @@ export async function printWarehouseReceiptLabelService(
         };
     } else {
 
-        console.log(`Fetching receipt data from DB for receipt number: ${payload.receiptNumber}`);
-
         // Otherwise, fetch from DB
         const receipt = await warehouseReceiptDB.getAllWarehouseReceiptByReceiptNumber(conn, payload.receiptNumber) as any | null;
         if (!receipt) {
             throw new Error(`Receipt with number ${payload.receiptNumber} not found`);
         }
 
-        // const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId));
-        // const pieces = freightInfos.reduce((sum, freight) => sum + (freight.pieces || 0), 0);
+        // const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId));
+        // const pieces = freightInformation.reduce((sum, freight) => sum + (freight.pieces || 0), 0);
 
         printData = {
             labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
