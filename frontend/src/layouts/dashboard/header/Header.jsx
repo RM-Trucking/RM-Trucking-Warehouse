@@ -8,6 +8,7 @@ import {
   Box,
   Drawer,
   IconButton,
+  useMediaQuery,
 } from '@mui/material';
 
 import Logo from '../../../components/logo';
@@ -17,6 +18,7 @@ import UserAccount from './UserAccount';
 import Scrollbar from '../../../components/scrollbar';
 import { NavSectionVertical } from '../../../components/nav-section';
 import { PATH_DASHBOARD } from '../../../routes/paths';
+import { navConfig } from '../nav/NavVertical';
 
 // ----------------------------------------------------------------------
 
@@ -38,6 +40,8 @@ Header.propTypes = {
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isMobileMenuRestricted = useMediaQuery('(max-width:599.95px)', { noSsr: true });
+  const drawerNavConfig = isMobileMenuRestricted ? mobileNavConfig : navConfig;
 
   const renderContent = (
     <>
@@ -108,7 +112,7 @@ export default function Header() {
           }}
         >
           <Box sx={{ py: 1 }}>
-            <NavSectionVertical data={mobileNavConfig} onItemClick={() => setMobileMenuOpen(false)} />
+            <NavSectionVertical data={drawerNavConfig} onItemClick={() => setMobileMenuOpen(false)} />
           </Box>
         </Scrollbar>
       </Drawer>

@@ -83,8 +83,22 @@ const toNumberOrNull = (value) => {
   return Number.isNaN(numberValue) ? null : numberValue;
 };
 
+const formatDecimal10_2Input = (value) => {
+  const inputValue = String(value ?? '').replace(/[^\d.]/g, '');
+  const hasDecimal = inputValue.includes('.');
+  const [integerPart = '', ...decimalParts] = inputValue.split('.');
+  const integerValue = integerPart.slice(0, 8);
+  const decimalValue = decimalParts.join('').slice(0, 2);
+
+  return hasDecimal ? `${integerValue || '0'}.${decimalValue}` : integerValue;
+};
+
+const toDecimal10_2NumberOrNull = (value) => toNumberOrNull(formatDecimal10_2Input(value));
+
 const calculateItemCbm = (item) =>
-  Number(item.length || 0) * Number(item.width || 0) * Number(item.height || 0);
+  Number(formatDecimal10_2Input(item.length)) *
+  Number(formatDecimal10_2Input(item.width)) *
+  Number(formatDecimal10_2Input(item.height));
 
 const formatMeasurement = (value) => {
   if (!value) return 0;
@@ -119,6 +133,11 @@ const toValueOrNull = (value) => {
   if (value === undefined || value === null) return null;
   const stringValue = String(value).trim();
   return stringValue ? value : null;
+};
+
+const toLimitedValueOrNull = (value, maxLength) => {
+  const limitedValue = String(value || '').slice(0, maxLength);
+  return toValueOrNull(limitedValue);
 };
 
 const toYesNo = (value) => (value ? 'Y' : 'N');
@@ -300,18 +319,33 @@ function Section({ title, children, sx }) {
   );
 }
 
-function DisplayField({ label, value, required = false, width = '100%', fieldWidth = '100%', editable = false, onChange }) {
+function DisplayField({
+  label,
+  value,
+  required = false,
+  width = '100%',
+  fieldWidth = '100%',
+  editable = false,
+  maxLength,
+  onChange,
+}) {
+  const displayValue = maxLength ? String(value || '').slice(0, maxLength) : value || '';
+
   return (
     <Stack spacing={0.1} sx={{ width, minWidth: 0 }}>
       <Typography sx={{ color: '#555', fontSize: 12 }}>
         {label} {required && <span style={{ color: '#b01818' }}>*</span>}
       </Typography>
       <StyledTextField
-        value={value || ''}
-        onChange={(event) => onChange?.(event.target.value)}
+        value={displayValue}
+        onChange={(event) => {
+          const nextValue = maxLength ? event.target.value.slice(0, maxLength) : event.target.value;
+          onChange?.(nextValue);
+        }}
         variant="standard"
         size="small"
         disabled={!editable}
+        inputProps={maxLength ? { maxLength } : undefined}
         sx={{ ...fieldSx, width: fieldWidth }}
       />
     </Stack>
@@ -756,10 +790,10 @@ export default function WarehouseReceiptFormPage() {
         return {
           pieces: toNumberOrNull(item.pieces),
           type: toValueOrNull(item.type),
-          weight: toNumberOrNull(item.weight),
-          length: toNumberOrNull(item.length),
-          width: toNumberOrNull(item.width),
-          height: toNumberOrNull(item.height),
+          weight: toDecimal10_2NumberOrNull(item.weight),
+          length: toDecimal10_2NumberOrNull(item.length),
+          width: toDecimal10_2NumberOrNull(item.width),
+          height: toDecimal10_2NumberOrNull(item.height),
           cubicMeter,
         };
       });
@@ -797,9 +831,9 @@ export default function WarehouseReceiptFormPage() {
           cubicMeter,
           proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
           toEmails: normalizeEmailList(getRowValue(formRow, 'toEmails', [])),
-          invoiceNumber: toValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], '')),
-          poNumber: toValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], '')),
-          customerRefNumber: toValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], '')),
+          invoiceNumber: toLimitedValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], ''), 50),
+          poNumber: toLimitedValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], ''), 50),
+          customerRefNumber: toLimitedValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], ''), 50),
           freightCondition: freightInfo.badFreightCondition ? 'Y' : null,
           handlingDescription: toValueOrNull(freightInfo.freightConditionDescription || freightInfo.notes),
           notes: toValueOrNull(freightInfo.notes),
@@ -1141,12 +1175,14 @@ export default function WarehouseReceiptFormPage() {
                     label="Invoice No"
                     value={getRowValue(row, ['invoiceNo', 'invoiceNumber'], '')}
                     editable
+                    maxLength={50}
                     onChange={(value) => updateActiveRowField('invoiceNo', value)}
                   />
                   <DisplayField
                     label="PO No"
                     value={getRowValue(row, ['poNumber', 'poNo'], '')}
                     editable
+                    maxLength={50}
                     onChange={(value) => updateActiveRowField('poNumber', value)}
                   />
                 </Stack>
@@ -1156,6 +1192,7 @@ export default function WarehouseReceiptFormPage() {
                     value={getRowValue(row, ['customerRefNo', 'customerReference'], '')}
                     width={{ xs: '100%', sm: '25%' }}
                     editable
+                    maxLength={50}
                     onChange={(value) => updateActiveRowField('customerRefNo', value)}
                   />
                   <DisplayField

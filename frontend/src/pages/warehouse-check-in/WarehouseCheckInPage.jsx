@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -72,6 +72,17 @@ const REQUIRED_ITEM_FIELDS = [
   { field: 'height', label: 'Height' },
   { field: 'weight', label: 'Weight' },
 ];
+const DECIMAL_ITEM_FIELDS = new Set(['length', 'width', 'height', 'weight']);
+
+const formatDecimal10_2Input = (value) => {
+  const inputValue = String(value ?? '').replace(/[^\d.]/g, '');
+  const hasDecimal = inputValue.includes('.');
+  const [integerPart = '', ...decimalParts] = inputValue.split('.');
+  const integerValue = integerPart.slice(0, 8);
+  const decimalValue = decimalParts.join('').slice(0, 2);
+
+  return hasDecimal ? `${integerValue || '0'}.${decimalValue}` : integerValue;
+};
 
 const createParcelForm = () => ({
   proNumber: '',
@@ -129,6 +140,8 @@ const toNumberOrNull = (value) => {
   return Number.isNaN(number) ? null : number;
 };
 
+const toDecimal10_2NumberOrNull = (value) => toNumberOrNull(formatDecimal10_2Input(value));
+
 const toValueOrNull = (value) => {
   if (value === null || value === undefined) return null;
   const stringValue = String(value).trim();
@@ -138,7 +151,12 @@ const toValueOrNull = (value) => {
 const toYesNo = (value) => (value ? 'Y' : 'N');
 
 const calculateItemCbm = (item) =>
-  (Number(item.length) * Number(item.width) * Number(item.height) * Number(item.pieces || 1)) / 1000000 || 0;
+  (
+    Number(formatDecimal10_2Input(item.length)) *
+    Number(formatDecimal10_2Input(item.width)) *
+    Number(formatDecimal10_2Input(item.height)) *
+    Number(item.pieces || 1)
+  ) / 1000000 || 0;
 
 const formatMeasurement = (value) => {
   const number = Number(value);
@@ -423,6 +441,9 @@ export default function WarehouseCheckInPage({
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
   const [searchValue, setSearchValue]   = useState('');
+  const handleSearchValueChange = useCallback((value) => {
+    setSearchValue(String(value || '').slice(0, 100));
+  }, []);
   const [savedResults, setSavedResults] = useState(null);    // snapshot before Proceed
   const [collapsed, setCollapsed]       = useState({});
   const [rejectOpen, setRejectOpen]     = useState(false);
@@ -569,7 +590,7 @@ export default function WarehouseCheckInPage({
     draftRestoredRef.current = true;
     setSearchType(warehouseCheckInDraft.searchType || 'pro');
     setSearchBy(warehouseCheckInDraft.searchBy || 'PRO');
-    setSearchValue(warehouseCheckInDraft.searchValue || '');
+    handleSearchValueChange(warehouseCheckInDraft.searchValue || '');
     setSavedResults(warehouseCheckInDraft.savedResults || null);
     setCollapsed(warehouseCheckInDraft.collapsed || {});
     setRejectedRowIds(warehouseCheckInDraft.rejectedRowIds || []);
@@ -578,7 +599,7 @@ export default function WarehouseCheckInPage({
     setParcelForm(warehouseCheckInDraft.parcelForm || createParcelForm());
     setParcelErrors(warehouseCheckInDraft.parcelErrors || createParcelErrors());
     setProceededReceipts(warehouseCheckInDraft.proceededReceipts || []);
-  }, [warehouseCheckInDraft]);
+  }, [handleSearchValueChange, warehouseCheckInDraft]);
 
   // Show no data dialog when search returns empty results
   useEffect(() => {
@@ -780,14 +801,17 @@ export default function WarehouseCheckInPage({
       }),
     }));
 
-  const updateItem = (key, formId, itemId, field, value) =>
+  const updateItem = (key, formId, itemId, field, value) => {
+    const nextValue = DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value;
+
     updateReceipt(key, (p) => ({
       forms: p.forms.map((f) =>
         f.id === formId
-          ? { ...f, items: f.items.map((i) => (i.id === itemId ? { ...i, [field]: value } : i)) }
+          ? { ...f, items: f.items.map((i) => (i.id === itemId ? { ...i, [field]: nextValue } : i)) }
           : f
       ),
     }));
+  };
 
   const clearItemError = (key, formId, itemId, field, value) => {
     if (!String(value).trim()) return;
@@ -1130,10 +1154,10 @@ export default function WarehouseCheckInPage({
       return {
         pieces: toNumberOrNull(item.pieces),
         type: toValueOrNull(item.type),
-        weight: toNumberOrNull(item.weight),
-        length: toNumberOrNull(item.length),
-        width: toNumberOrNull(item.width),
-        height: toNumberOrNull(item.height),
+        weight: toDecimal10_2NumberOrNull(item.weight),
+        length: toDecimal10_2NumberOrNull(item.length),
+        width: toDecimal10_2NumberOrNull(item.width),
+        height: toDecimal10_2NumberOrNull(item.height),
         cubicMeter,
       };
     });
@@ -1992,7 +2016,7 @@ export default function WarehouseCheckInPage({
           searchBy={searchBy}
           setSearchBy={setSearchBy}
           searchValue={searchValue}
-          setSearchValue={setSearchValue}
+          setSearchValue={handleSearchValueChange}
           handleSearch={handleSearch}
           warehouseReceiptSearch={warehouseReceiptSearch}
           isSearchDisabled={isSearchDisabled}
@@ -2050,7 +2074,7 @@ export default function WarehouseCheckInPage({
           <RadioGroup
             row
             value={searchType}
-            onChange={(e) => { setSearchType(e.target.value); dispatch(clearReceiptSearch()); setSearchValue(''); }}
+            onChange={(e) => { setSearchType(e.target.value); dispatch(clearReceiptSearch()); handleSearchValueChange(''); }}
             sx={{ mb: 2 }}
           >
             <FormControlLabel
@@ -2275,9 +2299,10 @@ export default function WarehouseCheckInPage({
                 required
                 label={searchType === 'rmDriver' ? 'Pro' : searchBy}
                 value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
+                onChange={(e) => handleSearchValueChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 disabled={isSearchDisabled}
+                inputProps={{ maxLength: 100 }}
                 sx={{ minWidth: 200 }}
               />
 
@@ -2687,7 +2712,7 @@ export default function WarehouseCheckInPage({
                                       }}
                                       error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)]}
                                       helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)] || ' '}
-                                      inputProps={{ style: { fontSize: 13 } }}
+                                      inputProps={{ inputMode: 'decimal', style: { fontSize: 13 } }}
                                     />
                                   </Stack>
                                 ))}

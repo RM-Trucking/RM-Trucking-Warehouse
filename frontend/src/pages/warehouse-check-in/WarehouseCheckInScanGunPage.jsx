@@ -199,12 +199,12 @@ function ScanItem({
           ))}
         </ScanField>
         {[
-          ['pieces', 'Pieces'],
-          ['length', 'Length'],
-          ['width', 'Width'],
-          ['height', 'Height'],
-          ['weight', 'Weight(lbs)'],
-        ].map(([field, label]) => (
+          ['pieces', 'Pieces', false],
+          ['length', 'Length', true],
+          ['width', 'Width', true],
+          ['height', 'Height', true],
+          ['weight', 'Weight(lbs)', true],
+        ].map(([field, label, isDecimal]) => (
           <ScanField
             key={field}
             label={label}
@@ -215,6 +215,7 @@ function ScanItem({
               updateItem(receipt.key, form.id, item.id, field, event.target.value);
               clearItemError(receipt.key, form.id, item.id, field, event.target.value);
             }}
+            inputProps={isDecimal ? { inputMode: 'decimal' } : undefined}
           />
         ))}
       </Box>
@@ -506,7 +507,15 @@ export default function WarehouseCheckInScanGunPage({
                   )}
                   <Stack direction="row" spacing={0.75} alignItems="flex-end">
                     <Box sx={{ flex: 1 }}>
-                      <ScanField label={searchType === 'rmDriver' ? 'Pro' : searchBy} required value={searchValue} disabled={isSearchDisabled} onChange={(event) => setSearchValue(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && handleSearch()} />
+                      <ScanField
+                        label={searchType === 'rmDriver' ? 'Pro' : searchBy}
+                        required
+                        value={searchValue}
+                        disabled={isSearchDisabled}
+                        onChange={(event) => setSearchValue(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
+                        inputProps={{ maxLength: 100 }}
+                      />
                     </Box>
                     <Button variant="contained" size="small" onClick={handleSearch} disabled={isSearchDisabled} sx={{ ...scanActionBtnSx, height: 28 }}>Search</Button>
                   </Stack>
