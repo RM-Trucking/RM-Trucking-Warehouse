@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -72,6 +72,17 @@ const REQUIRED_ITEM_FIELDS = [
   { field: 'height', label: 'Height' },
   { field: 'weight', label: 'Weight' },
 ];
+const DECIMAL_ITEM_FIELDS = new Set(['length', 'width', 'height', 'weight']);
+
+const formatDecimal10_2Input = (value) => {
+  const inputValue = String(value ?? '').replace(/[^\d.]/g, '');
+  const hasDecimal = inputValue.includes('.');
+  const [integerPart = '', ...decimalParts] = inputValue.split('.');
+  const integerValue = integerPart.slice(0, 8);
+  const decimalValue = decimalParts.join('').slice(0, 2);
+
+  return hasDecimal ? `${integerValue || '0'}.${decimalValue}` : integerValue;
+};
 
 const createParcelForm = () => ({
   proNumber: '',
@@ -129,6 +140,8 @@ const toNumberOrNull = (value) => {
   return Number.isNaN(number) ? null : number;
 };
 
+const toDecimal10_2NumberOrNull = (value) => toNumberOrNull(formatDecimal10_2Input(value));
+
 const toValueOrNull = (value) => {
   if (value === null || value === undefined) return null;
   const stringValue = String(value).trim();
@@ -138,7 +151,12 @@ const toValueOrNull = (value) => {
 const toYesNo = (value) => (value ? 'Y' : 'N');
 
 const calculateItemCbm = (item) =>
-  (Number(item.length) * Number(item.width) * Number(item.height) * Number(item.pieces || 1)) / 1000000 || 0;
+  (
+    Number(formatDecimal10_2Input(item.length)) *
+    Number(formatDecimal10_2Input(item.width)) *
+    Number(formatDecimal10_2Input(item.height)) *
+    Number(item.pieces || 1)
+  ) / 1000000 || 0;
 
 const formatMeasurement = (value) => {
   const number = Number(value);
@@ -423,6 +441,9 @@ export default function WarehouseCheckInPage({
   const [searchType, setSearchType]     = useState('pro');   // 'pro' | 'rmDriver' | 'fedexUps'
   const [searchBy, setSearchBy]         = useState('PRO');
   const [searchValue, setSearchValue]   = useState('');
+  const handleSearchValueChange = useCallback((value) => {
+    setSearchValue(String(value || '').slice(0, 100));
+  }, []);
   const [savedResults, setSavedResults] = useState(null);    // snapshot before Proceed
   const [collapsed, setCollapsed]       = useState({});
   const [rejectOpen, setRejectOpen]     = useState(false);
@@ -569,7 +590,7 @@ export default function WarehouseCheckInPage({
     draftRestoredRef.current = true;
     setSearchType(warehouseCheckInDraft.searchType || 'pro');
     setSearchBy(warehouseCheckInDraft.searchBy || 'PRO');
-    setSearchValue(warehouseCheckInDraft.searchValue || '');
+    handleSearchValueChange(warehouseCheckInDraft.searchValue || '');
     setSavedResults(warehouseCheckInDraft.savedResults || null);
     setCollapsed(warehouseCheckInDraft.collapsed || {});
     setRejectedRowIds(warehouseCheckInDraft.rejectedRowIds || []);
@@ -578,7 +599,7 @@ export default function WarehouseCheckInPage({
     setParcelForm(warehouseCheckInDraft.parcelForm || createParcelForm());
     setParcelErrors(warehouseCheckInDraft.parcelErrors || createParcelErrors());
     setProceededReceipts(warehouseCheckInDraft.proceededReceipts || []);
-  }, [warehouseCheckInDraft]);
+  }, [handleSearchValueChange, warehouseCheckInDraft]);
 
   // Show no data dialog when search returns empty results
   useEffect(() => {
@@ -639,7 +660,7 @@ export default function WarehouseCheckInPage({
   const getItemErrorKey = (formId, itemId, field) => `${formId}-${itemId}-${field}`;
   const getFormErrorKey = (formId, field) => `${formId}-${field}`;
 
-  const addForm = async (key) => {
+  const addForm = async (key, { collapseExistingForms = false } = {}) => {
     const receipt = proceededReceipts.find((p) => p.key === key);
     if (!receipt) return;
 
@@ -647,12 +668,16 @@ export default function WarehouseCheckInPage({
     const itemErrors = {};
     const formErrors = {};
 
-    if (!receipt.receivedBy.trim()) {
+    const receivedByError = !String(receipt.receivedBy || '').trim() ? 'Received By is mandatory' : '';
+    const locationError = !String(receipt.location || '').trim() ? 'Location is mandatory' : '';
+
+    if (receivedByError || locationError) {
       setReceiptErrors((prev) => ({
         ...prev,
         [key]: {
           ...prev[key],
-          receivedBy: 'Received By is mandatory',
+          receivedBy: receivedByError,
+          location: locationError,
         },
       }));
       updateReceipt(key, () => ({ sectionCollapsed: false }));
@@ -724,7 +749,7 @@ export default function WarehouseCheckInPage({
       };
       updateReceipt(key, (p) => ({
         forms: [
-          ...p.forms.map((form) => ({ ...form, collapsed: true })),
+          ...p.forms.map((form) => (collapseExistingForms ? { ...form, collapsed: true } : form)),
           createForm(getNextFormId(p.forms), receiptNumber, formDefaults),
         ],
       }));
@@ -776,14 +801,17 @@ export default function WarehouseCheckInPage({
       }),
     }));
 
-  const updateItem = (key, formId, itemId, field, value) =>
+  const updateItem = (key, formId, itemId, field, value) => {
+    const nextValue = DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value;
+
     updateReceipt(key, (p) => ({
       forms: p.forms.map((f) =>
         f.id === formId
-          ? { ...f, items: f.items.map((i) => (i.id === itemId ? { ...i, [field]: value } : i)) }
+          ? { ...f, items: f.items.map((i) => (i.id === itemId ? { ...i, [field]: nextValue } : i)) }
           : f
       ),
     }));
+  };
 
   const clearItemError = (key, formId, itemId, field, value) => {
     if (!String(value).trim()) return;
@@ -1126,10 +1154,10 @@ export default function WarehouseCheckInPage({
       return {
         pieces: toNumberOrNull(item.pieces),
         type: toValueOrNull(item.type),
-        weight: toNumberOrNull(item.weight),
-        length: toNumberOrNull(item.length),
-        width: toNumberOrNull(item.width),
-        height: toNumberOrNull(item.height),
+        weight: toDecimal10_2NumberOrNull(item.weight),
+        length: toDecimal10_2NumberOrNull(item.length),
+        width: toDecimal10_2NumberOrNull(item.width),
+        height: toDecimal10_2NumberOrNull(item.height),
         cubicMeter,
       };
     });
@@ -1153,6 +1181,7 @@ export default function WarehouseCheckInPage({
           receipt: {
             receiptId: isTempReceiptForm ? 0 : toNumberOrNull(row.receiptId) || 0,
             receiptNumber: toNumberOrNull(form?.receiptNumber || row.receiptNumber),
+            receiptType: draftKey === 'trailer' ? 'Trailer' : 'Regular',
             receivedBy: toValueOrNull(receipt?.receivedBy),
             location: toValueOrNull(receipt?.location),
             shipper: toValueOrNull(getRowValue(row, ['shipper', 'shipperName'], '')),
@@ -1174,10 +1203,11 @@ export default function WarehouseCheckInPage({
             customerRefNumber: toValueOrNull(getRowValue(row, ['customerRefNo', 'customerReference'], '')),
             freightCondition: selectedOptions.includes('Bad Freight Condition') || (form?.badFreightImages || []).length ? 'Y' : null,
             handlingDescription: null,
+            notes: null,
             destination: toValueOrNull(getRowValue(row, ['destination', 'finalDestination'], '')),
             originalDgd: null,
-            unNumber: null,
-            class: null,
+            unNumber: [],
+            class: [],
             packageId: toValueOrNull(getRowValue(row, ['packageId', 'packageNumber'], '')),
             properShippingName: null,
             hazardousDescription: null,
@@ -1193,6 +1223,7 @@ export default function WarehouseCheckInPage({
             shtIppcSkid: toYesNo(selectedOptions.includes('SHT / IPPC Skid')),
             plasticSkid: toYesNo(selectedOptions.includes('Plastic Skid')),
             hazMat: toYesNo(selectedOptions.includes('Haz Mat')),
+            documents: toYesNo(selectedOptions.includes('Document')),
             labelCount: form?.items?.length || 0,
           },
           freightDetails,
@@ -1279,6 +1310,7 @@ export default function WarehouseCheckInPage({
 
   const validateTrailerMobileFreightForm = (receipt, form) => {
     const receivedBy = !String(receipt?.receivedBy || '').trim() ? 'Received By is mandatory' : '';
+    const location = !String(receipt?.location || '').trim() ? 'Location is mandatory' : '';
     const formFields = {};
     const items = {};
 
@@ -1304,6 +1336,7 @@ export default function WarehouseCheckInPage({
       [receipt.key]: {
         ...(prev[receipt.key] || {}),
         receivedBy,
+        location,
         formFields: {
           ...(prev[receipt.key]?.formFields || {}),
           ...formFields,
@@ -1315,11 +1348,11 @@ export default function WarehouseCheckInPage({
       },
     }));
 
-    if (hasErrors || receivedBy) {
+    if (hasErrors || receivedBy || location) {
       setSnackbar({ open: true, message: 'Please fill all mandatory fields before continuing', severity: 'error' });
     }
 
-    return !hasErrors && !receivedBy;
+    return !hasErrors && !receivedBy && !location;
   };
 
   const handleTrailerMobilePrintLabelAndSubmit = (receiptKey) => {
@@ -1707,8 +1740,12 @@ export default function WarehouseCheckInPage({
     proceededReceipts.forEach((receipt) => {
       const receiptError = { formFields: {}, items: {} };
 
-      if (!receipt.receivedBy.trim()) {
+      if (!String(receipt.receivedBy || '').trim()) {
         receiptError.receivedBy = 'Received By is mandatory';
+        hasErrors = true;
+      }
+      if (!String(receipt.location || '').trim()) {
+        receiptError.location = 'Location is mandatory';
         hasErrors = true;
       }
 
@@ -1736,6 +1773,7 @@ export default function WarehouseCheckInPage({
 
       if (
         receiptError.receivedBy ||
+        receiptError.location ||
         Object.keys(receiptError.formFields).length > 0 ||
         Object.keys(receiptError.items).length > 0
       ) {
@@ -1786,6 +1824,7 @@ export default function WarehouseCheckInPage({
       parcelForm,
       parcelErrors,
       proceededReceipts,
+      ...(warehouseCheckInDraft?.receiptForms ? { receiptForms: warehouseCheckInDraft.receiptForms } : {}),
     }, draftKey));
 
     navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts, title, draftKey } });
@@ -1808,6 +1847,10 @@ export default function WarehouseCheckInPage({
         receiptError.receivedBy = 'Received By is mandatory';
         hasErrors = true;
       }
+      if (!String(receipt.location || '').trim()) {
+        receiptError.location = 'Location is mandatory';
+        hasErrors = true;
+      }
 
       (receipt.forms || []).forEach((form) => {
         (form.items || []).forEach((item) => {
@@ -1822,6 +1865,7 @@ export default function WarehouseCheckInPage({
 
       if (
         receiptError.receivedBy ||
+        receiptError.location ||
         Object.keys(receiptError.formFields).length > 0 ||
         Object.keys(receiptError.items).length > 0
       ) {
@@ -1972,7 +2016,7 @@ export default function WarehouseCheckInPage({
           searchBy={searchBy}
           setSearchBy={setSearchBy}
           searchValue={searchValue}
-          setSearchValue={setSearchValue}
+          setSearchValue={handleSearchValueChange}
           handleSearch={handleSearch}
           warehouseReceiptSearch={warehouseReceiptSearch}
           isSearchDisabled={isSearchDisabled}
@@ -2030,7 +2074,7 @@ export default function WarehouseCheckInPage({
           <RadioGroup
             row
             value={searchType}
-            onChange={(e) => { setSearchType(e.target.value); dispatch(clearReceiptSearch()); setSearchValue(''); }}
+            onChange={(e) => { setSearchType(e.target.value); dispatch(clearReceiptSearch()); handleSearchValueChange(''); }}
             sx={{ mb: 2 }}
           >
             <FormControlLabel
@@ -2255,9 +2299,10 @@ export default function WarehouseCheckInPage({
                 required
                 label={searchType === 'rmDriver' ? 'Pro' : searchBy}
                 value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
+                onChange={(e) => handleSearchValueChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 disabled={isSearchDisabled}
+                inputProps={{ maxLength: 100 }}
                 sx={{ minWidth: 200 }}
               />
 
@@ -2432,12 +2477,21 @@ export default function WarehouseCheckInPage({
                         />
                       </Stack>
                       <Stack spacing={0.5} sx={{ minWidth: 200 }}>
-                        <Typography sx={{ fontSize: 12, color: '#555' }}>Location</Typography>
+                        <Typography sx={{ fontSize: 12, color: '#555' }}>
+                          Location <span style={{ color: 'red' }}>*</span>
+                        </Typography>
                         <StyledTextField
                           variant="standard"
                           size="small"
                           value={pr.location}
-                          onChange={(e) => updateReceipt(pr.key, () => ({ location: e.target.value }))}
+                          onChange={(e) => {
+                            updateReceipt(pr.key, () => ({ location: e.target.value }));
+                            if (e.target.value.trim()) {
+                              setReceiptErrors((prev) => ({ ...prev, [pr.key]: { ...prev[pr.key], location: '' } }));
+                            }
+                          }}
+                          error={!!receiptErrors[pr.key]?.location}
+                          helperText={receiptErrors[pr.key]?.location || ' '}
                           sx={{ minWidth: 200 }}
                         />
                       </Stack>
@@ -2658,7 +2712,7 @@ export default function WarehouseCheckInPage({
                                       }}
                                       error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)]}
                                       helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)] || ' '}
-                                      inputProps={{ style: { fontSize: 13 } }}
+                                      inputProps={{ inputMode: 'decimal', style: { fontSize: 13 } }}
                                     />
                                   </Stack>
                                 ))}
