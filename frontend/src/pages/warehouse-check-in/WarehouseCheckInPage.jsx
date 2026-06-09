@@ -151,17 +151,14 @@ const toValueOrNull = (value) => {
 const toYesNo = (value) => (value ? 'Y' : 'N');
 
 const calculateItemCbm = (item) =>
-  (
-    Number(formatDecimal10_2Input(item.length)) *
-    Number(formatDecimal10_2Input(item.width)) *
-    Number(formatDecimal10_2Input(item.height)) *
-    Number(item.pieces || 1)
-  ) / 1000000 || 0;
+  Number(formatDecimal10_2Input(item.length)) *
+  Number(formatDecimal10_2Input(item.width)) *
+  Number(formatDecimal10_2Input(item.height));
 
 const formatMeasurement = (value) => {
   const number = Number(value);
-  if (!Number.isFinite(number)) return '0';
-  return Number(number.toFixed(3)).toString();
+  if (!Number.isFinite(number) || number === 0) return 0;
+  return Number.isInteger(number) ? number : Number(number.toFixed(3));
 };
 
 const normalizeEmailList = (value) => {
@@ -450,6 +447,7 @@ export default function WarehouseCheckInPage({
   const [rejectReason, setRejectReason] = useState('');
   const [rejectRow, setRejectRow]       = useState(null);
   const [rejectLoading, setRejectLoading] = useState(false);
+  const [resetReceiptDialog, setResetReceiptDialog] = useState(null);
   const [rejectedRowIds, setRejectedRowIds] = useState([]);
   const [noDataDialogOpen, setNoDataDialogOpen] = useState(false);
   const [snackbar, setSnackbar]         = useState({ open: false, message: '', severity: 'success' });
@@ -476,6 +474,7 @@ export default function WarehouseCheckInPage({
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printerContext, setPrinterContext] = useState(null);
   const [printLoading, setPrintLoading] = useState(false);
+  const [regularMobileSubmitConfirmOpen, setRegularMobileSubmitConfirmOpen] = useState(false);
   const [mobileRegularSuccessDialog, setMobileRegularSuccessDialog] = useState({ open: false, message: '', entries: [] });
   const [parcelForm, setParcelForm] = useState(createParcelForm());
   const [parcelErrors, setParcelErrors] = useState(createParcelErrors());
@@ -497,6 +496,7 @@ export default function WarehouseCheckInPage({
     setRejectReason('');
     setRejectRow(null);
     setRejectLoading(false);
+    setResetReceiptDialog(null);
     setRejectedRowIds([]);
     setNoDataDialogOpen(false);
     setSnackbar({ open: false, message: '', severity: 'success' });
@@ -515,6 +515,7 @@ export default function WarehouseCheckInPage({
     setSelectedPrinterId('');
     setPrinterContext(null);
     setPrintLoading(false);
+    setRegularMobileSubmitConfirmOpen(false);
     setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
     setParcelForm(createParcelForm());
     setParcelErrors(createParcelErrors());
@@ -657,6 +658,23 @@ export default function WarehouseCheckInPage({
     setSavedResults(null);
   };
 
+  const requestResetReceipt = (key) => {
+    setResetReceiptDialog({
+      key,
+    });
+  };
+
+  const handleCancelResetReceipt = () => {
+    setResetReceiptDialog(null);
+  };
+
+  const handleConfirmResetReceipt = () => {
+    if (resetReceiptDialog?.key) {
+      removeReceipt(resetReceiptDialog.key);
+    }
+    setResetReceiptDialog(null);
+  };
+
   const getItemErrorKey = (formId, itemId, field) => `${formId}-${itemId}-${field}`;
   const getFormErrorKey = (formId, field) => `${formId}-${field}`;
 
@@ -696,9 +714,6 @@ export default function WarehouseCheckInPage({
     if (showTrailerFreightHeader) {
       if (!String(lastForm.destination || '').trim()) {
         formErrors[getFormErrorKey(lastForm.id, 'destination')] = 'Destination is mandatory';
-      }
-      if (!String(lastForm.customerRefNoPackageId || '').trim()) {
-        formErrors[getFormErrorKey(lastForm.id, 'customerRefNoPackageId')] = 'Package ID is mandatory';
       }
     }
 
@@ -1126,7 +1141,6 @@ export default function WarehouseCheckInPage({
 
   const isTrailerFormReadyForPrint = (form) =>
     Boolean(String(form?.destination || '').trim()) &&
-    Boolean(String(form?.customerRefNoPackageId || '').trim()) &&
     (form?.items || []).length > 0 &&
     (form?.items || []).every((item) =>
       REQUIRED_ITEM_FIELDS.every(({ field }) => String(item[field] || '').trim())
@@ -1182,7 +1196,7 @@ export default function WarehouseCheckInPage({
             receiptId: isTempReceiptForm ? 0 : toNumberOrNull(row.receiptId) || 0,
             receiptNumber: toNumberOrNull(form?.receiptNumber || row.receiptNumber),
             receiptType: draftKey === 'trailer' ? 'Trailer' : 'Regular',
-            receivedBy: toValueOrNull(receipt?.receivedBy),
+            receivedBy: toValueOrNull(String(receipt?.receivedBy || '').slice(0, 100)),
             location: toValueOrNull(receipt?.location),
             shipper: toValueOrNull(getRowValue(row, ['shipper', 'shipperName'], '')),
             customerId: toNumberOrNull(row.customerId),
@@ -1316,9 +1330,6 @@ export default function WarehouseCheckInPage({
 
     if (!String(form?.destination || '').trim()) {
       formFields[getFormErrorKey(form.id, 'destination')] = 'Destination is mandatory';
-    }
-    if (!String(form?.customerRefNoPackageId || '').trim()) {
-      formFields[getFormErrorKey(form.id, 'customerRefNoPackageId')] = 'Package ID is mandatory';
     }
 
     (form?.items || []).forEach((item) => {
@@ -1755,10 +1766,6 @@ export default function WarehouseCheckInPage({
             receiptError.formFields[getFormErrorKey(form.id, 'destination')] = 'Destination is mandatory';
             hasErrors = true;
           }
-          if (!String(form.customerRefNoPackageId || '').trim()) {
-            receiptError.formFields[getFormErrorKey(form.id, 'customerRefNoPackageId')] = 'Package ID is mandatory';
-            hasErrors = true;
-          }
         }
 
         form.items.forEach((item) => {
@@ -1796,8 +1803,7 @@ export default function WarehouseCheckInPage({
               ...form,
               collapsed:
                 Boolean(
-                  receiptError.formFields?.[getFormErrorKey(form.id, 'destination')] ||
-                    receiptError.formFields?.[getFormErrorKey(form.id, 'customerRefNoPackageId')]
+                  receiptError.formFields?.[getFormErrorKey(form.id, 'destination')]
                 ) ||
                 form.items.some((item) =>
                   REQUIRED_ITEM_FIELDS.some(({ field }) => receiptError.items[getItemErrorKey(form.id, item.id, field)])
@@ -1903,6 +1909,7 @@ export default function WarehouseCheckInPage({
   };
 
   const handleRegularMobileSubmit = async () => {
+    setRegularMobileSubmitConfirmOpen(false);
     if (!validateRegularMobileSubmit()) return;
 
     const payload = hasMobileSubmitImages(proceededReceipts)
@@ -1924,6 +1931,12 @@ export default function WarehouseCheckInPage({
       message: response?.message || 'Warehouse receipts submitted successfully',
       entries: getReceiptPrintEntriesFromResponse(response),
     });
+  };
+
+  const requestRegularMobileSubmit = () => {
+    if (!validateRegularMobileSubmit()) return;
+
+    setRegularMobileSubmitConfirmOpen(true);
   };
 
   const handleMobileRegularSuccessOk = () => {
@@ -2010,7 +2023,7 @@ export default function WarehouseCheckInPage({
       {showScanGunPage ? (
         <WarehouseCheckInScanGunPage
           title={title}
-          onComplete={showTrailerFreightHeader ? handleComplete : handleRegularMobileSubmit}
+          onComplete={showTrailerFreightHeader ? handleComplete : requestRegularMobileSubmit}
           searchType={searchType}
           setSearchType={setSearchType}
           searchBy={searchBy}
@@ -2038,7 +2051,7 @@ export default function WarehouseCheckInPage({
           rejectedRowIds={rejectedRowIds}
           receiptErrors={receiptErrors}
           updateReceipt={updateReceipt}
-          removeReceipt={removeReceipt}
+          removeReceipt={requestResetReceipt}
           addForm={addForm}
           removeForm={removeForm}
           addItem={addItem}
@@ -2391,7 +2404,7 @@ export default function WarehouseCheckInPage({
                 <Button
                   size="small"
                   variant="contained"
-                  onClick={() => removeReceipt(pr.key)}
+                  onClick={() => requestResetReceipt(pr.key)}
                   sx={actionBtnSx}
                 >
                   Reset
@@ -2466,13 +2479,15 @@ export default function WarehouseCheckInPage({
                           size="small"
                           value={pr.receivedBy}
                           onChange={(e) => {
-                            updateReceipt(pr.key, () => ({ receivedBy: e.target.value }));
-                            if (e.target.value.trim()) {
+                            const nextReceivedBy = e.target.value.slice(0, 100);
+                            updateReceipt(pr.key, () => ({ receivedBy: nextReceivedBy }));
+                            if (nextReceivedBy.trim()) {
                               setReceiptErrors((prev) => ({ ...prev, [pr.key]: { ...prev[pr.key], receivedBy: '' } }));
                             }
                           }}
                           error={!!receiptErrors[pr.key]?.receivedBy}
                           helperText={receiptErrors[pr.key]?.receivedBy || ' '}
+                          inputProps={{ maxLength: 100 }}
                           sx={{ minWidth: 200 }}
                         />
                       </Stack>
@@ -2569,7 +2584,7 @@ export default function WarehouseCheckInPage({
                                   </Stack>
                                   <Stack spacing={0.3} sx={{ width: { xs: '100%', sm: 260 }, minWidth: 0 }}>
                                     <Typography sx={{ fontSize: 11, color: '#555' }}>
-                                      Package ID <span style={{ color: 'red' }}>*</span>
+                                      Package ID
                                     </Typography>
                                     <StyledTextField
                                       variant="standard"
@@ -2579,16 +2594,7 @@ export default function WarehouseCheckInPage({
                                         updateFormField(pr.key, form.id, 'customerRefNoPackageId', e.target.value);
                                         clearFormFieldError(pr.key, form.id, 'customerRefNoPackageId', e.target.value);
                                       }}
-                                      error={
-                                        !!receiptErrors[pr.key]?.formFields?.[
-                                          getFormErrorKey(form.id, 'customerRefNoPackageId')
-                                        ]
-                                      }
-                                      helperText={
-                                        receiptErrors[pr.key]?.formFields?.[
-                                          getFormErrorKey(form.id, 'customerRefNoPackageId')
-                                        ] || ' '
-                                      }
+                                      helperText=" "
                                       inputProps={{ style: { fontSize: 13 } }}
                                     />
                                   </Stack>
@@ -2915,6 +2921,65 @@ export default function WarehouseCheckInPage({
             ) : (
               'Reject'
             )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(resetReceiptDialog)} onClose={handleCancelResetReceipt} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Reset Receipt</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 13 }}>
+            Are you sure you want to reset?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCancelResetReceipt}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleConfirmResetReceipt}
+            sx={{ ...actionBtnSx, height: 32 }}
+          >
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={regularMobileSubmitConfirmOpen}
+        onClose={() => setRegularMobileSubmitConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Submit Warehouse Check-In</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 13 }}>
+            Are you sure you want to submit?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setRegularMobileSubmitConfirmOpen(false)}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleRegularMobileSubmit}
+            sx={{ ...actionBtnSx, height: 32 }}
+          >
+            Yes
           </Button>
         </DialogActions>
       </Dialog>
