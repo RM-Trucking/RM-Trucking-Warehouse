@@ -92,6 +92,8 @@ export async function listWarehouseReceipts(req: Request, res: Response, conn: C
         });
     } catch (error: any) {
         logger.error("Error listing warehouse receipts", error);
+        console.log(error);
+        
         res.status(500).json({ success: false, message: error.message });
     }
 }

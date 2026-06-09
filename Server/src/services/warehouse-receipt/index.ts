@@ -84,7 +84,91 @@ export async function listWarehouseReceiptsService(
     filters?: { status?: string; carrierId?: number }
 ) {
     const offset = (page - 1) * pageSize;
-    const data = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, filters);
+    let data = [];
+    data = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, filters);
+
+    data = await Promise.all(
+        data.map(async (receipt) => {
+            const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receipt.receiptId);
+            return { ...receipt, badFreightConditionImages };
+        })
+    );
+
+    data = await Promise.all(
+        data.map(async (receipt) => {
+            const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+            const freightWithImages = await Promise.all(
+                freightInfos.map(async (freight) => ({
+                    ...freight,
+                    images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
+                }))
+            );
+            return { ...receipt, freightInformation: freightWithImages };
+        })
+    );
+    const DIM_FACTOR = 166;
+
+    data = await Promise.all(
+        data.map(async (receipt) => {
+            const rate = await customerDB.getStationRateDetails(conn, receipt.stationId);
+
+            if (rate && rate.length > 0) {
+                let totalActualWeight = 0;
+                let totalDimensionalWeight = 0;
+
+                if (receipt.freightInformation && Array.isArray(receipt.freightInformation)) {
+                    receipt.freightInformation.forEach((freight) => {
+                        const {
+                            pieces = 0,
+                            length = 0,
+                            width = 0,
+                            height = 0,
+                            weight = 0,
+                        } = freight;
+
+                        // ✅ Sum actual weight
+                        totalActualWeight += weight;
+
+                        // ✅ Sum dimensional weight
+                        const dimWeight = (pieces * length * width * height) / DIM_FACTOR;
+                        totalDimensionalWeight += dimWeight;
+                    });
+                }
+
+                // ✅ Compare totals
+                const chargeableWeight = Math.max(totalActualWeight, totalDimensionalWeight);
+
+                const rateInformation = {
+                    minRate: rate[0].minRate,
+                    maxRate: rate[0].maxRate,
+                    ratePerPound: rate[0].ratePerPound,
+                    finalRate: chargeableWeight * rate[0].ratePerPound,
+                    rateCalculatedBy: totalActualWeight >= totalDimensionalWeight ? "ACTUAL_WEIGHT" : "DIMENSIONAL_WEIGHT",
+                };
+
+                // ✅ Optional min/max enforcement
+                if (
+                    rateInformation.minRate &&
+                    rateInformation.finalRate < rateInformation.minRate
+                ) {
+                    rateInformation.finalRate = rateInformation.minRate;
+                }
+
+                if (
+                    rateInformation.maxRate &&
+                    rateInformation.finalRate > rateInformation.maxRate
+                ) {
+                    rateInformation.finalRate = rateInformation.maxRate;
+                }
+
+                return { ...receipt, rateInformation };
+
+            } else {
+                return { ...receipt, rateInformation: null };
+            }
+        })
+    );
+
     return { data, page, pageSize };
 }
 
@@ -432,7 +516,7 @@ export async function batchProcessWarehouseReceiptsService(
                 }
 
                 // System fields that should NOT be updated
-                const systemFields = ['receiptId', 'receiptNumber', 'createdAt', 'createdBy', 'documentId', 'entityId', 'noteThreadId', 'receiptDate'];
+                const systemFields = ['receiptId', 'receiptNumber', 'createdAt', 'createdBy', 'entityId', 'noteThreadId', 'receiptDate'];
 
                 // Extract only updateable fields from provided receipt
                 const updateData: any = {};

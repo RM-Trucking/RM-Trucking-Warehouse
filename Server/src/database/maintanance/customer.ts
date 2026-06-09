@@ -78,3 +78,15 @@ export async function getStationByRmAccountNumber(
     const result = (await conn.query(query, [rmAccountNumber])) as any[];
     return result.length > 0 ? result[0] : null;
 }
+
+
+export async function getStationRateDetails(conn: Connection, stationId: number): Promise<{ rateId: number; customerRateId: number; minRate: number; maxRate: number; ratePerPound: number; department: string; warehouse: string }[]> {
+    const query = `
+    SELECT "crw"."rateId", "crw"."customerRateId", "crw"."minRate", "crw"."maxRate", "crw"."ratePerPound", "crw"."department", "crw"."warehouse"
+    FROM ${SCHEMA}."Customer_Rate_Warehouse" "crw"
+    LEFT JOIN ${SCHEMA}."Station_Rate_Map" "srm" ON "srm"."rateType" = 'WAREHOUSE' AND "crw"."rateId" = "srm"."rateId" 
+    WHERE "srm"."stationId" = ?
+    `;
+    const result = await conn.query(query, [stationId]) as any[];
+    return result;
+}

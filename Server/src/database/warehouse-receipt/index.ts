@@ -63,7 +63,7 @@ export async function getWarehouseReceiptTempByNumber(conn: Connection, receiptN
  */
 export async function createWarehouseReceipt(
     conn: Connection,
-    receipt: Omit<WarehouseReceipt, "receiptId" | "receivedBy" | "location">
+    receipt: Omit<WarehouseReceipt, "receiptId">
 ): Promise<number> {
     const query = `
         SELECT "receiptId"
@@ -107,9 +107,12 @@ export async function createWarehouseReceipt(
                 "toEmails",
                 "cubicMeter",
                 "receiptType",
-                "notes"
+                "notes",
+                "receivedBy",
+                "location",
+                "reWeight"
             )
-            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -150,7 +153,10 @@ export async function createWarehouseReceipt(
         Array.isArray(receipt.toEmails) ? JSON.stringify(receipt.toEmails) : receipt.toEmails ?? null,
         receipt.cubicMeter !== undefined ? Number(receipt.cubicMeter) : null,
         receipt.receiptType ?? 'Regular',
-        receipt.notes ?? ''
+        receipt.notes ?? '',
+        receipt.receivedBy ?? '',
+        receipt.location ?? '',
+        receipt.reWeight ?? 0
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -218,7 +224,7 @@ export async function getWarehouseReceiptsByVerification(
 }
 
 export async function getWarehouseReceiptsByCustomerStation(conn: Connection, customerId: number, stationId: number): Promise<WarehouseReceipt[]> {
-    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt" WHERE "customerId" = ? AND "stationId" = ? ORDER BY "receiptNumber" DESC`;
+    const query = `SELECT "wr".* FROM ${SCHEMA}."Warehouse_Receipt" "wr" WHERE "wr"."customerId" = ? AND "wr"."stationId" = ? ORDER BY "wr"."receiptNumber" DESC`;
     const result = await conn.query(query, [customerId, stationId]) as WarehouseReceipt[];
     return result.map((row: any) => ({
         ...row,
@@ -232,19 +238,25 @@ export async function getWarehouseReceiptsByCustomerStation(conn: Connection, cu
 }
 
 export async function listWarehouseReceipts(conn: Connection, limit: number, offset: number, filters?: { status?: string; carrierId?: number }): Promise<WarehouseReceipt[]> {
-    let query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt" WHERE 1=1`;
+    let query = `
+    SELECT "wr".* , "c"."carrierName", "cust"."customerName", "s"."stationName"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wr"."carrierId" = "c"."carrierId"
+    LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wr"."customerId" = "cust"."customerId"
+    LEFT JOIN ${SCHEMA}."Station" "s" ON "wr"."stationId" = "s"."stationId"
+    WHERE 1=1`;
     const params: (string | number)[] = [];
 
     if (filters?.status) {
-        query += ` AND "status" = ?`;
+        query += ` AND "wr"."status" = ?`;
         params.push(filters.status);
     }
     if (filters?.carrierId) {
-        query += ` AND "carrierId" = ?`;
+        query += ` AND "wr"."carrierId" = ?`;
         params.push(filters.carrierId);
     }
 
-    query += ` ORDER BY "receiptNumber" DESC LIMIT ? OFFSET ?`;
+    query += ` ORDER BY "wr"."receiptNumber" DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const result = await conn.query(query, params) as WarehouseReceipt[];
@@ -254,9 +266,11 @@ export async function listWarehouseReceipts(conn: Connection, limit: number, off
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
         verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
-        documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : [],
+        unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
+        class: row.class ? JSON.parse(row.class) : []
     }));
 }
 

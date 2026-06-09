@@ -36,6 +36,9 @@ export async function createWarehouseReceiptPDF(
     rating: boolean,
     outPath: string
 ) {
+
+    console.log("Received By and Location : ", data.receivedBy, data.location)
+
     const pdfDoc = await PDFDocument.create();
     const chunkedData = chunkFreightInformation(data);
 

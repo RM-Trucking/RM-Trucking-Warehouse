@@ -81,6 +81,9 @@ export interface WarehouseReceipt {
     rejectionReason?: string;
     receiptType?: 'Regular' | 'Trailer';
     notes?: string;
+    accountOnHold: 'Y' | 'N';
+    sendToTellSystem: 'Y' | 'N';
+    hasFlatRate: 'Y' | 'N';
 }
 
 /**
@@ -127,6 +130,9 @@ export interface CreateWarehouseReceipt {
     entityId: number;
     receiptType?: 'Regular' | 'Trailer';
     notes?: string;
+    accountOnHold?: 'Y' | 'N';
+    sendToTellSystem?: 'Y' | 'N';
+    hasFlatRate?: 'Y' | 'N';
 }
 
 /**

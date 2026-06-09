@@ -129,7 +129,7 @@ export async function createVerificationService(
                 const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
 
                 // Step 7: Create WarehouseReceipt
-                const receipt: Omit<WarehouseReceipt, "receiptId" | "receivedBy" | "location"> = {
+                const receipt: Omit<WarehouseReceipt, "receiptId"> = {
                     receiptNumber,
                     receiptDate: new Date(),
                     shipper: detail.shipper,
@@ -146,6 +146,11 @@ export async function createVerificationService(
                     entityId: entityId,
                     noteThreadId: noteThreadId,
                     toEmails: detail.toEmails,
+                    accountOnHold: 'N',
+                    sendToTellSystem: 'N',
+                    hasFlatRate: 'N',
+                    location: "",
+                    receivedBy: ""
                 };
 
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, receipt);
