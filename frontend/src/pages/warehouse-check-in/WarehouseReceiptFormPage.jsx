@@ -532,6 +532,7 @@ export default function WarehouseReceiptFormPage() {
   const freightUploadInputRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
   const isWarehouseReceiptView = Boolean(state?.warehouseReceiptView);
+  const isWarehouseReceiptEdit = Boolean(state?.warehouseReceiptEdit);
   const viewReceiptSummary = state?.viewReceiptSummary || null;
   const initialReceiptForms = useMemo(() => {
     const routeReceipts = state?.receipts || [];
@@ -575,7 +576,7 @@ export default function WarehouseReceiptFormPage() {
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
   const persistReceiptFormDraft = (forms = receiptForms) => {
-    if (isWarehouseReceiptView) return;
+    if (isWarehouseReceiptView || isWarehouseReceiptEdit) return;
 
     dispatch(setWarehouseCheckInDraft({
       ...(selectedDraft || {}),
@@ -583,7 +584,7 @@ export default function WarehouseReceiptFormPage() {
     }, selectedDraftKey));
   };
   const handleBack = () => {
-    if (isWarehouseReceiptView) {
+    if (isWarehouseReceiptView || isWarehouseReceiptEdit) {
       navigate(PATH_DASHBOARD.warehouseReceiptDashboard);
       return;
     }
@@ -996,6 +997,10 @@ export default function WarehouseReceiptFormPage() {
   const handleSuccessDialogOk = () => {
     setSuccessDialog({ open: false, message: '', receiptNumbers: [] });
     dispatch(clearWarehouseCheckInDraft(state?.draftKey));
+    if (isWarehouseReceiptEdit) {
+      navigate(PATH_DASHBOARD.warehouseReceiptDashboard);
+      return;
+    }
     navigate(PATH_DASHBOARD.warehouseCheckIn);
   };
 
@@ -1048,6 +1053,30 @@ export default function WarehouseReceiptFormPage() {
 
   const handleViewAction = (message) => {
     setSnackbar({ open: true, message, severity: 'info' });
+  };
+
+  const handleEditWarehouseReceipt = () => {
+    navigate(PATH_DASHBOARD.warehouseReceiptForm, {
+      replace: true,
+      state: {
+        ...(state || {}),
+        title: 'Edit Warehouse Receipt Form',
+        warehouseReceiptView: false,
+        warehouseReceiptEdit: true,
+      },
+    });
+  };
+
+  const handleCancelEditWarehouseReceipt = () => {
+    navigate(PATH_DASHBOARD.warehouseReceiptForm, {
+      replace: true,
+      state: {
+        ...(state || {}),
+        title: 'Warehouse Receipt Form',
+        warehouseReceiptView: true,
+        warehouseReceiptEdit: false,
+      },
+    });
   };
 
   const getRateDialogRows = () =>
@@ -1201,7 +1230,7 @@ export default function WarehouseReceiptFormPage() {
             <Button
               variant="contained"
               size="small"
-              onClick={() => handleViewAction('Edit action is not available yet')}
+              onClick={handleEditWarehouseReceipt}
               sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
             >
               Edit
@@ -1240,6 +1269,26 @@ export default function WarehouseReceiptFormPage() {
           >
             OK
           </Button>
+        ) : isWarehouseReceiptEdit ? (
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleCancelEditWarehouseReceipt}
+              sx={{ height: 24, fontSize: 11, color: '#111', borderColor: '#777', bgcolor: '#fff', textTransform: 'none' }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={warehouseReceiptBatch.loading}
+              onClick={handleSubmit}
+              sx={{ ...actionBtnSx, height: 24, minWidth: 58 }}
+            >
+              {warehouseReceiptBatch.loading ? 'Updating...' : 'Update'}
+            </Button>
+          </Stack>
         ) : (
           <Stack direction="row" spacing={1}>
             <Button variant="outlined" size="small" onClick={handleBack} sx={{ height: 24, fontSize: 11, color: '#111', borderColor: '#777', bgcolor: '#fff' }}>
@@ -1260,7 +1309,7 @@ export default function WarehouseReceiptFormPage() {
 
       {renderViewSummary()}
 
-      {(!isWarehouseReceiptView || receiptForms.length > 1) && (
+      {((!isWarehouseReceiptView && !isWarehouseReceiptEdit) || receiptForms.length > 1) && (
       <Box sx={{ px: 2, bgcolor: '#efefef', boxSizing: 'border-box' }}>
         <Tabs
           value={activeTab}
