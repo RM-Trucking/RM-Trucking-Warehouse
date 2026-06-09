@@ -308,6 +308,11 @@ const getFormsFromState = (receipts = []) =>
     })
   );
 
+const getReceiptFormSignature = (forms = []) =>
+  forms
+    .map((form) => `${form.id}:${form.receiptNumber || ''}:${form.items?.length || 0}`)
+    .join('|');
+
 function Section({ title, children, sx }) {
   return (
     <fieldset style={{ border: '1px solid #8f8f8f', borderRadius: 2, padding: '10px 12px', margin: 0, minWidth: 0, boxSizing: 'border-box', ...sx }}>
@@ -420,7 +425,7 @@ function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove
   );
 }
 
-function ReceiptInfoRow({ label, value, editable = false, required = false, error = '', onChange }) {
+function ReceiptInfoRow({ label, value, editable = false, required = false, error = '', maxLength, onChange }) {
   return (
     <Stack
       direction="row"
@@ -433,12 +438,16 @@ function ReceiptInfoRow({ label, value, editable = false, required = false, erro
       </Typography>
       <TextField
         value={value || ''}
-        onChange={(event) => onChange?.(event.target.value)}
+        onChange={(event) => {
+          const nextValue = maxLength ? event.target.value.slice(0, maxLength) : event.target.value;
+          onChange?.(nextValue);
+        }}
         size="small"
         fullWidth
         error={Boolean(error)}
         helperText={error || ''}
         InputProps={{ readOnly: !editable }}
+        inputProps={maxLength ? { maxLength } : undefined}
         sx={{
           '& .MuiInputBase-root': { height: 30, bgcolor: '#fff', borderRadius: 0.8 },
           '& .MuiInputBase-input': { py: 0, fontSize: 15, fontWeight: 700 },
@@ -523,10 +532,21 @@ export default function WarehouseReceiptFormPage() {
   const freightUploadInputRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
   const initialReceiptForms = useMemo(() => {
+    const routeReceipts = state?.receipts || [];
     const savedReceiptForms = warehouseCheckInDrafts?.[selectedDraftKey]?.receiptForms || [];
+
+    if (routeReceipts.length) {
+      const routeForms = getFormsFromState(routeReceipts);
+      const canUseSavedForms =
+        savedReceiptForms.length > 0 &&
+        getReceiptFormSignature(savedReceiptForms) === getReceiptFormSignature(routeForms);
+
+      if (canUseSavedForms) return savedReceiptForms;
+      return routeForms.length ? routeForms : buildEmptyReceiptForms();
+    }
+
     if (savedReceiptForms.length) return savedReceiptForms;
 
-    const routeReceipts = state?.receipts || [];
     const draftReceipts =
       warehouseCheckInDrafts?.[selectedDraftKey]?.proceededReceipts ||
       warehouseCheckInDrafts?.regular?.proceededReceipts ||
@@ -815,7 +835,7 @@ export default function WarehouseReceiptFormPage() {
           receiptId: receiptId || 0,
           receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(formRow, 'receiptNumber', null)),
           receiptType: selectedDraftKey === 'trailer' ? 'Trailer' : 'Regular',
-          receivedBy: toValueOrNull(form.receivedBy),
+          receivedBy: toLimitedValueOrNull(form.receivedBy, 100),
           location: toValueOrNull(form.location),
           shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
           customerId: toNumberOrNull(customerSelection.customerId || formRow.customerId),
@@ -1099,6 +1119,7 @@ export default function WarehouseReceiptFormPage() {
                   editable
                   required
                   error={receiptInfoErrors[activeForm.id]?.receivedBy}
+                  maxLength={100}
                   onChange={(value) => updateActiveFormField('receivedBy', value)}
                 />
                 <ReceiptInfoRow

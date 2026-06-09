@@ -373,6 +373,7 @@ export default function WarehouseCheckInScanGunPage({
 }) {
   const visibleRows = (warehouseReceiptSearch.data?.rows || []).filter((row) => !rejectedRowIds.includes(row.id));
   const [deleteItemDialog, setDeleteItemDialog] = useState(null);
+  const [deleteFormDialog, setDeleteFormDialog] = useState(null);
   const requestRemoveItem = (receiptKey, formId, itemId, itemIndex) => {
     setDeleteItemDialog({ receiptKey, formId, itemId, itemIndex });
   };
@@ -384,6 +385,18 @@ export default function WarehouseCheckInScanGunPage({
 
     removeItem(deleteItemDialog.receiptKey, deleteItemDialog.formId, deleteItemDialog.itemId);
     setDeleteItemDialog(null);
+  };
+  const requestRemoveForm = (receiptKey, formId, formIndex) => {
+    setDeleteFormDialog({ receiptKey, formId, formIndex });
+  };
+  const handleCancelRemoveForm = () => {
+    setDeleteFormDialog(null);
+  };
+  const handleConfirmRemoveForm = () => {
+    if (!deleteFormDialog) return;
+
+    removeForm(deleteFormDialog.receiptKey, deleteFormDialog.formId);
+    setDeleteFormDialog(null);
   };
 
   const toggleFreightOption = (receiptKey, formId, option) => {
@@ -565,7 +578,14 @@ export default function WarehouseCheckInScanGunPage({
 
               <Box sx={sectionSx}>
                 <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Location & Receiver</Typography>
-                <ScanField label="Received By" required value={receipt.receivedBy} error={receiptErrors[receipt.key]?.receivedBy} onChange={(event) => updateReceipt(receipt.key, () => ({ receivedBy: event.target.value }))} />
+                <ScanField
+                  label="Received By"
+                  required
+                  value={receipt.receivedBy}
+                  error={receiptErrors[receipt.key]?.receivedBy}
+                  onChange={(event) => updateReceipt(receipt.key, () => ({ receivedBy: event.target.value.slice(0, 100) }))}
+                  inputProps={{ maxLength: 100 }}
+                />
                 <ScanField label="Location" required value={receipt.location} error={receiptErrors[receipt.key]?.location} onChange={(event) => updateReceipt(receipt.key, () => ({ location: event.target.value }))} />
               </Box>
 
@@ -591,7 +611,7 @@ export default function WarehouseCheckInScanGunPage({
                               title="Remove form"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                removeForm(receipt.key, form.id);
+                                requestRemoveForm(receipt.key, form.id, formIndex);
                               }}
                               sx={{ p: 0.25, color: '#A22' }}
                             >
@@ -616,9 +636,7 @@ export default function WarehouseCheckInScanGunPage({
                               />
                               <ScanField
                                 label="Package ID"
-                                required
                                 value={form.customerRefNoPackageId || ''}
-                                error={receiptErrors[receipt.key]?.formFields?.[`${form.id}-customerRefNoPackageId`]}
                                 onChange={(event) => {
                                   updateFormField(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
                                   clearFormFieldError(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
@@ -719,6 +737,32 @@ export default function WarehouseCheckInScanGunPage({
             variant="contained"
             size="small"
             onClick={handleConfirmRemoveItem}
+            sx={{ ...scanActionBtnSx, height: 32 }}
+          >
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(deleteFormDialog)} onClose={handleCancelRemoveForm} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>Delete Form</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 13 }}>
+            Are you sure you want to delete Form {(deleteFormDialog?.formIndex ?? 0) + 1}?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCancelRemoveForm}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleConfirmRemoveForm}
             sx={{ ...scanActionBtnSx, height: 32 }}
           >
             Yes
