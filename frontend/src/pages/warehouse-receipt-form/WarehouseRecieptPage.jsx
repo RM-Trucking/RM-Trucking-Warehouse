@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -16,6 +17,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import Iconify from '../../components/iconify';
+import { PATH_DASHBOARD } from '../../routes/paths';
 
 const statusTabs = [
   { label: 'Active', count: 100 },
@@ -58,6 +60,16 @@ const rows = Array.from({ length: 25 }, (_, index) => {
     location: locations[index % locations.length],
     rate: index > 3 ? '120.00' : '130.00',
     createdDate: ['03/15/2026', '07/22/2026', '11/09/2026', '01/30/2026', '05/12/2026'][index % 5],
+    receivedBy: index % 2 === 0 ? 'Dock User' : 'Warehouse User',
+    pieces: String((index % 4) + 1),
+    type: ['Skid', 'Crate', 'Box', 'Pallet'][index % 4],
+    length: String(42 + index),
+    width: String(36 + (index % 5)),
+    height: String(30 + (index % 6)),
+    weight: String(120 + index * 3),
+    invoiceNo: `INV-${receiptNumber}`,
+    poNumber: `PO-${receiptNumber}`,
+    customerRefNo: `REF-${receiptNumber}`,
   };
 });
 
@@ -89,6 +101,7 @@ const gridSx = {
 };
 
 export default function WarehouseRecieptPage() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
@@ -168,10 +181,15 @@ export default function WarehouseRecieptPage() {
       minWidth: 190,
       align: 'right',
       headerAlign: 'right',
-      renderCell: () => (
+      renderCell: (params) => (
         <Stack direction="row" justifyContent="flex-end" spacing={0.4} sx={{ width: '100%' }}>
           {actionIcons.map((icon) => (
-            <IconButton key={icon} size="small" sx={{ p: 0.25 }}>
+            <IconButton
+              key={icon}
+              size="small"
+              onClick={icon === 'mdi:eye' ? () => handleViewReceipt(params.row) : undefined}
+              sx={{ p: 0.25 }}
+            >
               <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
             </IconButton>
           ))}
@@ -183,6 +201,60 @@ export default function WarehouseRecieptPage() {
   const handleStatusChange = (label, checked) => {
     setSelectedStatuses((prev) => ({ ...prev, [label]: checked }));
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleViewReceipt = (row) => {
+    navigate(PATH_DASHBOARD.warehouseReceiptForm, {
+      state: {
+        title: 'Warehouse Receipt Form',
+        draftKey: `warehouse-receipt-view-${row.receiptNumber}`,
+        warehouseReceiptView: true,
+        viewReceiptSummary: {
+          receiptNumber: row.receiptNumber,
+          status: row.status,
+        },
+        receipts: [
+          {
+            key: `warehouse-receipt-${row.receiptNumber}`,
+            proNumber: row.proNumber,
+            receivedBy: row.receivedBy,
+            location: row.location,
+            row: {
+              ...row,
+              receiptId: row.id,
+              receiptNumber: row.receiptNumber,
+              carrier: row.carrier,
+              customer: row.customer,
+              proNumber: row.proNumber,
+              invoiceNo: row.invoiceNo,
+              poNumber: row.poNumber,
+              customerRefNo: row.customerRefNo,
+              piecesInland: row.pieces,
+              weightInland: row.weight,
+            },
+            forms: [
+              {
+                id: 1,
+                receiptNumber: row.receiptNumber,
+                freightOptions: [],
+                items: [
+                  {
+                    id: 1,
+                    pieces: row.pieces,
+                    type: row.type,
+                    length: row.length,
+                    width: row.width,
+                    height: row.height,
+                    weight: row.weight,
+                    images: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
   };
 
   return (
