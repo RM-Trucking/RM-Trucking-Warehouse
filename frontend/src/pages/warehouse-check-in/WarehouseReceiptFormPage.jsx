@@ -522,6 +522,8 @@ export default function WarehouseReceiptFormPage() {
   const freightCameraInputRef = useRef(null);
   const freightUploadInputRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
+  const isWarehouseReceiptView = Boolean(state?.warehouseReceiptView);
+  const viewReceiptSummary = state?.viewReceiptSummary || null;
   const initialReceiptForms = useMemo(() => {
     const savedReceiptForms = warehouseCheckInDrafts?.[selectedDraftKey]?.receiptForms || [];
     if (savedReceiptForms.length) return savedReceiptForms;
@@ -548,15 +550,24 @@ export default function WarehouseReceiptFormPage() {
   const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
+  const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
+  const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
   const persistReceiptFormDraft = (forms = receiptForms) => {
+    if (isWarehouseReceiptView) return;
+
     dispatch(setWarehouseCheckInDraft({
       ...(selectedDraft || {}),
       receiptForms: forms,
     }, selectedDraftKey));
   };
   const handleBack = () => {
+    if (isWarehouseReceiptView) {
+      navigate(PATH_DASHBOARD.warehouseReceiptDashboard);
+      return;
+    }
+
     persistReceiptFormDraft();
     navigate(
       selectedDraftKey === 'trailer'
@@ -1015,6 +1026,179 @@ export default function WarehouseReceiptFormPage() {
     handleClosePrinterDialog();
   };
 
+  const handleViewAction = (message) => {
+    setSnackbar({ open: true, message, severity: 'info' });
+  };
+
+  const getRateDialogRows = () =>
+    (activeForm?.items || []).map((item) => {
+      const pieces = String(item.pieces || '01').padStart(2, '0');
+      const length = Number(formatDecimal10_2Input(item.length)) || 0;
+      const width = Number(formatDecimal10_2Input(item.width)) || 0;
+      const height = Number(formatDecimal10_2Input(item.height)) || 0;
+      const dimWeight = formatMeasurement((Number(item.pieces || 1) * length * width * height) / 166);
+      const actualWeight = Number(item.weight || 0);
+
+      return {
+        pieces,
+        type: item.type || 'Box',
+        formula: `${Number(item.pieces || 1)} x ${length} x ${width} x ${height} / 166 = ${dimWeight}`,
+        dimWeight,
+        actualWeight,
+      };
+    });
+
+  const getRatesTotal = () => {
+    const rateRows = getRateDialogRows();
+    const dimWeightTotal = rateRows.reduce((sum, row) => sum + Number(row.dimWeight || 0), 0);
+    const actualWeightTotal = rateRows.reduce((sum, row) => sum + Number(row.actualWeight || 0), 0);
+
+    return {
+      dimWeightTotal: formatMeasurement(dimWeightTotal),
+      actualWeightTotal: formatMeasurement(actualWeightTotal),
+      estimatedCost: 100,
+    };
+  };
+
+  const getStatusHistoryRows = () => {
+    const receiptNumber = viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber || '';
+    const proNumber = getRowValue(activeForm?.row, 'proNumber', '');
+    const status = String(viewReceiptSummary?.status || getRowValue(activeForm?.row, 'status', '') || 'ON-HAND').toUpperCase();
+    const description = (
+      <>
+        Items from ID verification form{' '}
+        <Box component="span" sx={{ color: '#A22', fontWeight: 700, textDecoration: 'underline' }}>
+          {receiptNumber}
+        </Box>{' '}
+        have been successfully loaded in the Warehouse
+      </>
+    );
+
+    return [
+      {
+        warehouseId: receiptNumber,
+        pro: proNumber,
+        level: 'Important',
+        time: '5/6/26, 3:52 AM',
+        user: 'Chris',
+        status,
+        description,
+      },
+      {
+        warehouseId: receiptNumber,
+        pro: proNumber,
+        level: 'Important',
+        time: '5/6/26, 3:52 AM',
+        user: 'Mike',
+        status,
+        description,
+      },
+    ];
+  };
+
+  const renderViewSummary = () => {
+    if (!isWarehouseReceiptView || !viewReceiptSummary) return null;
+
+    const receiptNumber = viewReceiptSummary.receiptNumber || activeForm?.receiptNumber || '';
+    const status = String(viewReceiptSummary.status || getRowValue(activeForm?.row, 'status', '') || '').toUpperCase();
+
+    return (
+      <Box sx={{ bgcolor: '#efefef', px: 2, pt: 1.2, pb: 1.4 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'flex-end' }} justifyContent="space-between" spacing={2}>
+          <Box
+            sx={{
+              width: { xs: '100%', sm: 500 },
+              bgcolor: '#d2d2d2',
+              borderRadius: 1,
+              px: 1.6,
+              py: 1.2,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' },
+                alignItems: 'center',
+                rowGap: 1,
+              }}
+            >
+              <Stack direction="row" spacing={0.5} sx={{ gridColumn: { xs: '1', sm: '1 / 4' }, pb: 0.9, borderBottom: '1px solid #9d9d9d' }}>
+                <Typography sx={{ fontSize: 18 }}>Receipt Number :</Typography>
+                <Typography sx={{ fontSize: 18, fontWeight: 700 }}>{receiptNumber}</Typography>
+              </Stack>
+              <Typography sx={{ fontSize: 18, pt: { xs: 0, sm: 0.6 } }}>Status :</Typography>
+              <Typography sx={{ fontSize: 18, fontWeight: 700, pt: { xs: 0, sm: 0.6 } }}>{status}</Typography>
+              <Box sx={{ pt: { xs: 0, sm: 0.6 } }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={() => setStatusHistoryDialogOpen(true)}
+                  sx={{ ...actionBtnSx, height: 28, minWidth: 124, px: 1.4, fontSize: 14 }}
+                >
+                  Status History
+                </Button>
+              </Box>
+              <Box sx={{ gridColumn: { xs: '1', sm: '1 / 4' }, borderTop: '1px solid #b6b6b6', pt: 1.1 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    sx={{ ...actionBtnSx, height: 30, flex: 1, fontSize: 14 }}
+                  >
+                    Print
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    sx={{ ...actionBtnSx, height: 30, flex: 1, fontSize: 14 }}
+                  >
+                    Print Labels
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => setRatesDialogOpen(true)}
+                    sx={{ ...actionBtnSx, height: 30, flex: 1, fontSize: 14 }}
+                  >
+                    Rates
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          </Box>
+
+          <Stack direction="row" justifyContent="flex-end" spacing={1}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => handleViewAction('Split action is not available yet')}
+              sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
+            >
+              Split
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => handleViewAction('Edit action is not available yet')}
+              sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
+            >
+              Edit
+            </Button>
+            <IconButton
+              size="small"
+              onClick={() => handleViewAction('More actions are not available yet')}
+              sx={{ bgcolor: '#A22', color: '#fff', borderRadius: 0.6, width: 24, height: 22, '&:hover': { bgcolor: '#8b1c1c' } }}
+            >
+              <Iconify icon="mdi:dots-vertical" width={15} />
+            </IconButton>
+          </Stack>
+        </Stack>
+      </Box>
+    );
+  };
+
   return (
     <Box sx={{ bgcolor: '#dcdcdc', minHeight: '100vh', width: '100%', overflowX: 'hidden', boxSizing: 'border-box' }}>
       <Stack
@@ -1027,22 +1211,36 @@ export default function WarehouseReceiptFormPage() {
           <Iconify icon="eva:arrow-ios-back-fill" width={14} />
           <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{pageTitle}</Typography>
         </Stack>
-        <Stack direction="row" spacing={1}>
-          <Button variant="outlined" size="small" onClick={handleBack} sx={{ height: 24, fontSize: 11, color: '#111', borderColor: '#777', bgcolor: '#fff' }}>
-            Back
-          </Button>
+        {isWarehouseReceiptView ? (
           <Button
             variant="contained"
             size="small"
-            disabled={warehouseReceiptBatch.loading}
-            onClick={handleSubmit}
-            sx={{ ...actionBtnSx, height: 24, minWidth: 58 }}
+            onClick={handleBack}
+            sx={{ ...actionBtnSx, height: 24, minWidth: 52 }}
           >
-            {warehouseReceiptBatch.loading ? 'Submitting...' : 'Submit'}
+            OK
           </Button>
-        </Stack>
+        ) : (
+          <Stack direction="row" spacing={1}>
+            <Button variant="outlined" size="small" onClick={handleBack} sx={{ height: 24, fontSize: 11, color: '#111', borderColor: '#777', bgcolor: '#fff' }}>
+              Back
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={warehouseReceiptBatch.loading}
+              onClick={handleSubmit}
+              sx={{ ...actionBtnSx, height: 24, minWidth: 58 }}
+            >
+              {warehouseReceiptBatch.loading ? 'Submitting...' : 'Submit'}
+            </Button>
+          </Stack>
+        )}
       </Stack>
 
+      {renderViewSummary()}
+
+      {(!isWarehouseReceiptView || receiptForms.length > 1) && (
       <Box sx={{ px: 2, bgcolor: '#efefef', boxSizing: 'border-box' }}>
         <Tabs
           value={activeTab}
@@ -1063,6 +1261,7 @@ export default function WarehouseReceiptFormPage() {
           ))}
         </Tabs>
       </Box>
+      )}
 
       <Box sx={{ p: 2, boxSizing: 'border-box', maxWidth: '100%' }}>
         <Box sx={{ bgcolor: '#fff', border: '1px solid #c9c9c9', borderRadius: 1, px: 2, pt: 0.25, pb: 2, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
@@ -1795,6 +1994,181 @@ export default function WarehouseReceiptFormPage() {
               {printLoading ? 'Printing...' : 'Print'}
             </Button>
           </Stack>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={ratesDialogOpen}
+        onClose={() => setRatesDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1.2,
+            minHeight: 430,
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
+              Charges/Rating - {viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber || ''}
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setRatesDialogOpen(false)}
+                sx={{ height: 24, minWidth: 70, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => handleViewAction('Ready for Approval action is not available yet')}
+                sx={{ ...actionBtnSx, height: 24, minWidth: 132, fontSize: 11 }}
+              >
+                Ready for Approval
+              </Button>
+            </Stack>
+          </Stack>
+
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ xs: 'stretch', md: 'flex-end' }} sx={{ mt: 2 }}>
+            <TextField
+              variant="standard"
+              label="Dim Factor"
+              defaultValue="165"
+              size="small"
+              sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 11 }, '& input': { fontSize: 12 } }}
+            />
+            <TextField
+              variant="standard"
+              label="Base Rate"
+              defaultValue="0.025"
+              size="small"
+              sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 11 }, '& input': { fontSize: 12 } }}
+            />
+            <FormControlLabel
+              control={<Checkbox defaultChecked size="small" sx={{ p: 0.35, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }} />}
+              label={<Typography sx={{ fontSize: 12 }}>Flat Rate</Typography>}
+              sx={{ mx: 0, pb: 0.3 }}
+            />
+            <TextField
+              variant="standard"
+              label="Flat Rate"
+              defaultValue="100"
+              size="small"
+              sx={{ flex: 0.75, '& .MuiInputLabel-root': { fontSize: 11 }, '& input': { fontSize: 12 } }}
+            />
+            <TextField
+              variant="standard"
+              label="Notes"
+              defaultValue="-"
+              size="small"
+              sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 11 }, '& input': { fontSize: 12 } }}
+            />
+          </Stack>
+
+          <Table size="small" sx={{ mt: 4, border: '1px solid #d0d0d0', '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 700 }, '& td': { fontSize: 12 } }}>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 110 }}>Pieces ⇅</TableCell>
+                <TableCell sx={{ width: 110 }}>Type ⇅</TableCell>
+                <TableCell>Pieces x L x W x H / Dim Factor (Dimensional Weight) ⇅</TableCell>
+                <TableCell sx={{ width: 140 }}>Actual Weight ⇅</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {getRateDialogRows().map((row, index) => (
+                <TableRow key={`${row.pieces}-${row.type}-${index}`}>
+                  <TableCell>{row.pieces}</TableCell>
+                  <TableCell>{row.type}</TableCell>
+                  <TableCell>{row.formula}</TableCell>
+                  <TableCell>{row.actualWeight}</TableCell>
+                </TableRow>
+              ))}
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                <TableCell />
+                <TableCell sx={{ fontWeight: 700 }}>{getRatesTotal().dimWeightTotal} lbs</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{getRatesTotal().actualWeightTotal} lbs</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+
+          <Typography sx={{ mt: 2, ml: 1.2, fontSize: 13 }}>
+            Total Estimated Cost - <Box component="span" sx={{ fontWeight: 700 }}>${getRatesTotal().estimatedCost}</Box> (Calculated based on Dimensional Weight )
+          </Typography>
+
+          <Box sx={{ mt: 1.5, ml: 1.2, bgcolor: '#dff0fa', borderRadius: 1, px: 1.5, py: 1.1, width: { xs: '100%', sm: 395 }, boxSizing: 'border-box' }}>
+            <Typography sx={{ fontSize: 11 }}>
+              Calculated Based on <Box component="span" sx={{ fontWeight: 700 }}>$0.025</Box> per lbs.
+            </Typography>
+            <Typography sx={{ fontSize: 11 }}>
+              Minimum and maximum charges are <Box component="span" sx={{ fontWeight: 700 }}>$20</Box> and <Box component="span" sx={{ fontWeight: 700 }}>$195</Box> respectively.
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={statusHistoryDialogOpen}
+        onClose={() => setStatusHistoryDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 0.8,
+            minHeight: 420,
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Warehouse Receipt Status History</Typography>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => setStatusHistoryDialogOpen(false)}
+              sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+            >
+              OK
+            </Button>
+          </Stack>
+
+          <Table
+            size="small"
+            sx={{
+              mt: 4,
+              border: '1px solid #d0d0d0',
+              '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500 },
+              '& td': { fontSize: 12, verticalAlign: 'top' },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 110 }}>Warehouse ID ⇅</TableCell>
+                <TableCell sx={{ width: 130 }}>Pro ⇅</TableCell>
+                <TableCell sx={{ width: 100 }}>Level ⇅</TableCell>
+                <TableCell sx={{ width: 130 }}>Time ⇅</TableCell>
+                <TableCell sx={{ width: 90 }}>User ⇅</TableCell>
+                <TableCell sx={{ width: 100 }}>Status ⇅</TableCell>
+                <TableCell>Description ⇅</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {getStatusHistoryRows().map((row, index) => (
+                <TableRow key={`${row.warehouseId}-${row.user}-${index}`}>
+                  <TableCell>{row.warehouseId}</TableCell>
+                  <TableCell>{row.pro}</TableCell>
+                  <TableCell>{row.level}</TableCell>
+                  <TableCell>{row.time}</TableCell>
+                  <TableCell>{row.user}</TableCell>
+                  <TableCell>{row.status}</TableCell>
+                  <TableCell>{row.description}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </DialogContent>
       </Dialog>
       <Snackbar
