@@ -283,6 +283,37 @@ const getCustomerOptionLabel = (option) => {
   return stationName ? `${customerName} | ${stationName}` : customerName;
 };
 
+const createReceiptFreightInfo = () => ({
+  conditions: {
+    'Banded Skid': false,
+    'Shrink Wrapped Skid': false,
+    'SHT / IPPC Skid': false,
+    'Plastic Skid': false,
+    Document: false,
+  },
+  badFreightCondition: false,
+  freightConditionImages: [],
+  hazMat: false,
+  originalDgd: false,
+  unNumbers: [],
+  hazmatClasses: [],
+  unNumberInput: '',
+  hazmatClassInput: '',
+  properShippingName: '',
+  freightConditionDescription: '',
+  hazardousDescription: '',
+  notes: '',
+});
+
+const RECEIPT_FREIGHT_OPTION_FIELD_MAP = {
+  'Banded Skid': 'Banded Skid',
+  'Shrink Wrapped Skid': 'Shrink Wrapped Skid',
+  'SHT / IPPC Skid': 'SHT / IPPC Skid',
+  'SHPT / PPC Skid': 'SHT / IPPC Skid',
+  'Plastic Skid': 'Plastic Skid',
+  Document: 'Document',
+};
+
 const FileItem = ({ filename, onRemove, onView, hideRemove = false }) => (
   <Box
     sx={{
@@ -384,6 +415,130 @@ const getRowValue = (row, fields, fallback = '') => {
   return field ? row[field] : fallback;
 };
 
+const buildReceiptCustomerSelection = (row = {}) => {
+  const customerDisplay = getRowValue(row, ['customer', 'customerName'], '');
+  if (!customerDisplay) return null;
+
+  const [customerName, stationName] = String(customerDisplay).split('|').map((value) => value.trim());
+
+  return {
+    customerId: row.customerId,
+    customerName: row.customerName || customerName,
+    stationId: row.stationId,
+    stationName: row.stationName || stationName || '',
+  };
+};
+
+const applyReceiptFreightOption = (freightInfo, option) => {
+  if (option === 'Bad Freight Condition') {
+    freightInfo.badFreightCondition = true;
+    return;
+  }
+
+  if (option === 'Haz Mat') {
+    freightInfo.hazMat = true;
+    return;
+  }
+
+  const conditionKey = RECEIPT_FREIGHT_OPTION_FIELD_MAP[option];
+  if (conditionKey) {
+    freightInfo.conditions[conditionKey] = true;
+  }
+};
+
+const buildReceiptFreightInfo = (form = {}) => {
+  const freightInfo = createReceiptFreightInfo();
+
+  (form.freightOptions || []).forEach((option) => applyReceiptFreightOption(freightInfo, option));
+  if (form.badFreightImages?.length) {
+    freightInfo.badFreightCondition = true;
+    freightInfo.freightConditionImages.push(...form.badFreightImages);
+  }
+
+  (form.items || []).forEach((item) => {
+    (item.freightOptions || []).forEach((option) => applyReceiptFreightOption(freightInfo, option));
+
+    if (item.badFreightImages?.length) {
+      freightInfo.badFreightCondition = true;
+      freightInfo.freightConditionImages.push(...item.badFreightImages);
+    }
+  });
+
+  return freightInfo;
+};
+
+const buildReceiptFormsFromReceipts = (receipts = []) =>
+  receipts.flatMap((receipt, receiptIndex) =>
+    (receipt.forms || []).map((form, formIndex) => {
+      const customerRefNoPackageId = String(form.customerRefNoPackageId || '').trim();
+      const destination = String(form.destination || '').trim();
+      const row = {
+        ...receipt.row,
+        ...(destination ? { destination } : {}),
+        ...(customerRefNoPackageId ? { packageId: customerRefNoPackageId } : {}),
+      };
+
+      return {
+        id: `${receipt.key || receiptIndex}-${form.id}`,
+        label: `Form ${formIndex + 1}`,
+        receiptNumber: form.receiptNumber || row.receiptNumber || receipt.proNumber || '',
+        receivedBy: receipt.receivedBy,
+        location: receipt.location,
+        customerSelection: buildReceiptCustomerSelection(row),
+        freightInfo: buildReceiptFreightInfo(form),
+        row,
+        items: form.items,
+      };
+    })
+  );
+
+const normalizeCommonReceiptField = (value) => String(value || '').trim();
+
+const haveCommonReceiptFieldsChanged = (savedReceipts = [], currentReceipts = []) => {
+  const savedReceiptMap = new Map(savedReceipts.map((receipt) => [receipt.key, receipt]));
+
+  return currentReceipts.some((receipt) => {
+    const savedReceipt = savedReceiptMap.get(receipt.key);
+    if (!savedReceipt) return false;
+
+    return (
+      normalizeCommonReceiptField(savedReceipt.receivedBy) !== normalizeCommonReceiptField(receipt.receivedBy) ||
+      normalizeCommonReceiptField(savedReceipt.location) !== normalizeCommonReceiptField(receipt.location)
+    );
+  });
+};
+
+const mergeReceiptFormsWithSaved = (savedForms = [], currentForms = [], applyCommonFieldsToAll = false) => {
+  const savedFormMap = new Map(savedForms.map((form) => [form.id, form]));
+
+  return currentForms.map((currentForm) => {
+    const savedForm = savedFormMap.get(currentForm.id);
+
+    if (!savedForm) {
+      return currentForm;
+    }
+
+    const mergedForm = {
+      ...currentForm,
+      ...savedForm,
+      row: {
+        ...(currentForm.row || {}),
+        ...(savedForm.row || {}),
+      },
+    };
+
+    if (!applyCommonFieldsToAll) {
+      return mergedForm;
+    }
+
+    return {
+      ...mergedForm,
+      receivedBy: currentForm.receivedBy,
+      location: currentForm.location,
+    };
+  });
+};
+
 const buildTempReceiptPayload = (receipt) => {
   const { row, proNumber, receivedBy, location } = receipt;
 
@@ -475,6 +630,12 @@ export default function WarehouseCheckInPage({
   const [printerContext, setPrinterContext] = useState(null);
   const [printLoading, setPrintLoading] = useState(false);
   const [regularMobileSubmitConfirmOpen, setRegularMobileSubmitConfirmOpen] = useState(false);
+  const [commonFieldsConfirm, setCommonFieldsConfirm] = useState({
+    open: false,
+    nextErrors: {},
+    currentForms: [],
+    savedForms: [],
+  });
   const [mobileRegularSuccessDialog, setMobileRegularSuccessDialog] = useState({ open: false, message: '', entries: [] });
   const [parcelForm, setParcelForm] = useState(createParcelForm());
   const [parcelErrors, setParcelErrors] = useState(createParcelErrors());
@@ -516,6 +677,7 @@ export default function WarehouseCheckInPage({
     setPrinterContext(null);
     setPrintLoading(false);
     setRegularMobileSubmitConfirmOpen(false);
+    setCommonFieldsConfirm({ open: false, nextErrors: {}, currentForms: [], savedForms: [] });
     setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
     setParcelForm(createParcelForm());
     setParcelErrors(createParcelErrors());
@@ -1739,6 +1901,41 @@ export default function WarehouseCheckInPage({
     dispatch(clearReceiptSearch());
   };
 
+  const completeHandleNext = (nextErrors, receiptForms = []) => {
+    dispatch(setWarehouseCheckInDraft({
+      searchType,
+      searchBy,
+      searchValue,
+      savedResults,
+      collapsed,
+      rejectedRowIds,
+      isSearchDisabled,
+      receiptErrors: nextErrors,
+      parcelForm,
+      parcelErrors,
+      proceededReceipts,
+      ...(receiptForms.length ? { receiptForms } : {}),
+    }, draftKey));
+
+    navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts, title, draftKey } });
+  };
+
+  const handleCancelCommonFieldsConfirm = () => {
+    const { nextErrors, currentForms, savedForms } = commonFieldsConfirm;
+    const receiptForms = mergeReceiptFormsWithSaved(savedForms, currentForms, false);
+
+    setCommonFieldsConfirm({ open: false, nextErrors: {}, currentForms: [], savedForms: [] });
+    completeHandleNext(nextErrors, receiptForms);
+  };
+
+  const handleConfirmCommonFieldsApplyAll = () => {
+    const { nextErrors, currentForms, savedForms } = commonFieldsConfirm;
+    const receiptForms = mergeReceiptFormsWithSaved(savedForms, currentForms, true);
+
+    setCommonFieldsConfirm({ open: false, nextErrors: {}, currentForms: [], savedForms: [] });
+    completeHandleNext(nextErrors, receiptForms);
+  };
+
   const handleNext = () => {
     if (proceededReceipts.length === 0) {
       setSnackbar({ open: true, message: 'Please proceed with a warehouse receipt before continuing', severity: 'error' });
@@ -1818,22 +2015,26 @@ export default function WarehouseCheckInPage({
       return;
     }
 
-    dispatch(setWarehouseCheckInDraft({
-      searchType,
-      searchBy,
-      searchValue,
-      savedResults,
-      collapsed,
-      rejectedRowIds,
-      isSearchDisabled,
-      receiptErrors: nextErrors,
-      parcelForm,
-      parcelErrors,
-      proceededReceipts,
-      ...(warehouseCheckInDraft?.receiptForms ? { receiptForms: warehouseCheckInDraft.receiptForms } : {}),
-    }, draftKey));
+    const currentReceiptForms = buildReceiptFormsFromReceipts(proceededReceipts);
+    const savedReceiptForms = warehouseCheckInDraft?.receiptForms || [];
+    const savedProceededReceipts = warehouseCheckInDraft?.proceededReceipts || [];
+    const commonFieldsChanged = savedReceiptForms.length > 0 && haveCommonReceiptFieldsChanged(savedProceededReceipts, proceededReceipts);
 
-    navigate(PATH_DASHBOARD.warehouseReceiptForm, { state: { receipts: proceededReceipts, title, draftKey } });
+    if (commonFieldsChanged) {
+      setCommonFieldsConfirm({
+        open: true,
+        nextErrors,
+        currentForms: currentReceiptForms,
+        savedForms: savedReceiptForms,
+      });
+      return;
+    }
+
+    const receiptForms = savedReceiptForms.length
+      ? mergeReceiptFormsWithSaved(savedReceiptForms, currentReceiptForms, false)
+      : [];
+
+    completeHandleNext(nextErrors, receiptForms);
   };
 
   // ── Search handler ─────────────────────────────────────────────────
@@ -2945,6 +3146,38 @@ export default function WarehouseCheckInPage({
             variant="contained"
             size="small"
             onClick={handleConfirmResetReceipt}
+            sx={{ ...actionBtnSx, height: 32 }}
+          >
+            Yes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={commonFieldsConfirm.open}
+        onClose={handleCancelCommonFieldsConfirm}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Apply Common Changes</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 13 }}>
+            Do you want the Received By or Location changes to apply to all forms?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCancelCommonFieldsConfirm}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            No
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleConfirmCommonFieldsApplyAll}
             sx={{ ...actionBtnSx, height: 32 }}
           >
             Yes
