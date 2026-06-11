@@ -594,6 +594,7 @@ export default function WarehouseReceiptFormPage() {
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
+<<<<<<< HEAD
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
   const [selectedSplitMailIds, setSelectedSplitMailIds] = useState(INITIAL_SPLIT_MAIL_SELECTED_IDS);
@@ -604,6 +605,8 @@ export default function WarehouseReceiptFormPage() {
   const [activeSplitFormTab, setActiveSplitFormTab] = useState(0);
   const [receiptNoteText, setReceiptNoteText] = useState('Balance Item need to be arrange');
   const [receiptNotes, setReceiptNotes] = useState(INITIAL_WAREHOUSE_RECEIPT_NOTES);
+=======
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
   const persistReceiptFormDraft = (forms = receiptForms) => {
@@ -1086,6 +1089,7 @@ export default function WarehouseReceiptFormPage() {
     setSnackbar({ open: true, message, severity: 'info' });
   };
 
+<<<<<<< HEAD
   const handleAddReceiptNote = () => {
     const noteText = receiptNoteText.trim();
     if (!noteText) {
@@ -1142,6 +1146,8 @@ export default function WarehouseReceiptFormPage() {
     setActiveSplitFormTab(0);
   };
 
+=======
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   const handleEditWarehouseReceipt = () => {
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       replace: true,
@@ -1232,6 +1238,7 @@ export default function WarehouseReceiptFormPage() {
     ];
   };
 
+<<<<<<< HEAD
   const renderSplitStepper = (activeStep = 0) => {
     const steps = ['Start', 'Freight\nInfo', 'Form\nInfo', 'New\nForm'];
     const progressWidth = `${Math.max(0, Math.min(activeStep, steps.length - 1)) * 25}%`;
@@ -2058,6 +2065,8 @@ export default function WarehouseReceiptFormPage() {
     </Box>
   );
 
+=======
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   const renderViewSummary = () => {
     if (!isWarehouseReceiptView || !viewReceiptSummary) return null;
 
@@ -2135,7 +2144,11 @@ export default function WarehouseReceiptFormPage() {
             <Button
               variant="contained"
               size="small"
+<<<<<<< HEAD
               onClick={handleOpenSplitDialog}
+=======
+              onClick={() => handleViewAction('Split action is not available yet')}
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
               sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
             >
               Split
@@ -2150,10 +2163,17 @@ export default function WarehouseReceiptFormPage() {
             </Button>
             <IconButton
               size="small"
+<<<<<<< HEAD
               onClick={() => setNotesDialogOpen(true)}
               sx={{ color: '#A22', borderRadius: 0.6, width: 28, height: 24, '&:hover': { bgcolor: 'rgba(170, 34, 34, 0.08)' } }}
             >
               <Iconify icon="mdi:notebook" width={24} />
+=======
+              onClick={() => handleViewAction('More actions are not available yet')}
+              sx={{ bgcolor: '#A22', color: '#fff', borderRadius: 0.6, width: 24, height: 22, '&:hover': { bgcolor: '#8b1c1c' } }}
+            >
+              <Iconify icon="mdi:dots-vertical" width={15} />
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
             </IconButton>
           </Stack>
         </Stack>
@@ -3094,6 +3114,7 @@ export default function WarehouseReceiptFormPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+<<<<<<< HEAD
         open={splitDialogOpen}
         onClose={handleCloseSplitDialog}
         maxWidth="lg"
@@ -3156,6 +3177,8 @@ export default function WarehouseReceiptFormPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+=======
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
         open={statusHistoryDialogOpen}
         onClose={() => setStatusHistoryDialogOpen(false)}
         maxWidth="lg"
@@ -3216,6 +3239,7 @@ export default function WarehouseReceiptFormPage() {
           </Table>
         </DialogContent>
       </Dialog>
+<<<<<<< HEAD
       <Dialog
         open={notesDialogOpen}
         onClose={() => setNotesDialogOpen(false)}
@@ -3401,6 +3425,8 @@ export default function WarehouseReceiptFormPage() {
           </Box>
         </DialogContent>
       </Dialog>
+=======
+>>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
