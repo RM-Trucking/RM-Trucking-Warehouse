@@ -313,6 +313,27 @@ const getReceiptFormSignature = (forms = []) =>
     .map((form) => `${form.id}:${form.receiptNumber || ''}:${form.items?.length || 0}`)
     .join('|');
 
+const INITIAL_WAREHOUSE_RECEIPT_NOTES = [
+  { time: '10/29/2025 13:30', user: 'Mike', notes: 'Updated Shipment DIMS' },
+  { time: '09/28/2025 18:10', user: 'Ross', notes: 'Moved Shipment Add to queue' },
+  { time: '09/28/2025 18:10', user: 'Ross', notes: 'Setup for pickup today' },
+  { time: '09/20/2025 18:10', user: 'Ross', notes: 'Pickup from Forward Air' },
+];
+
+const SPLIT_MAIL_LIST_ROWS = [
+  { id: 1, sno: '01', type: 'Station', emailId: 'Department1@ventanaserra.com' },
+  { id: 2, sno: '02', type: 'Department', emailId: 'Department2@ventanaserra.com' },
+  { id: 3, sno: '03', type: 'Personal', emailId: 'Department1@ventanaserra.com' },
+  { id: 4, sno: '04', type: 'Personal', emailId: 'Department2@ventanaserra.com' },
+  { id: 5, sno: '05', type: 'Department', emailId: 'Department1@ventanaserra.com' },
+  { id: 6, sno: '06', type: 'Personal', emailId: 'Department2@ventanaserra.com' },
+  { id: 7, sno: '07', type: 'Department', emailId: 'Department1@ventanaserra.com' },
+  { id: 8, sno: '08', type: 'Department', emailId: 'Department2@ventanaserra.com' },
+  { id: 9, sno: '09', type: 'Department', emailId: 'Department1@ventanaserra.com' },
+];
+
+const INITIAL_SPLIT_MAIL_SELECTED_IDS = [1, 2, 3, 5];
+
 function Section({ title, children, sx }) {
   return (
     <fieldset style={{ border: '1px solid #8f8f8f', borderRadius: 2, padding: '10px 12px', margin: 0, minWidth: 0, boxSizing: 'border-box', ...sx }}>
@@ -573,6 +594,16 @@ export default function WarehouseReceiptFormPage() {
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
+  const [selectedSplitMailIds, setSelectedSplitMailIds] = useState(INITIAL_SPLIT_MAIL_SELECTED_IDS);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitStep, setSplitStep] = useState(0);
+  const [splitDimensionMode, setSplitDimensionMode] = useState('recalculate');
+  const [splitFormCount, setSplitFormCount] = useState(1);
+  const [activeSplitFormTab, setActiveSplitFormTab] = useState(0);
+  const [receiptNoteText, setReceiptNoteText] = useState('Balance Item need to be arrange');
+  const [receiptNotes, setReceiptNotes] = useState(INITIAL_WAREHOUSE_RECEIPT_NOTES);
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
   const persistReceiptFormDraft = (forms = receiptForms) => {
@@ -1055,6 +1086,62 @@ export default function WarehouseReceiptFormPage() {
     setSnackbar({ open: true, message, severity: 'info' });
   };
 
+  const handleAddReceiptNote = () => {
+    const noteText = receiptNoteText.trim();
+    if (!noteText) {
+      setSnackbar({ open: true, message: 'Notes is mandatory', severity: 'error' });
+      return;
+    }
+
+    const now = new Date();
+    const datePart = now.toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+    });
+    const timePart = now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    setReceiptNotes((prev) => [
+      {
+        time: `${datePart} ${timePart}`,
+        user: 'Warehouse Staff',
+        notes: noteText,
+      },
+      ...prev,
+    ]);
+    setReceiptNoteText('');
+  };
+
+  const handleToggleSplitMail = (id) => {
+    setSelectedSplitMailIds((prev) =>
+      prev.includes(id) ? prev.filter((selectedId) => selectedId !== id) : [...prev, id]
+    );
+  };
+
+  const handleRemoveSplitMailAddress = (id) => {
+    setSelectedSplitMailIds((prev) => prev.filter((selectedId) => selectedId !== id));
+  };
+
+  const handleOpenSplitDialog = () => {
+    setSplitStep(0);
+    setSplitDimensionMode('recalculate');
+    setSplitFormCount(1);
+    setActiveSplitFormTab(0);
+    setSplitDialogOpen(true);
+  };
+
+  const handleCloseSplitDialog = () => {
+    setSplitDialogOpen(false);
+    setSplitStep(0);
+    setSplitDimensionMode('recalculate');
+    setSplitFormCount(1);
+    setActiveSplitFormTab(0);
+  };
+
   const handleEditWarehouseReceipt = () => {
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       replace: true,
@@ -1145,6 +1232,832 @@ export default function WarehouseReceiptFormPage() {
     ];
   };
 
+  const renderSplitStepper = (activeStep = 0) => {
+    const steps = ['Start', 'Freight\nInfo', 'Form\nInfo', 'New\nForm'];
+    const progressWidth = `${Math.max(0, Math.min(activeStep, steps.length - 1)) * 25}%`;
+
+    return (
+      <Box sx={{ width: { xs: '100%', sm: 430 }, mx: 'auto', mt: 3.2 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', alignItems: 'start', position: 'relative' }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 10,
+              left: '12.5%',
+              right: '12.5%',
+              height: 4,
+              bgcolor: '#d5d5d5',
+            }}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 10,
+              left: '12.5%',
+              width: progressWidth,
+              height: 4,
+              bgcolor: '#A22',
+            }}
+          />
+          {steps.map((step, index) => {
+            const active = index <= activeStep;
+            return (
+              <Stack key={step} alignItems="center" spacing={0.7} sx={{ position: 'relative', zIndex: 1 }}>
+                <Box
+                  sx={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    bgcolor: active ? '#A22' : '#fff',
+                    border: active ? '1px solid #A22' : '1px solid #111',
+                    color: active ? '#fff' : '#111',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  {index + 1}
+                </Box>
+                <Typography sx={{ fontSize: 10, lineHeight: 1.1, whiteSpace: 'pre-line', textAlign: 'center' }}>
+                  {step}
+                </Typography>
+              </Stack>
+            );
+          })}
+        </Box>
+      </Box>
+    );
+  };
+
+  const renderSplitStartStep = () => (
+    <Stack alignItems="center" spacing={2.4} sx={{ mt: 7.5 }}>
+      <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
+        Do You Need to Calculate the Dimensions Again?
+      </Typography>
+      <Stack direction="row" spacing={1.2}>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => {
+            setSplitDimensionMode('existing');
+            setSplitStep(1);
+          }}
+          sx={{ height: 24, minWidth: 60, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
+        >
+          No
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={() => {
+            setSplitDimensionMode('recalculate');
+            setSplitStep(1);
+          }}
+          sx={{ ...actionBtnSx, height: 24, minWidth: 60, fontSize: 11 }}
+        >
+          Yes
+        </Button>
+      </Stack>
+    </Stack>
+  );
+
+  const renderSplitFreightStep = () => {
+    const splitItems = activeForm?.items?.length ? activeForm.items : [];
+
+    return (
+      <Box sx={{ mt: 5 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #9d9d9d', pb: 0.8 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Freight Information</Typography>
+          <Box sx={{ bgcolor: '#e6f3fb', px: 1, py: 0.35 }}>
+            <Typography sx={{ fontSize: 10 }}>
+              Separate The Freights as per the Requirement and Get the Dimensions as per the Requirement.
+            </Typography>
+          </Box>
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="flex-start" sx={{ mt: 3 }}>
+          <Table
+            size="small"
+            sx={{
+              width: { xs: '100%', md: 530 },
+              border: '1px solid #d0d0d0',
+              '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 700, py: 0.7 },
+              '& td': { fontSize: 12, py: 0.65 },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell>Item</TableCell>
+                <TableCell>Pieces</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Length</TableCell>
+                <TableCell>Width</TableCell>
+                <TableCell>Height</TableCell>
+                <TableCell>Weight (lbs)</TableCell>
+                <TableCell align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {splitItems.map((item, index) => (
+                <TableRow key={item.id || index}>
+                  <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                  <TableCell>{item.pieces || ''}</TableCell>
+                  <TableCell>{item.type || ''}</TableCell>
+                  <TableCell>{item.length || ''}</TableCell>
+                  <TableCell>{item.width || ''}</TableCell>
+                  <TableCell>{item.height || ''}</TableCell>
+                  <TableCell>{item.weight || ''}</TableCell>
+                  <TableCell align="center">
+                    <Stack direction="row" spacing={0.7} justifyContent="center">
+                      <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
+                        <Iconify icon="mdi:truck-fast" width={16} />
+                      </IconButton>
+                      <IconButton size="small" sx={{ p: 0.2, color: '#111' }}>
+                        <Iconify icon="mdi:download" width={16} />
+                      </IconButton>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <Stack spacing={2} sx={{ flex: 1, minWidth: { xs: '100%', md: 0 } }}>
+            {Array.from({ length: splitFormCount }, (_, formIndex) => (
+              <Box key={`split-form-${formIndex + 1}`} component="fieldset" sx={{ border: '1px solid #777', borderRadius: 1, px: 1.6, py: 1.3, m: 0 }}>
+                <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                <Stack direction="row" alignItems="center" spacing={1.2}>
+                  <Iconify icon="mdi:cube-outline" width={16} />
+                  <Typography sx={{ fontSize: 12 }}>Item 1</Typography>
+                  <Box
+                    sx={{
+                      flex: 1,
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' },
+                      gap: 1.2,
+                    }}
+                  >
+                    <TextField
+                      variant="standard"
+                      label={<Box component="span">Pieces <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                      defaultValue="40"
+                      size="small"
+                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                    />
+                    <TextField
+                      select
+                      variant="standard"
+                      label={<Box component="span">Type <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                      defaultValue="Skid"
+                      size="small"
+                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& .MuiSelect-select': { fontSize: 12 } }}
+                    >
+                      <MenuItem value="Skid">Skid</MenuItem>
+                      <MenuItem value="Box">Box</MenuItem>
+                      <MenuItem value="Pallet">Pallet</MenuItem>
+                    </TextField>
+                    <TextField
+                      variant="standard"
+                      label={<Box component="span">Length <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                      defaultValue="50"
+                      size="small"
+                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                    />
+                    <TextField
+                      variant="standard"
+                      label={<Box component="span">Width <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                      defaultValue="50"
+                      size="small"
+                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                    />
+                    <TextField
+                      variant="standard"
+                      label={<Box component="span">Height <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                      defaultValue="50"
+                      size="small"
+                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                    />
+                    <TextField
+                      variant="standard"
+                      label={<Box component="span">Weight(lbs) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                      defaultValue="50"
+                      size="small"
+                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                    />
+                    <Stack direction="row" alignItems="flex-end" spacing={1} sx={{ gridColumn: { xs: 'auto', sm: '3 / 5' }, justifyContent: 'flex-end' }}>
+                      <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
+                        <Iconify icon="mdi:delete" width={15} />
+                      </IconButton>
+                      <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
+                        <Iconify icon="mdi:cube-outline" width={15} />
+                      </IconButton>
+                      <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
+                        <Iconify icon="mdi:image-plus" width={15} />
+                      </IconButton>
+                    </Stack>
+                  </Box>
+                </Stack>
+                <Button variant="contained" size="small" sx={{ ...actionBtnSx, mt: 1.2, height: 24, minWidth: 74, fontSize: 11 }}>
+                  Add Item
+                </Button>
+              </Box>
+            ))}
+          </Stack>
+        </Stack>
+
+        <Stack alignItems="flex-end" sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => setSplitFormCount((prev) => prev + 1)}
+            sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
+          >
+            Add New Form
+          </Button>
+        </Stack>
+      </Box>
+    );
+  };
+
+  const renderSplitExistingFreightStep = () => {
+    const splitItems = activeForm?.items?.length ? activeForm.items : [];
+    const newFormItems = splitItems.slice(0, 2);
+    const remainingItems = splitItems.slice(2);
+    const fallbackRemainingItems = remainingItems.length ? remainingItems : splitItems.slice(0, 5);
+
+    return (
+      <Box sx={{ mt: 5 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #9d9d9d', pb: 0.8 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Freight Information</Typography>
+          <Box sx={{ bgcolor: '#e6f3fb', px: 1, py: 0.35 }}>
+            <Typography sx={{ fontSize: 10 }}>
+              Drag and Drop Freight Information into Specific Combination to Create New Warehouse Forms (Empty Form will be ignored)
+            </Typography>
+          </Box>
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="flex-start" sx={{ mt: 3 }}>
+          <Table
+            size="small"
+            sx={{
+              width: { xs: '100%', md: 530 },
+              border: '1px solid #d0d0d0',
+              '& th': { bgcolor: '#d7d7d7', fontSize: 11, fontWeight: 700, py: 0.7 },
+              '& td': { fontSize: 12, py: 0.65 },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell>Item</TableCell>
+                <TableCell>Pieces</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Length</TableCell>
+                <TableCell>Width</TableCell>
+                <TableCell>Height</TableCell>
+                <TableCell>Weight (lbs)</TableCell>
+                <TableCell align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {fallbackRemainingItems.map((item, index) => (
+                <TableRow key={`remaining-${item.id || index}`}>
+                  <TableCell>{String(index + 3).padStart(2, '0')}</TableCell>
+                  <TableCell>{item.pieces || 10}</TableCell>
+                  <TableCell>{item.type || 'Skid'}</TableCell>
+                  <TableCell>{item.length || 5}</TableCell>
+                  <TableCell>{item.width || 5}</TableCell>
+                  <TableCell>{item.height || 5}</TableCell>
+                  <TableCell>{item.weight || 100}</TableCell>
+                  <TableCell align="center">
+                    <Stack direction="row" spacing={0.7} justifyContent="center">
+                      <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
+                        <Iconify icon="mdi:truck-fast" width={16} />
+                      </IconButton>
+                      <IconButton size="small" sx={{ p: 0.2, color: '#111' }}>
+                        <Iconify icon="mdi:dots-vertical" width={16} />
+                      </IconButton>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <Box component="fieldset" sx={{ flex: 1, minWidth: { xs: '100%', md: 0 }, border: '1px solid #777', borderRadius: 1, px: 1.6, py: 1.3, m: 0 }}>
+            <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form 1</Box>
+            <Table
+              size="small"
+              sx={{
+                border: '1px solid #d0d0d0',
+                '& th': { bgcolor: '#d7d7d7', fontSize: 11, fontWeight: 700, py: 0.7 },
+                '& td': { fontSize: 12, py: 0.65 },
+              }}
+            >
+              <TableHead>
+                <TableRow>
+                  <TableCell>Item</TableCell>
+                  <TableCell>Pieces</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Length</TableCell>
+                  <TableCell>Width</TableCell>
+                  <TableCell>Height</TableCell>
+                  <TableCell>Weight (lbs)</TableCell>
+                  <TableCell align="center">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(newFormItems.length ? newFormItems : splitItems.slice(0, 2)).map((item, index) => (
+                  <TableRow key={`new-form-${item.id || index}`}>
+                    <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                    <TableCell>{item.pieces || 10}</TableCell>
+                    <TableCell>{item.type || 'Skid'}</TableCell>
+                    <TableCell>{item.length || 5}</TableCell>
+                    <TableCell>{item.width || 5}</TableCell>
+                    <TableCell>{item.height || 5}</TableCell>
+                    <TableCell>{item.weight || 100}</TableCell>
+                    <TableCell align="center">
+                      <Stack direction="row" spacing={0.7} justifyContent="center">
+                        <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
+                          <Iconify icon="mdi:truck-fast" width={16} />
+                        </IconButton>
+                        <IconButton size="small" sx={{ p: 0.2, color: '#111' }}>
+                          <Iconify icon="mdi:dots-vertical" width={16} />
+                        </IconButton>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
+        </Stack>
+
+        <Stack alignItems="flex-end" sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => setSplitFormCount((prev) => prev + 1)}
+            sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
+          >
+            Add New Form
+          </Button>
+        </Stack>
+      </Box>
+    );
+  };
+
+  const renderSplitFormInfoStep = () => (
+    <Box sx={{ mt: 3 }}>
+      <Tabs
+        value={Math.min(activeSplitFormTab, splitFormCount - 1)}
+        onChange={(event, value) => setActiveSplitFormTab(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{
+          minHeight: 34,
+          borderBottom: '1px solid #aaa',
+          '& .MuiTabs-indicator': { bgcolor: '#A22', height: 2 },
+          '& .MuiTabs-scrollButtons': { color: '#A22', width: 28 },
+        }}
+      >
+        {Array.from({ length: splitFormCount }, (_, formIndex) => (
+          <Tab
+            key={`split-form-tab-${formIndex + 1}`}
+            label={`Form ${formIndex + 1}`}
+            sx={{
+              textTransform: 'none',
+              minHeight: 34,
+              minWidth: 0,
+              px: 1,
+              mr: 0.5,
+              fontSize: 12,
+              fontWeight: Math.min(activeSplitFormTab, splitFormCount - 1) === formIndex ? 700 : 400,
+              color: '#333',
+              '&.Mui-selected': { color: '#111' },
+            }}
+          />
+        ))}
+      </Tabs>
+      <Box sx={{ mt: 2, maxHeight: 430, overflowY: 'auto', pr: 0.5 }}>
+        <Box sx={{ bgcolor: '#fff', border: '1px solid #c9c9c9', borderRadius: 1, px: 2, pt: 0.25, pb: 2, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems="center" spacing={2} sx={{ mb: 2, minWidth: 0 }}>
+            <Stack direction="row" alignItems="flex-end" spacing={2} sx={{ minWidth: 0, flexWrap: 'wrap' }}>
+              <Box component="img" src={rmLogo} alt="RM Trucking Co." sx={{ width: 220, maxWidth: '36vw', objectFit: 'contain' }} />
+              <Typography sx={{ fontSize: 14, fontWeight: 700, lineHeight: 1.35 }}>
+                840 E Green St STE 100,<br />
+                Bensenville, IL 60106<br />
+                PH# (847)616-1080 Fax# (847)616-8811
+              </Typography>
+            </Stack>
+
+            <Box
+              sx={{
+                bgcolor: '#d1d1d1',
+                borderRadius: 1.3,
+                px: 2,
+                pt: 1.4,
+                pb: 1.1,
+                mt: 1.5,
+                width: { xs: '100%', md: 450 },
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                flexShrink: 0,
+              }}
+            >
+              <Stack>
+                <ReceiptInfoRow label="Receipt No" value={activeForm.receiptNumber} />
+                <ReceiptInfoRow label="Date" value={formatDate()} />
+                <ReceiptInfoRow
+                  label="Received By"
+                  value={activeForm.receivedBy}
+                  editable
+                  required
+                  error={receiptInfoErrors[activeForm.id]?.receivedBy}
+                  maxLength={100}
+                  onChange={(value) => updateActiveFormField('receivedBy', value)}
+                />
+                <ReceiptInfoRow
+                  label="Location"
+                  value={activeForm.location}
+                  editable
+                  required
+                  error={receiptInfoErrors[activeForm.id]?.location}
+                  onChange={(value) => updateActiveFormField('location', value)}
+                />
+                <ReceiptInfoRow label="Label Count" value={String(activeForm.items.length).padStart(2, '0')} />
+              </Stack>
+            </Box>
+          </Stack>
+
+          <Section title="Shipper Details">
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
+              <DisplayField label="Shipper" value={getRowValue(row, ['shipper', 'shipperName'], 'ROAD ONE')} required width={{ xs: '100%', sm: '25%' }} />
+              <Stack spacing={0.1} sx={{ width: { xs: '100%', sm: '25%' }, minWidth: 0 }}>
+                <Typography sx={{ color: '#555', fontSize: 12 }}>
+                  Customer <span style={{ color: '#b01818' }}>*</span>
+                </Typography>
+                <Autocomplete
+                  options={customerOptions}
+                  value={activeForm.customerSelection}
+                  getOptionLabel={getCustomerOptionLabel}
+                  isOptionEqualToValue={(option, value) =>
+                    option.customerId === value.customerId && option.stationId === value.stationId
+                  }
+                  onChange={(event, newValue) => {
+                    isSelectingCustomerRef.current = true;
+                    handleCustomerChange(newValue);
+                  }}
+                  onInputChange={(event, newInputValue, reason) => {
+                    if (reason !== 'reset') {
+                      setCustomerSearchValue(newInputValue);
+                      if (!newInputValue || !newInputValue.trim()) {
+                        dispatch(searchCustomers(''));
+                      }
+                    }
+                  }}
+                  loading={customerLoading}
+                  loadingText="Searching customers..."
+                  noOptionsText={customerSearchValue ? 'No customers found' : 'Type to search for customers'}
+                  renderInput={(params) => (
+                    <StyledTextField
+                      {...params}
+                      variant="standard"
+                      size="small"
+                      sx={fieldSx}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {customerLoading ? <CircularProgress color="inherit" size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+              </Stack>
+              <Box sx={{ flex: 1, display: 'flex', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<Iconify icon="mdi:email" width={14} />}
+                  onClick={() => setSplitMailDialogOpen(true)}
+                  sx={{ ...actionBtnSx, height: 24, minWidth: 68, fontSize: 11 }}
+                >
+                  Mail
+                </Button>
+              </Box>
+            </Stack>
+          </Section>
+
+          <Box sx={{ mt: 1.5 }}>
+            <Section title="Inland Information">
+              <Stack spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
+                  <DisplayField label="Carrier" value={getRowValue(row, 'carrier', '')} required />
+                  <DisplayField label="PRO No" value={getRowValue(row, 'proNumber', '')} required />
+                  <DisplayField
+                    label="Invoice No"
+                    value={getRowValue(row, ['invoiceNo', 'invoiceNumber'], '')}
+                    editable
+                    maxLength={50}
+                    onChange={(value) => updateActiveRowField('invoiceNo', value)}
+                  />
+                  <DisplayField
+                    label="PO No"
+                    value={getRowValue(row, ['poNumber', 'poNo'], '')}
+                    editable
+                    maxLength={50}
+                    onChange={(value) => updateActiveRowField('poNumber', value)}
+                  />
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
+                  <DisplayField
+                    label="Customer Ref No"
+                    value={getRowValue(row, ['customerRefNo', 'customerReference'], '')}
+                    width={{ xs: '100%', sm: '25%' }}
+                    editable
+                    maxLength={50}
+                    onChange={(value) => updateActiveRowField('customerRefNo', value)}
+                  />
+                  <DisplayField
+                    label="Package ID"
+                    value={getRowValue(row, ['packageId', 'packageNumber'], '')}
+                    width={{ xs: '100%', sm: '25%' }}
+                    editable
+                    onChange={(value) => updateActiveRowField('packageId', value)}
+                  />
+                  <Box sx={{ flex: 1 }} />
+                  <Box sx={{ flex: 1 }} />
+                </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
+                  <DisplayField label="Pieces" value={piecesInland} required />
+                  <DisplayField label="Weight" value={weightInland} required />
+                  <DisplayField label="RE Weight" value={totalWeight} required />
+                  <DisplayField label="CBM (m3)" value={formatMeasurement(totalCbm)} required />
+                  <Box sx={{ flex: 1 }} />
+                </Stack>
+              </Stack>
+            </Section>
+          </Box>
+
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ mt: 1.5, minWidth: 0 }}>
+            <Box sx={{ flex: 1.2, minWidth: 0, border: '1px solid #c6c6c6', borderRadius: 1, overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#d9d9d9' }}>
+                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                      <TableCell
+                        key={head}
+                        sx={{
+                          py: 0.6,
+                          px: 0.8,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          ...(head === 'Actions'
+                            ? {
+                                position: 'sticky',
+                                right: 0,
+                                zIndex: 2,
+                                bgcolor: '#d9d9d9',
+                                textAlign: 'center',
+                                width: 72,
+                              }
+                            : {}),
+                        }}
+                      >
+                        {head}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {activeForm.items.map((item, index) => (
+                    <TableRow key={item.id || index}>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{String(index + 1).padStart(2, '0')}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.pieces}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.type}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.length}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.width}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.height}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.weight}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                        {formatMeasurement(calculateItemCbm(item))}
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          py: 0.35,
+                          px: 0.8,
+                          position: 'sticky',
+                          right: 0,
+                          zIndex: 1,
+                          bgcolor: '#fff',
+                          textAlign: 'center',
+                          width: 72,
+                        }}
+                      >
+                        <IconButton
+                          size="small"
+                          title="View uploaded images"
+                          disabled={(item.images?.length || 0) === 0}
+                          onClick={() => handleOpenImages(item, index)}
+                          sx={{ p: 0.2 }}
+                        >
+                          <Iconify
+                            icon="mdi:image-multiple"
+                            width={20}
+                            sx={{ color: (item.images?.length || 0) > 0 ? '#0a4a8f' : '#9e9e9e' }}
+                          />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Section title="Freight Information" sx={{ height: '100%' }}>
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ minWidth: 0 }}>
+                  <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    {FREIGHT_CONDITION_OPTIONS.map((label) => (
+                      <FormControlLabel
+                        key={label}
+                        control={
+                          <Checkbox
+                            checked={Boolean(activeFreightInfo.conditions[label])}
+                            disabled={isMobileReceiptForm}
+                            onChange={(event) =>
+                              updateActiveFreightInfo((info) => ({
+                                conditions: { ...info.conditions, [label]: event.target.checked },
+                              }))
+                            }
+                            size="small"
+                            sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
+                          />
+                        }
+                        label={<Typography sx={{ fontSize: 12 }}>{label}</Typography>}
+                      />
+                    ))}
+                  </Stack>
+                  <Stack sx={{ flex: 1.1, minWidth: 0 }} spacing={0.7}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0 }}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={activeFreightInfo.badFreightCondition}
+                            disabled={isMobileReceiptForm}
+                            onChange={(event) =>
+                              updateActiveFreightInfo({
+                                badFreightCondition: event.target.checked,
+                                ...(event.target.checked ? {} : { freightConditionImages: [] }),
+                              })
+                            }
+                            size="small"
+                            sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
+                          />
+                        }
+                        label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
+                      />
+                      {activeFreightInfo.badFreightCondition && (
+                        <>
+                          <IconButton
+                            size="small"
+                            title="Capture freight condition image"
+                            onClick={handleOpenFreightCamera}
+                            disabled={isMobileReceiptForm}
+                            sx={{ bgcolor: '#A22', color: '#fff', width: 30, height: 30, borderRadius: 1, '&:hover': { bgcolor: '#8b1c1c' } }}
+                          >
+                            <Iconify icon="mdi:camera" width={18} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            title="Upload freight condition image"
+                            onClick={handleOpenFreightUpload}
+                            disabled={isMobileReceiptForm}
+                            sx={{ bgcolor: '#A22', color: '#fff', width: 30, height: 30, borderRadius: 1, '&:hover': { bgcolor: '#8b1c1c' } }}
+                          >
+                            <Iconify icon="mdi:image-plus" width={18} />
+                          </IconButton>
+                        </>
+                      )}
+                    </Stack>
+                    <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Freight Condition</Typography>
+                    <TextField
+                      multiline
+                      rows={4}
+                      value={activeFreightInfo.freightConditionDescription}
+                      onChange={(event) => updateActiveFreightInfo({ freightConditionDescription: event.target.value })}
+                      size="small"
+                      sx={{ '& textarea': { fontSize: 12 } }}
+                    />
+                  </Stack>
+                </Stack>
+              </Section>
+            </Box>
+          </Stack>
+
+          <Box sx={{ mt: 1.5 }}>
+            <Section title="Hazardous Information">
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ minWidth: 0 }}>
+                <Stack sx={{ flex: 1, minWidth: 0 }} spacing={1.2}>
+                  <Stack direction="row" spacing={2}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={activeFreightInfo.hazMat}
+                          onChange={(event) => updateActiveFreightInfo({ hazMat: event.target.checked })}
+                          size="small"
+                          sx={{ p: 0.4 }}
+                        />
+                      }
+                      label={<Typography sx={{ fontSize: 12 }}>Haz Mat</Typography>}
+                    />
+                    {activeFreightInfo.hazMat && (
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={activeFreightInfo.originalDgd}
+                            onChange={(event) => updateActiveFreightInfo({ originalDgd: event.target.checked })}
+                            size="small"
+                            sx={{ p: 0.4 }}
+                          />
+                        }
+                        label={<Typography sx={{ fontSize: 12 }}>Original DGD</Typography>}
+                      />
+                    )}
+                  </Stack>
+                  {activeFreightInfo.hazMat && (
+                    <>
+                      <TagInputBox
+                        label="UN Number"
+                        values={activeFreightInfo.unNumbers}
+                        inputValue={activeFreightInfo.unNumberInput}
+                        onInputChange={(value) => updateActiveFreightInfo({ unNumberInput: value })}
+                        onAdd={(value) => addTagValue(value, 'unNumbers', 'unNumberInput')}
+                        onRemove={(index) => removeTagValue(index, 'unNumbers')}
+                      />
+                      <TagInputBox
+                        label="Hazmat Class"
+                        values={activeFreightInfo.hazmatClasses}
+                        inputValue={activeFreightInfo.hazmatClassInput}
+                        onInputChange={(value) => updateActiveFreightInfo({ hazmatClassInput: value })}
+                        onAdd={(value) => addTagValue(value, 'hazmatClasses', 'hazmatClassInput')}
+                        onRemove={(index) => removeTagValue(index, 'hazmatClasses')}
+                      />
+                    </>
+                  )}
+                </Stack>
+                <Stack sx={{ flex: 1, minWidth: 0 }} spacing={1}>
+                  <DisplayField
+                    label="Proper Shipping Name"
+                    value={activeFreightInfo.properShippingName}
+                    editable
+                    onChange={(value) => updateActiveFreightInfo({ properShippingName: value })}
+                  />
+                  <Typography sx={{ fontSize: 12 }}>Description</Typography>
+                  <TextField
+                    multiline
+                    rows={6}
+                    size="small"
+                    value={activeFreightInfo.hazardousDescription}
+                    onChange={(event) => updateActiveFreightInfo({ hazardousDescription: event.target.value })}
+                    sx={{ '& textarea': { fontSize: 12 } }}
+                  />
+                </Stack>
+              </Stack>
+            </Section>
+          </Box>
+
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ mt: 1.5, minWidth: 0 }}>
+            <Stack sx={{ flex: 1, minWidth: 0 }}>
+              <DisplayField
+                label="Destination"
+                value={getRowValue(row, ['destination', 'finalDestination'], '')}
+                editable
+                onChange={(value) => updateActiveRowField('destination', value)}
+              />
+            </Stack>
+            <Stack sx={{ flex: 1, minWidth: 0 }} spacing={0.3}>
+              <Typography sx={{ fontSize: 12 }}>Notes</Typography>
+              <TextField
+                multiline
+                rows={6}
+                size="small"
+                value={activeFreightInfo.notes}
+                onChange={(event) => updateActiveFreightInfo({ notes: event.target.value })}
+                sx={{ '& textarea': { fontSize: 12 } }}
+              />
+            </Stack>
+          </Stack>
+        </Box>
+      </Box>
+    </Box>
+  );
+
   const renderViewSummary = () => {
     if (!isWarehouseReceiptView || !viewReceiptSummary) return null;
 
@@ -1222,7 +2135,7 @@ export default function WarehouseReceiptFormPage() {
             <Button
               variant="contained"
               size="small"
-              onClick={() => handleViewAction('Split action is not available yet')}
+              onClick={handleOpenSplitDialog}
               sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
             >
               Split
@@ -1237,10 +2150,10 @@ export default function WarehouseReceiptFormPage() {
             </Button>
             <IconButton
               size="small"
-              onClick={() => handleViewAction('More actions are not available yet')}
-              sx={{ bgcolor: '#A22', color: '#fff', borderRadius: 0.6, width: 24, height: 22, '&:hover': { bgcolor: '#8b1c1c' } }}
+              onClick={() => setNotesDialogOpen(true)}
+              sx={{ color: '#A22', borderRadius: 0.6, width: 28, height: 24, '&:hover': { bgcolor: 'rgba(170, 34, 34, 0.08)' } }}
             >
-              <Iconify icon="mdi:dots-vertical" width={15} />
+              <Iconify icon="mdi:notebook" width={24} />
             </IconButton>
           </Stack>
         </Stack>
@@ -2181,6 +3094,68 @@ export default function WarehouseReceiptFormPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+        open={splitDialogOpen}
+        onClose={handleCloseSplitDialog}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            minHeight: splitStep === 1 ? 545 : 430,
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
+              Split - {viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber || ''}
+            </Typography>
+            {splitStep === 0 ? (
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleCloseSplitDialog}
+                sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+              >
+                Exit
+              </Button>
+            ) : (
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setSplitStep((prev) => Math.max(prev - 1, 0))}
+                  sx={{ height: 24, minWidth: 58, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
+                >
+                  Back
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={() => {
+                    if (splitStep === 1) {
+                      setActiveSplitFormTab(0);
+                      setSplitStep(2);
+                      return;
+                    }
+
+                    handleViewAction('Submit split action is not available yet');
+                  }}
+                  sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+                >
+                  {splitStep === 2 ? 'Submit' : 'Next'}
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+
+          {renderSplitStepper(splitStep)}
+          {splitStep === 0 && renderSplitStartStep()}
+          {splitStep === 1 && (splitDimensionMode === 'existing' ? renderSplitExistingFreightStep() : renderSplitFreightStep())}
+          {splitStep === 2 && renderSplitFormInfoStep()}
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={statusHistoryDialogOpen}
         onClose={() => setStatusHistoryDialogOpen(false)}
         maxWidth="lg"
@@ -2239,6 +3214,191 @@ export default function WarehouseReceiptFormPage() {
               ))}
             </TableBody>
           </Table>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={notesDialogOpen}
+        onClose={() => setNotesDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            minHeight: 430,
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Warehouse Receipt Notes</Typography>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => setNotesDialogOpen(false)}
+              sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+            >
+              OK
+            </Button>
+          </Stack>
+
+          <Box sx={{ mt: 2.2, maxWidth: '100%' }}>
+            <TextField
+              variant="standard"
+              label={
+                <Box component="span">
+                  Notes <Box component="span" sx={{ color: '#A22' }}>*</Box>
+                </Box>
+              }
+              value={receiptNoteText}
+              onChange={(event) => setReceiptNoteText(event.target.value)}
+              fullWidth
+              size="small"
+              sx={{
+                '& .MuiInputLabel-root': { fontSize: 11 },
+                '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
+              }}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleAddReceiptNote}
+              sx={{ ...actionBtnSx, mt: 0.8, height: 24, minWidth: 82, fontSize: 11 }}
+            >
+              Add Notes
+            </Button>
+          </Box>
+
+          <Table
+            size="small"
+            sx={{
+              mt: 3,
+              border: '1px solid #d0d0d0',
+              '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500 },
+              '& td': { fontSize: 12, verticalAlign: 'top' },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 190 }}>Time</TableCell>
+                <TableCell sx={{ width: 120 }}>User</TableCell>
+                <TableCell>Notes</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {receiptNotes.map((note, index) => (
+                <TableRow key={`${note.time}-${note.user}-${index}`}>
+                  <TableCell>{note.time}</TableCell>
+                  <TableCell>{note.user}</TableCell>
+                  <TableCell>{note.notes}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={splitMailDialogOpen}
+        onClose={() => setSplitMailDialogOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            minHeight: 430,
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Mail List</Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setSplitMailDialogOpen(false)}
+                sx={{ height: 24, minWidth: 70, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => {
+                  setSplitMailDialogOpen(false);
+                  handleViewAction('Mail sent successfully');
+                }}
+                sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+              >
+                Send
+              </Button>
+            </Stack>
+          </Stack>
+
+          <Table
+            size="small"
+            sx={{
+              mt: 5,
+              border: '1px solid #d0d0d0',
+              '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500, py: 0.6 },
+              '& td': { fontSize: 12, py: 0.45 },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 46 }} />
+                <TableCell sx={{ width: 70 }}>SNo</TableCell>
+                <TableCell sx={{ width: 120 }}>Type</TableCell>
+                <TableCell>EmailID</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {SPLIT_MAIL_LIST_ROWS.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    <Checkbox
+                      size="small"
+                      checked={selectedSplitMailIds.includes(row.id)}
+                      onChange={() => handleToggleSplitMail(row.id)}
+                      sx={{ p: 0.2, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
+                    />
+                  </TableCell>
+                  <TableCell>{row.sno}</TableCell>
+                  <TableCell>{row.type}</TableCell>
+                  <TableCell>{row.emailId}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <Box component="fieldset" sx={{ mt: 3, border: '1px solid #777', borderRadius: 1, px: 1.2, py: 1.2, minHeight: 64 }}>
+            <Box component="legend" sx={{ px: 0.7, fontSize: 12, fontWeight: 700 }}>Email Addresses</Box>
+            <Stack direction="row" flexWrap="wrap" gap={0.8}>
+              {SPLIT_MAIL_LIST_ROWS.filter((row) => selectedSplitMailIds.includes(row.id)).map((row, index) => (
+                <Box
+                  key={`${row.id}-${index}`}
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    bgcolor: '#d8ecfb',
+                    borderRadius: 3,
+                    px: 1,
+                    py: 0.4,
+                    fontSize: 11,
+                  }}
+                >
+                  {index % 2 === 0 ? 'user6050599@example.com' : '50599@example.com'}
+                  <IconButton
+                    size="small"
+                    onClick={() => handleRemoveSplitMailAddress(row.id)}
+                    sx={{ p: 0, color: '#111' }}
+                  >
+                    <Iconify icon="mdi:close-circle" width={14} />
+                  </IconButton>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
         </DialogContent>
       </Dialog>
       <Snackbar

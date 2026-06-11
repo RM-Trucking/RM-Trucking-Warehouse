@@ -4,6 +4,8 @@ import {
   Box,
   Button,
   Checkbox,
+  Dialog,
+  DialogContent,
   FormControlLabel,
   IconButton,
   InputAdornment,
@@ -16,6 +18,8 @@ import {
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
+import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 
@@ -36,7 +40,7 @@ const filterStatuses = ['Initiated', 'On-Hand', 'Prepared', 'Scanned', 'Shipped'
 const actionIcons = [
   'mdi:eye',
   'mdi:printer',
-  'mdi:check-circle',
+  'location-edit',
   'mdi:download',
   'mdi:file-document',
   'mdi:send',
@@ -105,6 +109,8 @@ export default function WarehouseRecieptPage() {
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
+  const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
+  const [locationOverrides, setLocationOverrides] = useState({});
   const [selectedStatuses, setSelectedStatuses] = useState({
     Initiated: false,
     'On-Hand': true,
@@ -119,7 +125,10 @@ export default function WarehouseRecieptPage() {
       .filter(([, checked]) => checked)
       .map(([label]) => label);
 
-    return rows.filter((row) => {
+    return rows.map((row) => ({
+      ...row,
+      location: locationOverrides[row.id] ?? row.location,
+    })).filter((row) => {
       const matchesSearch =
         !search ||
         String(row.receiptNumber).includes(search) ||
@@ -129,7 +138,7 @@ export default function WarehouseRecieptPage() {
       const matchesStatus = checkedStatuses.length === 0 || checkedStatuses.includes(row.status);
       return matchesSearch && matchesStatus;
     });
-  }, [searchValue, selectedStatuses]);
+  }, [locationOverrides, searchValue, selectedStatuses]);
 
   const columns = [
     {
@@ -187,10 +196,20 @@ export default function WarehouseRecieptPage() {
             <IconButton
               key={icon}
               size="small"
-              onClick={icon === 'mdi:eye' ? () => handleViewReceipt(params.row) : undefined}
+              onClick={
+                icon === 'mdi:eye'
+                  ? () => handleViewReceipt(params.row)
+                  : icon === 'location-edit'
+                    ? () => handleOpenLocationDialog(params.row)
+                    : undefined
+              }
               sx={{ p: 0.25 }}
             >
-              <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
+              {icon === 'location-edit' ? (
+                <EditLocationAltIcon sx={{ color: '#050505', fontSize: 18 }} />
+              ) : (
+                <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
+              )}
             </IconButton>
           ))}
         </Stack>
@@ -201,6 +220,24 @@ export default function WarehouseRecieptPage() {
   const handleStatusChange = (label, checked) => {
     setSelectedStatuses((prev) => ({ ...prev, [label]: checked }));
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleOpenLocationDialog = (row) => {
+    setLocationDialog({ open: true, row, location: row.location || '' });
+  };
+
+  const handleCloseLocationDialog = () => {
+    setLocationDialog({ open: false, row: null, location: '' });
+  };
+
+  const handleSubmitLocation = () => {
+    if (!locationDialog.row) return;
+
+    setLocationOverrides((prev) => ({
+      ...prev,
+      [locationDialog.row.id]: locationDialog.location,
+    }));
+    handleCloseLocationDialog();
   };
 
   const handleViewReceipt = (row) => {
@@ -345,6 +382,65 @@ export default function WarehouseRecieptPage() {
           sx={gridSx}
         />
       </Box>
+
+      <Dialog
+        open={locationDialog.open}
+        onClose={handleCloseLocationDialog}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 22, fontWeight: 700 }}>
+              Update Location - {locationDialog.row?.receiptNumber || ''}
+            </Typography>
+            <IconButton size="small" onClick={handleCloseLocationDialog} sx={{ p: 0.2, color: '#111' }}>
+              <CloseIcon sx={{ fontSize: 24 }} />
+            </IconButton>
+          </Stack>
+
+          <TextField
+            variant="standard"
+            label={
+              <Box component="span">
+                Location <Box component="span" sx={{ color: '#A22' }}>*</Box>
+              </Box>
+            }
+            value={locationDialog.location}
+            onChange={(event) => setLocationDialog((prev) => ({ ...prev, location: event.target.value }))}
+            fullWidth
+            sx={{
+              mt: 4,
+              '& .MuiInputLabel-root': { fontSize: 18 },
+              '& .MuiInputBase-input': { fontSize: 18, py: 0.8 },
+            }}
+          />
+
+          <Stack direction="row" spacing={2.2} sx={{ mt: 7 }}>
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={handleCloseLocationDialog}
+              sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 98, fontSize: 20, height: 34 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="large"
+              onClick={handleSubmitLocation}
+              sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 98, fontSize: 18, height: 34 }}
+            >
+              Submit
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
 
       <Popover
         open={Boolean(filterAnchorEl)}
