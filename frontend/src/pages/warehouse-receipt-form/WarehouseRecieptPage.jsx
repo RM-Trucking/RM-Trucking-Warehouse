@@ -4,11 +4,8 @@ import {
   Box,
   Button,
   Checkbox,
-<<<<<<< HEAD
   Dialog,
   DialogContent,
-=======
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   FormControlLabel,
   IconButton,
   InputAdornment,
@@ -21,11 +18,8 @@ import {
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
-<<<<<<< HEAD
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import CloseIcon from '@mui/icons-material/Close';
-=======
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
 import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 
@@ -46,11 +40,7 @@ const filterStatuses = ['Initiated', 'On-Hand', 'Prepared', 'Scanned', 'Shipped'
 const actionIcons = [
   'mdi:eye',
   'mdi:printer',
-<<<<<<< HEAD
   'location-edit',
-=======
-  'mdi:check-circle',
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   'mdi:download',
   'mdi:file-document',
   'mdi:send',
@@ -119,11 +109,8 @@ export default function WarehouseRecieptPage() {
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
-<<<<<<< HEAD
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
   const [locationOverrides, setLocationOverrides] = useState({});
-=======
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   const [selectedStatuses, setSelectedStatuses] = useState({
     Initiated: false,
     'On-Hand': true,
@@ -138,14 +125,10 @@ export default function WarehouseRecieptPage() {
       .filter(([, checked]) => checked)
       .map(([label]) => label);
 
-<<<<<<< HEAD
     return rows.map((row) => ({
       ...row,
       location: locationOverrides[row.id] ?? row.location,
     })).filter((row) => {
-=======
-    return rows.filter((row) => {
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
       const matchesSearch =
         !search ||
         String(row.receiptNumber).includes(search) ||
@@ -155,11 +138,7 @@ export default function WarehouseRecieptPage() {
       const matchesStatus = checkedStatuses.length === 0 || checkedStatuses.includes(row.status);
       return matchesSearch && matchesStatus;
     });
-<<<<<<< HEAD
   }, [locationOverrides, searchValue, selectedStatuses]);
-=======
-  }, [searchValue, selectedStatuses]);
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
 
   const columns = [
     {
@@ -217,7 +196,6 @@ export default function WarehouseRecieptPage() {
             <IconButton
               key={icon}
               size="small"
-<<<<<<< HEAD
               onClick={
                 icon === 'mdi:eye'
                   ? () => handleViewReceipt(params.row)
@@ -232,12 +210,6 @@ export default function WarehouseRecieptPage() {
               ) : (
                 <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
               )}
-=======
-              onClick={icon === 'mdi:eye' ? () => handleViewReceipt(params.row) : undefined}
-              sx={{ p: 0.25 }}
-            >
-              <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
             </IconButton>
           ))}
         </Stack>
@@ -250,7 +222,6 @@ export default function WarehouseRecieptPage() {
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
-<<<<<<< HEAD
   const handleOpenLocationDialog = (row) => {
     setLocationDialog({ open: true, row, location: row.location || '' });
   };
@@ -269,8 +240,6 @@ export default function WarehouseRecieptPage() {
     handleCloseLocationDialog();
   };
 
-=======
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
   const handleViewReceipt = (row) => {
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       state: {
@@ -414,7 +383,6 @@ export default function WarehouseRecieptPage() {
         />
       </Box>
 
-<<<<<<< HEAD
       <Dialog
         open={locationDialog.open}
         onClose={handleCloseLocationDialog}
@@ -474,8 +442,6 @@ export default function WarehouseRecieptPage() {
         </DialogContent>
       </Dialog>
 
-=======
->>>>>>> 6844c3b50ab55c8c19372d7ba9ccf9664119d8b2
       <Popover
         open={Boolean(filterAnchorEl)}
         anchorEl={filterAnchorEl}
