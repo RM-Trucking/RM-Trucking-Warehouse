@@ -508,6 +508,26 @@ const haveCommonReceiptFieldsChanged = (savedReceipts = [], currentReceipts = []
   });
 };
 
+const mergeReceiptItemsWithLatestImages = (savedItems = [], currentItems = []) => {
+  const currentItemMap = new Map(currentItems.map((item) => [item.id, item]));
+  const savedItemIds = new Set(savedItems.map((item) => item.id));
+
+  const mergedSavedItems = savedItems.map((savedItem) => {
+    const currentItem = currentItemMap.get(savedItem.id);
+    const latestImages = currentItem?.images || [];
+
+    return {
+      ...savedItem,
+      images: latestImages.length ? latestImages : savedItem.images || [],
+    };
+  });
+
+  return [
+    ...mergedSavedItems,
+    ...currentItems.filter((item) => !savedItemIds.has(item.id)),
+  ];
+};
+
 const mergeReceiptFormsWithSaved = (savedForms = [], currentForms = [], applyCommonFieldsToAll = false) => {
   const savedFormMap = new Map(savedForms.map((form) => [form.id, form]));
 
@@ -525,6 +545,7 @@ const mergeReceiptFormsWithSaved = (savedForms = [], currentForms = [], applyCom
         ...(currentForm.row || {}),
         ...(savedForm.row || {}),
       },
+      items: mergeReceiptItemsWithLatestImages(savedForm.items || [], currentForm.items || []),
     };
 
     if (!applyCommonFieldsToAll) {
@@ -584,6 +605,7 @@ export default function WarehouseCheckInPage({
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const draftRestoredRef = useRef(false);
+  const searchLoadingRef = useRef(false);
   const { warehouseReceiptSearch, cargoApiDropdown, printersDropdown, parcelCarrierDropdown, warehouseCheckInDrafts } = useSelector((state) => state.warehousedata);
   const { customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
   const warehouseCheckInDraft = warehouseCheckInDrafts?.[draftKey];
@@ -603,6 +625,7 @@ export default function WarehouseCheckInPage({
   const [rejectRow, setRejectRow]       = useState(null);
   const [rejectLoading, setRejectLoading] = useState(false);
   const [resetReceiptDialog, setResetReceiptDialog] = useState(null);
+  const [noDataSearchValue, setNoDataSearchValue] = useState('');
   const [rejectedRowIds, setRejectedRowIds] = useState([]);
   const [noDataDialogOpen, setNoDataDialogOpen] = useState(false);
   const [snackbar, setSnackbar]         = useState({ open: false, message: '', severity: 'success' });
@@ -658,6 +681,7 @@ export default function WarehouseCheckInPage({
     setRejectRow(null);
     setRejectLoading(false);
     setResetReceiptDialog(null);
+    setNoDataSearchValue('');
     setRejectedRowIds([]);
     setNoDataDialogOpen(false);
     setSnackbar({ open: false, message: '', severity: 'success' });
@@ -766,18 +790,28 @@ export default function WarehouseCheckInPage({
 
   // Show no data dialog when search returns empty results
   useEffect(() => {
-    const { loading, found, data } = warehouseReceiptSearch;
+    const { loading, found, data, error } = warehouseReceiptSearch;
 
-    if (!loading && found && data) {
-      // Check if data.rows exists and is empty
-      const isEmpty = (data.rows && Array.isArray(data.rows) && data.rows.length === 0) ||
-                      (Array.isArray(data) && data.length === 0);
-
-      if (isEmpty) {
-        setNoDataDialogOpen(true);
-      }
+    if (loading) {
+      searchLoadingRef.current = true;
+      return;
     }
-  }, [warehouseReceiptSearch.loading, warehouseReceiptSearch.found, warehouseReceiptSearch.data]);
+
+    if (!searchLoadingRef.current) return;
+    searchLoadingRef.current = false;
+
+    const rows = data?.rows;
+    const isEmpty =
+      Boolean(error) ||
+      found === false ||
+      (Array.isArray(rows) && rows.length === 0) ||
+      (Array.isArray(data) && data.length === 0) ||
+      (found && !data);
+
+    if (isEmpty) {
+      setNoDataDialogOpen(true);
+    }
+  }, [warehouseReceiptSearch.loading, warehouseReceiptSearch.found, warehouseReceiptSearch.data, warehouseReceiptSearch.error]);
 
   const handleProceed = (row) => {
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
@@ -1166,6 +1200,11 @@ export default function WarehouseCheckInPage({
 
   const handleViewStagedFile = (file, index = 0) => {
     if (!file) return;
+
+    if (isScanGunScreen) {
+      handleOpenFullImage(file, getImageName(file, index));
+      return;
+    }
 
     const previewUrl = getImageUrl(file);
     if (!previewUrl) return;
@@ -2168,6 +2207,7 @@ export default function WarehouseCheckInPage({
       return;
     }
     setNoDataDialogOpen(false);
+    setNoDataSearchValue(searchValue.trim());
     if (searchType === 'rmDriver') {
       dispatch(searchWarehouseReceiptProDetail(searchValue.trim()));
     } else {
@@ -2514,7 +2554,13 @@ export default function WarehouseCheckInPage({
                 label={searchType === 'rmDriver' ? 'Pro' : searchBy}
                 value={searchValue}
                 onChange={(e) => handleSearchValueChange(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSearch();
+                  }
+                }}
                 disabled={isSearchDisabled}
                 inputProps={{ maxLength: 100 }}
                 sx={{ minWidth: 200 }}
@@ -3326,6 +3372,7 @@ export default function WarehouseCheckInPage({
       {/* No Data Dialog */}
       <Dialog open={noDataDialogOpen} onClose={() => {
         setNoDataDialogOpen(false);
+        setNoDataSearchValue('');
         dispatch(clearReceiptSearch());
       }} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
@@ -3333,6 +3380,7 @@ export default function WarehouseCheckInPage({
           <IconButton
             onClick={() => {
               setNoDataDialogOpen(false);
+              setNoDataSearchValue('');
               dispatch(clearReceiptSearch());
             }}
             size="small"
@@ -3343,7 +3391,7 @@ export default function WarehouseCheckInPage({
         </DialogTitle>
         <DialogContent dividers>
           <Typography sx={{ fontSize: 14 }}>
-            No data available for PRO number <strong>{warehouseReceiptSearch.data?.proNumber}</strong>.
+            No data available for PRO number <strong>{warehouseReceiptSearch.data?.proNumber || noDataSearchValue || searchValue}</strong>.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 2, pb: 2 }}>
@@ -3352,6 +3400,7 @@ export default function WarehouseCheckInPage({
             size="small"
             onClick={() => {
               setNoDataDialogOpen(false);
+              setNoDataSearchValue('');
               dispatch(clearReceiptSearch());
             }}
             sx={{ ...actionBtnSx, height: 32 }}
