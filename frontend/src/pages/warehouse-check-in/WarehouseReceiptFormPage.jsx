@@ -1864,13 +1864,34 @@ export default function WarehouseReceiptFormPage() {
                           title="View uploaded images"
                           disabled={(item.images?.length || 0) === 0}
                           onClick={() => handleOpenImages(item, index)}
-                          sx={{ p: 0.2 }}
+                          sx={{ p: 0.2, position: 'relative' }}
                         >
                           <Iconify
                             icon="mdi:image-multiple"
                             width={20}
                             sx={{ color: (item.images?.length || 0) > 0 ? '#0a4a8f' : '#9e9e9e' }}
                           />
+                          {(item.images?.length || 0) > 0 && (
+                            <Box
+                              component="span"
+                              sx={{
+                                position: 'absolute',
+                                top: -5,
+                                right: -6,
+                                minWidth: 15,
+                                height: 15,
+                                px: 0.35,
+                                borderRadius: '50%',
+                                bgcolor: '#A22',
+                                color: '#fff',
+                                fontSize: 10,
+                                lineHeight: '15px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {item.images.length}
+                            </Box>
+                          )}
                         </IconButton>
                       </TableCell>
                     </TableRow>
@@ -2458,13 +2479,34 @@ export default function WarehouseReceiptFormPage() {
                           title="View uploaded images"
                           disabled={(item.images?.length || 0) === 0}
                           onClick={() => handleOpenImages(item, index)}
-                          sx={{ p: 0.2 }}
+                          sx={{ p: 0.2, position: 'relative' }}
                         >
                           <Iconify
                             icon="mdi:image-multiple"
                             width={20}
                             sx={{ color: (item.images?.length || 0) > 0 ? '#0a4a8f' : '#9e9e9e' }}
                           />
+                          {(item.images?.length || 0) > 0 && (
+                            <Box
+                              component="span"
+                              sx={{
+                                position: 'absolute',
+                                top: -5,
+                                right: -6,
+                                minWidth: 15,
+                                height: 15,
+                                px: 0.35,
+                                borderRadius: '50%',
+                                bgcolor: '#A22',
+                                color: '#fff',
+                                fontSize: 10,
+                                lineHeight: '15px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {item.images.length}
+                            </Box>
+                          )}
                         </IconButton>
                       </TableCell>
                     </TableRow>

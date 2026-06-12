@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { List, Stack, Button, Collapse } from '@mui/material';
+import { List, Stack, Button, Collapse, Box } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import {
@@ -26,7 +26,7 @@ function NavItem({ item, depth = 0, onItemClick }) {
   // const isActive = pathname === item.path;
 
   // FIX: This function now handles BOTH opening the list AND routing
-  const handleClick = (e) => {
+  const handleClick = () => {
     // 1. If it has a path, go there immediately
     if (item.path) {
       if (item.path.includes('/customer-maintenance/rate-maintenance')) {
@@ -65,7 +65,19 @@ function NavItem({ item, depth = 0, onItemClick }) {
           {item.title}
         </span>
         {/* Only show arrows if there are children to expand */}
-        {hasChildren && (open ? <ExpandLess /> : <ExpandMore />)}
+        {hasChildren && (
+          <Box
+            component="span"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setOpen((prev) => !prev);
+            }}
+            sx={{ display: 'inline-flex', alignItems: 'center', ml: 1 }}
+          >
+            {open ? <ExpandLess /> : <ExpandMore />}
+          </Box>
+        )}
       </Button>
 
       {hasChildren && (

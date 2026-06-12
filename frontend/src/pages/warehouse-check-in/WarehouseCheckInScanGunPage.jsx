@@ -526,7 +526,13 @@ export default function WarehouseCheckInScanGunPage({
                         value={searchValue}
                         disabled={isSearchDisabled}
                         onChange={(event) => setSearchValue(event.target.value)}
-                        onKeyDown={(event) => event.key === 'Enter' && handleSearch()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleSearch();
+                          }
+                        }}
                         inputProps={{ maxLength: 100 }}
                       />
                     </Box>
