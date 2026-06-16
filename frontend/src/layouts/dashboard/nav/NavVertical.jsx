@@ -28,7 +28,7 @@ export const navConfig = [
   },
   { title: 'En Route',              path: PATH_DASHBOARD.enRoute,             icon: null },
   { title: 'ID Verification Form',  path: PATH_DASHBOARD.idVerificationForm,  icon: null },
-  // { title: 'Warehouse Receipt Form',path: PATH_DASHBOARD.warehouseReceiptDashboard,icon: null },
+  { title: 'Warehouse Receipt Form',path: PATH_DASHBOARD.warehouseReceiptDashboard,icon: null },
   // { title: 'Shipment Form',         path: PATH_DASHBOARD.shipmentBuilding,    icon: null },
 ];
 

@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
   Checkbox,
+  CircularProgress,
   Dialog,
   DialogContent,
   FormControlLabel,
@@ -11,6 +12,7 @@ import {
   InputAdornment,
   MenuItem,
   Popover,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -22,6 +24,8 @@ import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
+import { useDispatch, useSelector } from '../../redux/store';
+import { getWarehouseReceipts } from '../../redux/slices/warehouseReceipt';
 
 const statusTabs = [
   { label: 'Active', count: 100 },
@@ -47,77 +51,46 @@ const actionIcons = [
   'mdi:hourglass',
 ];
 
-const rows = Array.from({ length: 25 }, (_, index) => {
-  const carriers = ['CARGO', 'G-NEW', 'ROAD ONE', 'LHH'];
-  const customers = ['Innovations LLC', 'Ventana Serra LLC', 'Seacoast', 'Serra LLC', 'Venture LLC', 'Sweetwater LLC'];
-  const locations = ['CHH', 'OH'];
-  const receiptNumber = 100002001 + index;
-
-  return {
-    id: receiptNumber,
-    receiptNumber,
-    status: index % 4 === 0 ? 'Initiated' : 'On-Hand',
-    carrier: carriers[index % carriers.length],
-    customer: customers[index % customers.length],
-    proNumber: `PTLZ222143 05012${String(index + 27).padStart(2, '0')}`,
-    idVerification: 100002001 + index,
-    location: locations[index % locations.length],
-    rate: index > 3 ? '120.00' : '130.00',
-    createdDate: ['03/15/2026', '07/22/2026', '11/09/2026', '01/30/2026', '05/12/2026'][index % 5],
-    receivedBy: index % 2 === 0 ? 'Dock User' : 'Warehouse User',
-    pieces: String((index % 4) + 1),
-    type: ['Skid', 'Crate', 'Box', 'Pallet'][index % 4],
-    length: String(42 + index),
-    width: String(36 + (index % 5)),
-    height: String(30 + (index % 6)),
-    weight: String(120 + index * 3),
-    invoiceNo: `INV-${receiptNumber}`,
-    poNumber: `PO-${receiptNumber}`,
-    customerRefNo: `REF-${receiptNumber}`,
-  };
-});
-
 const gridSx = {
-  borderColor: '#d8d8d8',
+  '& .MuiDataGrid-root': { border: 'none' },
+  '& .MuiDataGrid-cell': { borderBottom: '1px solid #e0e0e0' },
   '& .MuiDataGrid-columnHeaders': {
-    bgcolor: '#f3f3f3',
-    minHeight: '38px !important',
-    maxHeight: '38px !important',
+    fontWeight: 'bold !important',
+    fontSize: '14px !important',
   },
-  '& .MuiDataGrid-columnHeader': {
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#222',
-  },
-  '& .MuiDataGrid-cell': {
-    fontSize: 12,
-    py: 0,
-    borderColor: '#ececec',
-  },
-  '& .MuiDataGrid-row': {
-    minHeight: '32px !important',
-    maxHeight: '32px !important',
-  },
-  '& .MuiDataGrid-footerContainer': {
-    borderTop: 'none',
-    minHeight: 52,
-  },
+  '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 'bold', fontSize: '14px' },
 };
 
 export default function WarehouseRecieptPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { receipts, isLoading, error, pagination } = useSelector((state) => state.warehouseReceiptdata);
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
   const [locationOverrides, setLocationOverrides] = useState({});
+  const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [selectedStatuses, setSelectedStatuses] = useState({
     Initiated: false,
     'On-Hand': true,
     Approved: false,
     Waiting: false,
   });
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 20 });
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
+
+  useEffect(() => {
+    dispatch(getWarehouseReceipts({
+      page: paginationModel.page + 1,
+      pageSize: paginationModel.pageSize,
+    }));
+  }, [dispatch, paginationModel.page, paginationModel.pageSize]);
+
+  const gridRowCount = pagination.totalRecords || (
+    paginationModel.page * paginationModel.pageSize +
+    receipts.length +
+    (receipts.length === paginationModel.pageSize ? 1 : 0)
+  );
 
   const filteredRows = useMemo(() => {
     const search = searchValue.trim().toLowerCase();
@@ -125,7 +98,7 @@ export default function WarehouseRecieptPage() {
       .filter(([, checked]) => checked)
       .map(([label]) => label);
 
-    return rows.map((row) => ({
+    return receipts.map((row) => ({
       ...row,
       location: locationOverrides[row.id] ?? row.location,
     })).filter((row) => {
@@ -138,7 +111,27 @@ export default function WarehouseRecieptPage() {
       const matchesStatus = checkedStatuses.length === 0 || checkedStatuses.includes(row.status);
       return matchesSearch && matchesStatus;
     });
-  }, [locationOverrides, searchValue, selectedStatuses]);
+  }, [locationOverrides, receipts, searchValue, selectedStatuses]);
+
+  const handleCopyReceiptNumber = async (event, receiptNumber) => {
+    event.stopPropagation();
+    const value = String(receiptNumber ?? '');
+    if (!value) return;
+
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      setCopyMessageOpen(true);
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.value = value;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    setCopyMessageOpen(true);
+  };
 
   const columns = [
     {
@@ -149,7 +142,14 @@ export default function WarehouseRecieptPage() {
       renderCell: (params) => (
         <Stack direction="row" alignItems="center" spacing={0.6} sx={{ height: '100%' }}>
           <Typography sx={{ fontSize: 12 }}>{params.value}</Typography>
-          <Iconify icon="mdi:content-copy" width={13} sx={{ color: '#9db9cf' }} />
+          <IconButton
+            size="small"
+            aria-label={`Copy receipt number ${params.value}`}
+            onClick={(event) => handleCopyReceiptNumber(event, params.value)}
+            sx={{ p: 0.2 }}
+          >
+            <Iconify icon="mdi:content-copy" width={13} sx={{ color: '#9db9cf' }} />
+          </IconButton>
           <Iconify icon="mdi:check-circle" width={14} sx={{ color: '#63b66e' }} />
         </Stack>
       ),
@@ -157,16 +157,14 @@ export default function WarehouseRecieptPage() {
     {
       field: 'status',
       headerName: 'Status',
-      minWidth: 105,
+      minWidth: 140,
       renderCell: (params) => (
         <Box
           sx={{
             bgcolor: '#62b36e',
             color: '#fff',
-            px: 1.4,
-            py: 0.25,
-            borderRadius: 5,
-            minWidth: 88,
+            borderRadius: 3,
+            minWidth: 60,
             textAlign: 'center',
             fontSize: 11,
           }}
@@ -184,14 +182,19 @@ export default function WarehouseRecieptPage() {
     { field: 'createdDate', headerName: 'Created Date', minWidth: 125, flex: 0.9 },
     {
       field: 'actions',
-      headerName: '',
+      headerName: 'Actions',
       sortable: false,
       filterable: false,
       minWidth: 190,
       align: 'right',
-      headerAlign: 'right',
       renderCell: (params) => (
-        <Stack direction="row" justifyContent="flex-end" spacing={0.4} sx={{ width: '100%' }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="flex-end"
+          spacing={0.4}
+          sx={{ width: '100%', height: '100%' }}
+        >
           {actionIcons.map((icon) => (
             <IconButton
               key={icon}
@@ -241,6 +244,31 @@ export default function WarehouseRecieptPage() {
   };
 
   const handleViewReceipt = (row) => {
+    const receipt = row.rawData || {};
+    const freightItems = receipt.freightInformation?.length
+      ? receipt.freightInformation.map((item, index) => ({
+          id: item.freightId || index + 1,
+          pieces: item.pieces,
+          type: item.type,
+          length: item.length,
+          width: item.width,
+          height: item.height,
+          weight: item.weight,
+          images: item.images || [],
+        }))
+      : [
+          {
+            id: 1,
+            pieces: row.pieces,
+            type: row.type,
+            length: row.length,
+            width: row.width,
+            height: row.height,
+            weight: row.weight,
+            images: [],
+          },
+        ];
+
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       state: {
         title: 'Warehouse Receipt Form',
@@ -258,7 +286,8 @@ export default function WarehouseRecieptPage() {
             location: row.location,
             row: {
               ...row,
-              receiptId: row.id,
+              ...receipt,
+              receiptId: row.receiptId || row.id,
               receiptNumber: row.receiptNumber,
               carrier: row.carrier,
               customer: row.customer,
@@ -266,26 +295,16 @@ export default function WarehouseRecieptPage() {
               invoiceNo: row.invoiceNo,
               poNumber: row.poNumber,
               customerRefNo: row.customerRefNo,
-              piecesInland: row.pieces,
-              weightInland: row.weight,
+              piecesInland: receipt.piecesInland ?? row.pieces,
+              weightInland: receipt.weightInland ?? row.weight,
             },
             forms: [
               {
                 id: 1,
                 receiptNumber: row.receiptNumber,
                 freightOptions: [],
-                items: [
-                  {
-                    id: 1,
-                    pieces: row.pieces,
-                    type: row.type,
-                    length: row.length,
-                    width: row.width,
-                    height: row.height,
-                    weight: row.weight,
-                    images: [],
-                  },
-                ],
+                badFreightImages: receipt.badFreightConditionImages || [],
+                items: freightItems,
               },
             ],
           },
@@ -295,8 +314,33 @@ export default function WarehouseRecieptPage() {
   };
 
   return (
-    <Box sx={{ bgcolor: '#fff', minHeight: '100vh', p: 3 }}>
-      <Typography sx={{ fontSize: 16, fontWeight: 700, mb: 8 }}>Warehouse Receipt Form</Typography>
+    <Box sx={{ bgcolor: '#fff', minHeight: '100vh', p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <h2 style={{ margin: 0 }}>Warehouse Receipt Form</h2>
+      </Stack>
+
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
+        <TextField
+          size="small"
+          placeholder="Search..."
+          value={searchValue}
+          onChange={(event) => setSearchValue(event.target.value)}
+          sx={{ width: 245 }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchIcon sx={{ fontSize: 18, color: '#777' }} />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <IconButton size="small" onClick={(event) => setFilterAnchorEl(event.currentTarget)}>
+          <FilterListIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+        <IconButton size="small" sx={{ bgcolor: '#a22', color: '#fff', borderRadius: 0.8, '&:hover': { bgcolor: '#8b1c1c' } }}>
+          <Iconify icon="mdi:table" width={18} />
+        </IconButton>
+      </Box>
 
       <Stack direction="row" alignItems="flex-end" justifyContent="space-between" sx={{ mb: 1.5 }}>
         <Stack direction="row" alignItems="flex-end" spacing={2}>
@@ -323,28 +367,6 @@ export default function WarehouseRecieptPage() {
             );
           })}
         </Stack>
-
-        <Stack direction="row" alignItems="center" spacing={1.2}>
-          <TextField
-            size="small"
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-            sx={{ width: 245, '& .MuiInputBase-root': { height: 31, borderRadius: 0 } }}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <SearchIcon sx={{ fontSize: 18, color: '#777' }} />
-                </InputAdornment>
-              ),
-            }}
-          />
-          <IconButton size="small" onClick={(event) => setFilterAnchorEl(event.currentTarget)}>
-            <FilterListIcon sx={{ fontSize: 20 }} />
-          </IconButton>
-          <IconButton size="small" sx={{ bgcolor: '#a22', color: '#fff', borderRadius: 0.8, '&:hover': { bgcolor: '#8b1c1c' } }}>
-            <Iconify icon="mdi:table" width={18} />
-          </IconButton>
-        </Stack>
       </Stack>
 
       <Stack direction="row" spacing={1.2} sx={{ mb: 1.3 }}>
@@ -369,16 +391,30 @@ export default function WarehouseRecieptPage() {
         ))}
       </Stack>
 
-      <Box sx={{ height: 420, width: '100%' }}>
+      <Box sx={{ width: '100%' }}>
+        {error && (
+          <Typography sx={{ color: '#A22', fontSize: 12, mb: 1 }}>
+            {error}
+          </Typography>
+        )}
         <DataGrid
           rows={filteredRows}
           columns={columns}
+          loading={isLoading}
+          slots={{
+            loadingOverlay: () => (
+              <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }}>
+                <CircularProgress size={28} />
+              </Stack>
+            ),
+          }}
           disableRowSelectionOnClick
           disableColumnMenu
-          density="compact"
+          paginationMode="server"
+          rowCount={gridRowCount}
           paginationModel={paginationModel}
           onPaginationModelChange={setPaginationModel}
-          pageSizeOptions={[20, 50, 100]}
+          pageSizeOptions={[10, 20, 50, 100]}
           sx={gridSx}
         />
       </Box>
@@ -467,6 +503,14 @@ export default function WarehouseRecieptPage() {
           ))}
         </Stack>
       </Popover>
+
+      <Snackbar
+        open={copyMessageOpen}
+        autoHideDuration={2000}
+        onClose={() => setCopyMessageOpen(false)}
+        message="Receipt number copied"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
     </Box>
   );
 }
