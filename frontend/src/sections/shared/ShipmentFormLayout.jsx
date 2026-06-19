@@ -17,6 +17,7 @@ export default function ShipmentFormLayout({
     submitLoading = false,
     plain = false,
     topInfoPanel,
+    stickyHeader = false,
     children
 }) {
     if (plain) {
@@ -24,9 +25,27 @@ export default function ShipmentFormLayout({
     }
 
     return (
-        <Box sx={{ p: 2, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
+        <Box sx={{ p: 2, bgcolor: '#f5f5f5', minHeight: '100vh', ...(stickyHeader && { pt: '64px' }) }}>
             {/* Header */}
-            <Stack flexDirection="row" alignItems={'center'} justifyContent="space-between" sx={{ mb: 2 }}>
+            <Stack
+                flexDirection="row"
+                alignItems={'center'}
+                justifyContent="space-between"
+                sx={{
+                    mb: 2,
+                    ...(stickyHeader && {
+                        position: 'fixed',
+                        top: 60,
+                        left: { xs: 0, lg: 280 },
+                        right: 0,
+                        zIndex: 1200,
+                        bgcolor: '#f5f5f5',
+                        px: 2,
+                        py: 1.5,
+                        borderBottom: '1px solid #e0e0e0',
+                    }),
+                }}
+            >
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ cursor: 'pointer' }} onClick={handleClose}>
                     <Iconify icon="eva:arrow-ios-back-fill" />
                     <Typography sx={{ fontSize: '18px', fontWeight: 600 }}>{title}</Typography>
@@ -107,6 +126,7 @@ ShipmentFormLayout.propTypes = {
     submitLoading: PropTypes.bool,
     plain: PropTypes.bool,
     topInfoPanel: PropTypes.node,
+    stickyHeader: PropTypes.bool,
     children: PropTypes.node.isRequired,
 };
 

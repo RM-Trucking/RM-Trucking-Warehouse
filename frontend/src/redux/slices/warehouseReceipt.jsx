@@ -11,6 +11,7 @@ const initialState = {
     pageSize: 10,
     totalRecords: 0,
   },
+  countList: {},
 };
 
 const formatDate = (value) => {
@@ -83,6 +84,7 @@ const slice = createSlice({
           payload.data?.length ||
           0,
       };
+      state.countList = payload.countList || {};
     },
     hasError(state, action) {
       state.isLoading = false;
@@ -94,17 +96,31 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export function getWarehouseReceipts({ page = 1, pageSize = 10 } = {}) {
+export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '' } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
-      const response = await axios.get(`/warehouse-receipt?page=${page}&pageSize=${pageSize}`);
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+
+      if (status) {
+        params.set('status', status);
+      }
+
+      if (receiptNumber) {
+        params.set('receiptNumber', receiptNumber);
+      }
+
+      const response = await axios.get(`/warehouse-receipt?${params.toString()}`);
       const responseData = response.data || {};
       const sourceRows = Array.isArray(responseData.data) ? responseData.data : [];
 
       dispatch(slice.actions.getWarehouseReceiptsSuccess({
         data: sourceRows.map(toGridRow),
         pagination: responseData.pagination,
+        countList: responseData.countList,
       }));
     } catch (error) {
       dispatch(slice.actions.hasError(error));

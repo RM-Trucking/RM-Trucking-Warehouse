@@ -41,6 +41,7 @@ import {
   submitWarehouseReceiptBatch,
 } from '../../redux/slices/warehouse';
 import { PATH_DASHBOARD } from '../../routes/paths';
+import { HOST_API_KEY } from '../../config';
 
 const actionBtnSx = {
   bgcolor: '#A22',
@@ -237,7 +238,6 @@ const FREIGHT_OPTION_FIELD_MAP = {
   'Banded Skid': 'Banded Skid',
   'Shrink Wrapped Skid': 'Shrink Wrapped Skid',
   'SHT / IPPC Skid': 'SHT / IPPC Skid',
-  'SHT / IPPC Skid': 'SHT / IPPC Skid',
   'SHPT / PPC Skid': 'SHT / IPPC Skid',
   'Plastic Skid': 'Plastic Skid',
   Document: 'Document',
@@ -261,11 +261,21 @@ const applyFreightOptionToInfo = (freightInfo, option) => {
 };
 
 const buildFreightInfoFromForm = (form = {}) => {
-  const freightInfo = createFreightInfo();
+  const suppliedFreightInfo = form.freightInfo || {};
+  const suppliedFreightConditionImages = suppliedFreightInfo.freightConditionImages || [];
+  const freightInfo = {
+    ...createFreightInfo(),
+    ...suppliedFreightInfo,
+    conditions: {
+      ...createFreightInfo().conditions,
+      ...(suppliedFreightInfo.conditions || {}),
+    },
+    freightConditionImages: [...suppliedFreightConditionImages],
+  };
   const items = form.items || [];
 
   (form.freightOptions || []).forEach((option) => applyFreightOptionToInfo(freightInfo, option));
-  if (form.badFreightImages?.length) {
+  if (!suppliedFreightConditionImages.length && form.badFreightImages?.length) {
     freightInfo.badFreightCondition = true;
     freightInfo.freightConditionImages.push(...form.badFreightImages);
   }
@@ -378,7 +388,7 @@ function DisplayField({
   );
 }
 
-function HazmatPill({ label, onRemove }) {
+function HazmatPill({ label, onRemove, disabled = false }) {
   return (
     <Box
       sx={{
@@ -395,15 +405,18 @@ function HazmatPill({ label, onRemove }) {
       }}
     >
       {label}
-      <IconButton size="small" onClick={onRemove} sx={{ p: 0, ml: 0.2 }}>
-        <Iconify icon="mdi:close-circle" width={12} sx={{ color: '#0c243f' }} />
-      </IconButton>
+      {!disabled && (
+        <IconButton size="small" onClick={onRemove} sx={{ p: 0, ml: 0.2 }}>
+          <Iconify icon="mdi:close-circle" width={12} sx={{ color: '#0c243f' }} />
+        </IconButton>
+      )}
     </Box>
   );
 }
 
-function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove }) {
+function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove, disabled = false }) {
   const handleKeyDown = (event) => {
+    if (disabled) return;
     if (event.key === 'Enter' || event.key === ',') {
       event.preventDefault();
       onAdd(inputValue);
@@ -426,21 +439,23 @@ function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove
         }}
       >
         {values.map((value, index) => (
-          <HazmatPill key={`${value}-${index}`} label={value} onRemove={() => onRemove(index)} />
+          <HazmatPill key={`${value}-${index}`} label={value} disabled={disabled} onRemove={() => onRemove(index)} />
         ))}
-        <TextField
-          variant="standard"
-          value={inputValue}
-          onChange={(event) => onInputChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={values.length ? '' : 'Type and press Enter'}
-          sx={{
-            minWidth: 150,
-            flex: 1,
-            '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
-          }}
-          InputProps={{ disableUnderline: true }}
-        />
+        {!disabled && (
+          <TextField
+            variant="standard"
+            value={inputValue}
+            onChange={(event) => onInputChange(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={values.length ? '' : 'Type and press Enter'}
+            sx={{
+              minWidth: 150,
+              flex: 1,
+              '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
+            }}
+            InputProps={{ disableUnderline: true }}
+          />
+        )}
       </Box>
     </Box>
   );
@@ -498,19 +513,46 @@ const getBase64ImageMimeType = (value) => {
   return 'image/jpeg';
 };
 
-const getImageUrl = (file) => {
+const WAREHOUSE_IMAGE_UPLOAD_PATHS = {
+  freight: '/api/uploads/warehouse/freight-image',
+  badFreight: '/api/uploads/warehouse/bad-freight-image',
+};
+
+const getApiRoot = () => String(HOST_API_KEY || '').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+
+const isDirectImageSource = (value) => /^(data:image\/|https?:\/\/|blob:)/i.test(value);
+
+const getUploadImageUrl = (imageName, imageType = 'freight') => {
+  const cleanImageName = String(imageName || '').trim();
+  if (!cleanImageName) return '';
+  if (isDirectImageSource(cleanImageName)) return cleanImageName;
+  if (looksLikeBase64Image(cleanImageName)) return `data:${getBase64ImageMimeType(cleanImageName)};base64,${cleanImageName}`;
+
+  const cleanPath = cleanImageName.replace(/^\/+/, '');
+  if (cleanPath.startsWith('api/uploads/')) return `${getApiRoot()}/${cleanPath}`;
+
+  const uploadPath = WAREHOUSE_IMAGE_UPLOAD_PATHS[imageType] || WAREHOUSE_IMAGE_UPLOAD_PATHS.freight;
+  return `${getApiRoot()}${uploadPath}/${encodeURIComponent(cleanPath.split('/').pop() || cleanPath)}`;
+};
+
+const getImageUrl = (file, imageType = 'freight') => {
   if (!file) return '';
   if (typeof file === 'string') {
     const image = file.trim();
-    if (/^(data:image\/|https?:\/\/|blob:)/i.test(image)) return image;
-    if (looksLikeBase64Image(image)) return `data:${getBase64ImageMimeType(image)};base64,${image}`;
-    return image;
+    return getUploadImageUrl(image, imageType);
   }
-  if (file.url) return file.url;
-  if (file.preview) return file.preview;
-  if (file.base64) return getImageUrl(file.base64);
-  if (file.image) return getImageUrl(file.image);
   if (file instanceof File) return URL.createObjectURL(file);
+  if (file.url) return getUploadImageUrl(file.url, imageType);
+  if (file.preview) return getUploadImageUrl(file.preview, imageType);
+  if (file.base64) return getImageUrl(file.base64, imageType);
+  if (file.image) return getImageUrl(file.image, imageType);
+  if (file.fileName) return getUploadImageUrl(file.fileName, imageType);
+  if (file.filename) return getUploadImageUrl(file.filename, imageType);
+  if (file.imageName) return getUploadImageUrl(file.imageName, imageType);
+  if (file.path) return getUploadImageUrl(file.path, imageType);
+  if (file.filePath) return getUploadImageUrl(file.filePath, imageType);
+  if (file.imagePath) return getUploadImageUrl(file.imagePath, imageType);
+  if (file.name) return getUploadImageUrl(file.name, imageType);
   return '';
 };
 
@@ -520,8 +562,26 @@ const getImageName = (file, index) => {
     if (looksLikeBase64Image(file) || file.startsWith('data:image/')) return `Cargo API Image ${index + 1}`;
     return file.split('/').pop() || `Image ${index + 1}`;
   }
-  return file.name || file.filename || `Image ${index + 1}`;
+  return file.name || file.filename || file.fileName || file.imageName || file.path?.split('/').pop() || file.filePath?.split('/').pop() || file.imagePath?.split('/').pop() || `Image ${index + 1}`;
 };
+
+function WarehouseImage({ file, imageType = 'freight', alt = '', sx, ...props }) {
+  const sourceUrl = getImageUrl(file, imageType);
+
+  if (!sourceUrl) {
+    return (
+      <Stack
+        alignItems="center"
+        justifyContent="center"
+        sx={{ bgcolor: '#f7f7f7', color: '#888', ...sx }}
+      >
+        <Iconify icon="mdi:image-off" width={28} />
+      </Stack>
+    );
+  }
+
+  return <Box component="img" src={sourceUrl} alt={alt} sx={sx} {...props} />;
+}
 
 const getSubmittedImageValue = async (image) => {
   const base64Image = await fileToBase64(image);
@@ -582,8 +642,8 @@ export default function WarehouseReceiptFormPage() {
   }, [state?.receipts, selectedDraftKey, warehouseCheckInDrafts]);
   const [receiptForms, setReceiptForms] = useState(initialReceiptForms);
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
-  const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '' });
-  const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '' });
+  const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '', imageType: 'freight' });
+  const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '', imageType: 'freight' });
   const [receiptInfoErrors, setReceiptInfoErrors] = useState({});
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
@@ -602,7 +662,10 @@ export default function WarehouseReceiptFormPage() {
   const [splitDimensionMode, setSplitDimensionMode] = useState('recalculate');
   const [splitFormCount, setSplitFormCount] = useState(1);
   const [activeSplitFormTab, setActiveSplitFormTab] = useState(0);
-  const [receiptNoteText, setReceiptNoteText] = useState('Balance Item need to be arrange');
+  const [splitExistingFormItems, setSplitExistingFormItems] = useState([[]]);
+  const [receiptNoteText, setReceiptNoteText] = useState(
+    initialReceiptForms[0]?.freightInfo?.notes || 'Balance Item need to be arrange'
+  );
   const [receiptNotes, setReceiptNotes] = useState(INITIAL_WAREHOUSE_RECEIPT_NOTES);
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
@@ -638,6 +701,7 @@ export default function WarehouseReceiptFormPage() {
   const piecesInland = getRowValue(row, ['piecesInland', 'pieces'], '');
   const weightInland = getRowValue(row, ['weightInland', 'weight'], '');
   const activeFreightInfo = { ...createFreightInfo(), ...(activeForm.freightInfo || {}) };
+  const isReceiptDetailsEditable = !isWarehouseReceiptView;
 
   useEffect(() => {
     if (isSelectingCustomerRef.current) {
@@ -661,10 +725,14 @@ export default function WarehouseReceiptFormPage() {
     const hasLoadedForms = initialReceiptForms.some((form) => form.id !== 'empty-1');
     const hasPlaceholderForm = receiptForms.length === 1 && receiptForms[0]?.id === 'empty-1';
 
-    if (!hasLoadedForms || !hasPlaceholderForm) return;
+    if (!hasLoadedForms || !hasPlaceholderForm) return undefined;
 
-    setReceiptForms(initialReceiptForms);
-    setActiveTab(initialReceiptForms[0]?.id || '');
+    const syncTimer = window.setTimeout(() => {
+      setReceiptForms(initialReceiptForms);
+      setActiveTab(initialReceiptForms[0]?.id || '');
+    }, 0);
+
+    return () => window.clearTimeout(syncTimer);
   }, [initialReceiptForms, receiptForms]);
 
   // useEffect(() => {
@@ -737,20 +805,21 @@ export default function WarehouseReceiptFormPage() {
       open: true,
       images: item.images || [],
       itemLabel: `Item ${String(index + 1).padStart(2, '0')}`,
+      imageType: 'freight',
     });
   };
 
   const handleCloseImages = () => {
-    setImageDialog({ open: false, images: [], itemLabel: '' });
-    setFullImageDialog({ open: false, image: null, title: '' });
+    setImageDialog({ open: false, images: [], itemLabel: '', imageType: 'freight' });
+    setFullImageDialog({ open: false, image: null, title: '', imageType: 'freight' });
   };
 
-  const handleOpenFullImage = (image, title) => {
-    setFullImageDialog({ open: true, image, title });
+  const handleOpenFullImage = (image, title, imageType = 'freight') => {
+    setFullImageDialog({ open: true, image, title, imageType });
   };
 
   const handleCloseFullImage = () => {
-    setFullImageDialog({ open: false, image: null, title: '' });
+    setFullImageDialog({ open: false, image: null, title: '', imageType: 'freight' });
   };
 
   const handleRemovePreviewImage = (index) => {
@@ -1131,6 +1200,7 @@ export default function WarehouseReceiptFormPage() {
     setSplitDimensionMode('recalculate');
     setSplitFormCount(1);
     setActiveSplitFormTab(0);
+    setSplitExistingFormItems([[]]);
     setSplitDialogOpen(true);
   };
 
@@ -1140,6 +1210,7 @@ export default function WarehouseReceiptFormPage() {
     setSplitDimensionMode('recalculate');
     setSplitFormCount(1);
     setActiveSplitFormTab(0);
+    setSplitExistingFormItems([[]]);
   };
 
   const handleEditWarehouseReceipt = () => {
@@ -1386,83 +1457,94 @@ export default function WarehouseReceiptFormPage() {
 
           <Stack spacing={2} sx={{ flex: 1, minWidth: { xs: '100%', md: 0 } }}>
             {Array.from({ length: splitFormCount }, (_, formIndex) => (
-              <Box key={`split-form-${formIndex + 1}`} component="fieldset" sx={{ border: '1px solid #777', borderRadius: 1, px: 1.6, py: 1.3, m: 0 }}>
-                <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
-                <Stack direction="row" alignItems="center" spacing={1.2}>
-                  <Iconify icon="mdi:cube-outline" width={16} />
-                  <Typography sx={{ fontSize: 12 }}>Item 1</Typography>
-                  <Box
-                    sx={{
-                      flex: 1,
-                      display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' },
-                      gap: 1.2,
-                    }}
-                  >
-                    <TextField
-                      variant="standard"
-                      label={<Box component="span">Pieces <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                      defaultValue="40"
-                      size="small"
-                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
-                    />
-                    <TextField
-                      select
-                      variant="standard"
-                      label={<Box component="span">Type <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                      defaultValue="Skid"
-                      size="small"
-                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& .MuiSelect-select': { fontSize: 12 } }}
-                    >
-                      <MenuItem value="Skid">Skid</MenuItem>
-                      <MenuItem value="Box">Box</MenuItem>
-                      <MenuItem value="Pallet">Pallet</MenuItem>
-                    </TextField>
-                    <TextField
-                      variant="standard"
-                      label={<Box component="span">Length <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                      defaultValue="50"
-                      size="small"
-                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
-                    />
-                    <TextField
-                      variant="standard"
-                      label={<Box component="span">Width <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                      defaultValue="50"
-                      size="small"
-                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
-                    />
-                    <TextField
-                      variant="standard"
-                      label={<Box component="span">Height <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                      defaultValue="50"
-                      size="small"
-                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
-                    />
-                    <TextField
-                      variant="standard"
-                      label={<Box component="span">Weight(lbs) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                      defaultValue="50"
-                      size="small"
-                      sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
-                    />
-                    <Stack direction="row" alignItems="flex-end" spacing={1} sx={{ gridColumn: { xs: 'auto', sm: '3 / 5' }, justifyContent: 'flex-end' }}>
-                      <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
-                        <Iconify icon="mdi:delete" width={15} />
-                      </IconButton>
-                      <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
-                        <Iconify icon="mdi:cube-outline" width={15} />
-                      </IconButton>
-                      <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
-                        <Iconify icon="mdi:image-plus" width={15} />
-                      </IconButton>
+              (() => {
+                const sourceItem = splitItems[formIndex] || splitItems[0] || {};
+                const sourceType = sourceItem.type || '';
+
+                return (
+                  <Box key={`split-form-${formIndex + 1}`} component="fieldset" sx={{ border: '1px solid #777', borderRadius: 1, px: 1.6, py: 1.3, m: 0 }}>
+                    <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                    <Stack direction="row" alignItems="center" spacing={1.2}>
+                      <Iconify icon="mdi:cube-outline" width={16} />
+                      <Typography sx={{ fontSize: 12 }}>Item 1</Typography>
+                      <Box
+                        sx={{
+                          flex: 1,
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' },
+                          gap: 1.2,
+                        }}
+                      >
+                        <TextField
+                          variant="standard"
+                          label={<Box component="span">Pieces <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue={sourceItem.pieces || ''}
+                          size="small"
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                        />
+                        <TextField
+                          select
+                          variant="standard"
+                          label={<Box component="span">Type <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue={sourceType}
+                          size="small"
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& .MuiSelect-select': { fontSize: 12 } }}
+                        >
+                          <MenuItem value="">Select</MenuItem>
+                          {sourceType && !['Skid', 'Box', 'Pallet'].includes(sourceType) && (
+                            <MenuItem value={sourceType}>{sourceType}</MenuItem>
+                          )}
+                          <MenuItem value="Skid">Skid</MenuItem>
+                          <MenuItem value="Box">Box</MenuItem>
+                          <MenuItem value="Pallet">Pallet</MenuItem>
+                        </TextField>
+                        <TextField
+                          variant="standard"
+                          label={<Box component="span">Length <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue={sourceItem.length || ''}
+                          size="small"
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                        />
+                        <TextField
+                          variant="standard"
+                          label={<Box component="span">Width <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue={sourceItem.width || ''}
+                          size="small"
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                        />
+                        <TextField
+                          variant="standard"
+                          label={<Box component="span">Height <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue={sourceItem.height || ''}
+                          size="small"
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                        />
+                        <TextField
+                          variant="standard"
+                          label={<Box component="span">Weight(lbs) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue={sourceItem.weight || ''}
+                          size="small"
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                        />
+                        <Stack direction="row" alignItems="flex-end" spacing={1} sx={{ gridColumn: { xs: 'auto', sm: '3 / 5' }, justifyContent: 'flex-end' }}>
+                          <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
+                            <Iconify icon="mdi:delete" width={15} />
+                          </IconButton>
+                          <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
+                            <Iconify icon="mdi:cube-outline" width={15} />
+                          </IconButton>
+                          <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
+                            <Iconify icon="mdi:image-plus" width={15} />
+                          </IconButton>
+                        </Stack>
+                      </Box>
                     </Stack>
+                    <Button variant="contained" size="small" sx={{ ...actionBtnSx, mt: 1.2, height: 24, minWidth: 74, fontSize: 11 }}>
+                      Add Item
+                    </Button>
                   </Box>
-                </Stack>
-                <Button variant="contained" size="small" sx={{ ...actionBtnSx, mt: 1.2, height: 24, minWidth: 74, fontSize: 11 }}>
-                  Add Item
-                </Button>
-              </Box>
+                );
+              })()
             ))}
           </Stack>
         </Stack>
@@ -1483,9 +1565,43 @@ export default function WarehouseReceiptFormPage() {
 
   const renderSplitExistingFreightStep = () => {
     const splitItems = activeForm?.items?.length ? activeForm.items : [];
-    const newFormItems = splitItems.slice(0, 2);
-    const remainingItems = splitItems.slice(2);
-    const fallbackRemainingItems = remainingItems.length ? remainingItems : splitItems.slice(0, 5);
+    const assignedItemIndexes = new Set(splitExistingFormItems.flat());
+    const remainingSplitItems = splitItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ index }) => !assignedItemIndexes.has(index));
+
+    const handleDragStart = (event, itemIndex) => {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(itemIndex));
+    };
+
+    const handleDragOver = (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDropOnForm = (event, formIndex) => {
+      event.preventDefault();
+      const itemIndex = Number(event.dataTransfer.getData('text/plain'));
+      if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= splitItems.length) return;
+
+      setSplitExistingFormItems((prev) => {
+        const next = Array.from({ length: splitFormCount }, (_, index) => [...(prev[index] || [])]);
+        next.forEach((formItems, index) => {
+          next[index] = formItems.filter((assignedIndex) => assignedIndex !== itemIndex);
+        });
+        next[formIndex] = [...next[formIndex], itemIndex];
+        return next;
+      });
+    };
+
+    const handleRemoveFromSplitForm = (formIndex, itemIndex) => {
+      setSplitExistingFormItems((prev) =>
+        prev.map((formItems, index) =>
+          index === formIndex ? formItems.filter((assignedIndex) => assignedIndex !== itemIndex) : formItems
+        )
+      );
+    };
 
     return (
       <Box sx={{ mt: 5 }}>
@@ -1521,15 +1637,20 @@ export default function WarehouseReceiptFormPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {fallbackRemainingItems.map((item, index) => (
-                <TableRow key={`remaining-${item.id || index}`}>
-                  <TableCell>{String(index + 3).padStart(2, '0')}</TableCell>
-                  <TableCell>{item.pieces || 10}</TableCell>
-                  <TableCell>{item.type || 'Skid'}</TableCell>
-                  <TableCell>{item.length || 5}</TableCell>
-                  <TableCell>{item.width || 5}</TableCell>
-                  <TableCell>{item.height || 5}</TableCell>
-                  <TableCell>{item.weight || 100}</TableCell>
+              {remainingSplitItems.map(({ item, index }) => (
+                <TableRow
+                  key={`remaining-${item.id || index}`}
+                  draggable
+                  onDragStart={(event) => handleDragStart(event, index)}
+                  sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+                >
+                  <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                  <TableCell>{item.pieces || ''}</TableCell>
+                  <TableCell>{item.type || ''}</TableCell>
+                  <TableCell>{item.length || ''}</TableCell>
+                  <TableCell>{item.width || ''}</TableCell>
+                  <TableCell>{item.height || ''}</TableCell>
+                  <TableCell>{item.weight || ''}</TableCell>
                   <TableCell align="center">
                     <Stack direction="row" spacing={0.7} justifyContent="center">
                       <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
@@ -1545,60 +1666,89 @@ export default function WarehouseReceiptFormPage() {
             </TableBody>
           </Table>
 
-          <Box component="fieldset" sx={{ flex: 1, minWidth: { xs: '100%', md: 0 }, border: '1px solid #777', borderRadius: 1, px: 1.6, py: 1.3, m: 0 }}>
-            <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form 1</Box>
-            <Table
-              size="small"
-              sx={{
-                border: '1px solid #d0d0d0',
-                '& th': { bgcolor: '#d7d7d7', fontSize: 11, fontWeight: 700, py: 0.7 },
-                '& td': { fontSize: 12, py: 0.65 },
-              }}
-            >
-              <TableHead>
-                <TableRow>
-                  <TableCell>Item</TableCell>
-                  <TableCell>Pieces</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Length</TableCell>
-                  <TableCell>Width</TableCell>
-                  <TableCell>Height</TableCell>
-                  <TableCell>Weight (lbs)</TableCell>
-                  <TableCell align="center">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(newFormItems.length ? newFormItems : splitItems.slice(0, 2)).map((item, index) => (
-                  <TableRow key={`new-form-${item.id || index}`}>
-                    <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
-                    <TableCell>{item.pieces || 10}</TableCell>
-                    <TableCell>{item.type || 'Skid'}</TableCell>
-                    <TableCell>{item.length || 5}</TableCell>
-                    <TableCell>{item.width || 5}</TableCell>
-                    <TableCell>{item.height || 5}</TableCell>
-                    <TableCell>{item.weight || 100}</TableCell>
-                    <TableCell align="center">
-                      <Stack direction="row" spacing={0.7} justifyContent="center">
-                        <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
-                          <Iconify icon="mdi:truck-fast" width={16} />
-                        </IconButton>
-                        <IconButton size="small" sx={{ p: 0.2, color: '#111' }}>
-                          <Iconify icon="mdi:dots-vertical" width={16} />
-                        </IconButton>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Box>
+          <Stack spacing={2} sx={{ flex: 1, minWidth: { xs: '100%', md: 0 } }}>
+            {Array.from({ length: splitFormCount }, (_, formIndex) => {
+              const formItemIndexes = splitExistingFormItems[formIndex] || [];
+
+              return (
+                <Box
+                  key={`existing-split-form-${formIndex + 1}`}
+                  component="fieldset"
+                  onDragOver={handleDragOver}
+                  onDrop={(event) => handleDropOnForm(event, formIndex)}
+                  sx={{
+                    minHeight: 130,
+                    border: '1px solid #777',
+                    borderRadius: 1,
+                    px: 1.6,
+                    py: 1.3,
+                    m: 0,
+                    bgcolor: formItemIndexes.length ? '#fff' : '#fafafa',
+                  }}
+                >
+                  <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                  <Table
+                    size="small"
+                    sx={{
+                      border: '1px solid #d0d0d0',
+                      '& th': { bgcolor: '#d7d7d7', fontSize: 11, fontWeight: 700, py: 0.7 },
+                      '& td': { fontSize: 12, py: 0.65 },
+                    }}
+                  >
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Item</TableCell>
+                        <TableCell>Pieces</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Length</TableCell>
+                        <TableCell>Width</TableCell>
+                        <TableCell>Height</TableCell>
+                        <TableCell>Weight (lbs)</TableCell>
+                        <TableCell align="center">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {formItemIndexes.map((itemIndex) => {
+                        const item = splitItems[itemIndex] || {};
+
+                        return (
+                          <TableRow key={`new-form-${formIndex}-${item.id || itemIndex}`}>
+                            <TableCell>{String(itemIndex + 1).padStart(2, '0')}</TableCell>
+                            <TableCell>{item.pieces || ''}</TableCell>
+                            <TableCell>{item.type || ''}</TableCell>
+                            <TableCell>{item.length || ''}</TableCell>
+                            <TableCell>{item.width || ''}</TableCell>
+                            <TableCell>{item.height || ''}</TableCell>
+                            <TableCell>{item.weight || ''}</TableCell>
+                            <TableCell align="center">
+                              <Stack direction="row" spacing={0.7} justifyContent="center">
+                                <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
+                                  <Iconify icon="mdi:truck-fast" width={16} />
+                                </IconButton>
+                                <IconButton size="small" onClick={() => handleRemoveFromSplitForm(formIndex, itemIndex)} sx={{ p: 0.2, color: '#111' }}>
+                                  <Iconify icon="mdi:dots-vertical" width={16} />
+                                </IconButton>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </Box>
+              );
+            })}
+          </Stack>
         </Stack>
 
         <Stack alignItems="flex-end" sx={{ mt: 2 }}>
           <Button
             variant="contained"
             size="small"
-            onClick={() => setSplitFormCount((prev) => prev + 1)}
+            onClick={() => {
+              setSplitFormCount((prev) => prev + 1);
+              setSplitExistingFormItems((prev) => [...prev, []]);
+            }}
             sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
           >
             Add New Form
@@ -2090,11 +2240,11 @@ export default function WarehouseReceiptFormPage() {
         <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'flex-end' }} justifyContent="space-between" spacing={2}>
           <Box
             sx={{
-              width: { xs: '100%', sm: 500 },
+              width: { xs: '100%', sm: 430 },
               bgcolor: '#d2d2d2',
               borderRadius: 1,
-              px: 1.6,
-              py: 1.2,
+              px: 1.2,
+              py: 0.8,
             }}
           >
             <Box
@@ -2102,32 +2252,32 @@ export default function WarehouseReceiptFormPage() {
                 display: 'grid',
                 gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' },
                 alignItems: 'center',
-                rowGap: 1,
+                rowGap: 0.6,
               }}
             >
-              <Stack direction="row" spacing={0.5} sx={{ gridColumn: { xs: '1', sm: '1 / 4' }, pb: 0.9, borderBottom: '1px solid #9d9d9d' }}>
-                <Typography sx={{ fontSize: 18 }}>Receipt Number :</Typography>
-                <Typography sx={{ fontSize: 18, fontWeight: 700 }}>{receiptNumber}</Typography>
+              <Stack direction="row" spacing={0.5} sx={{ gridColumn: { xs: '1', sm: '1 / 4' }, pb: 0.6, borderBottom: '1px solid #9d9d9d' }}>
+                <Typography sx={{ fontSize: 16 }}>Receipt Number :</Typography>
+                <Typography sx={{ fontSize: 16, fontWeight: 700 }}>{receiptNumber}</Typography>
               </Stack>
-              <Typography sx={{ fontSize: 18, pt: { xs: 0, sm: 0.6 } }}>Status :</Typography>
-              <Typography sx={{ fontSize: 18, fontWeight: 700, pt: { xs: 0, sm: 0.6 } }}>{status}</Typography>
-              <Box sx={{ pt: { xs: 0, sm: 0.6 } }}>
+              <Typography sx={{ fontSize: 16, pt: { xs: 0, sm: 0.3 } }}>Status :</Typography>
+              <Typography sx={{ fontSize: 16, fontWeight: 700, pt: { xs: 0, sm: 0.3 } }}>{status}</Typography>
+              <Box sx={{ pt: { xs: 0, sm: 0.3 } }}>
                 <Button
                   variant="contained"
                   size="small"
                   onClick={() => setStatusHistoryDialogOpen(true)}
-                  sx={{ ...actionBtnSx, height: 28, minWidth: 124, px: 1.4, fontSize: 14 }}
+                  sx={{ ...actionBtnSx, height: 24, minWidth: 110, px: 1.2, fontSize: 12 }}
                 >
                   Status History
                 </Button>
               </Box>
-              <Box sx={{ gridColumn: { xs: '1', sm: '1 / 4' }, borderTop: '1px solid #b6b6b6', pt: 1.1 }}>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
+              <Box sx={{ gridColumn: { xs: '1', sm: '1 / 4' }, borderTop: '1px solid #b6b6b6', pt: 0.8 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <Button
                     variant="contained"
                     size="small"
                     onClick={() => handleOpenPrinterDialog(receiptNumber)}
-                    sx={{ ...actionBtnSx, height: 30, flex: 1, fontSize: 14 }}
+                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print
                   </Button>
@@ -2135,7 +2285,7 @@ export default function WarehouseReceiptFormPage() {
                     variant="contained"
                     size="small"
                     onClick={() => handleOpenPrinterDialog(receiptNumber)}
-                    sx={{ ...actionBtnSx, height: 30, flex: 1, fontSize: 14 }}
+                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print Labels
                   </Button>
@@ -2143,7 +2293,7 @@ export default function WarehouseReceiptFormPage() {
                     variant="contained"
                     size="small"
                     onClick={() => setRatesDialogOpen(true)}
-                    sx={{ ...actionBtnSx, height: 30, flex: 1, fontSize: 14 }}
+                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Rates
                   </Button>
@@ -2157,7 +2307,7 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleOpenSplitDialog}
-              sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
+              sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Split
             </Button>
@@ -2165,16 +2315,16 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleEditWarehouseReceipt}
-              sx={{ ...actionBtnSx, height: 22, minWidth: 52, fontSize: 10 }}
+              sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Edit
             </Button>
             <IconButton
               size="small"
               onClick={() => setNotesDialogOpen(true)}
-              sx={{ color: '#A22', borderRadius: 0.6, width: 28, height: 24, '&:hover': { bgcolor: 'rgba(170, 34, 34, 0.08)' } }}
+              sx={{ color: '#A22', borderRadius: 0.6, width: 32, height: 28, '&:hover': { bgcolor: 'rgba(170, 34, 34, 0.08)' } }}
             >
-              <Iconify icon="mdi:notebook" width={24} />
+              <Iconify icon="mdi:notebook" width={26} />
             </IconButton>
           </Stack>
         </Stack>
@@ -2194,16 +2344,7 @@ export default function WarehouseReceiptFormPage() {
           <Iconify icon="eva:arrow-ios-back-fill" width={14} />
           <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{pageTitle}</Typography>
         </Stack>
-        {isWarehouseReceiptView ? (
-          <Button
-            variant="contained"
-            size="small"
-            onClick={handleBack}
-            sx={{ ...actionBtnSx, height: 24, minWidth: 52 }}
-          >
-            OK
-          </Button>
-        ) : isWarehouseReceiptEdit ? (
+        {isWarehouseReceiptView ? null : isWarehouseReceiptEdit ? (
           <Stack direction="row" spacing={1}>
             <Button
               variant="outlined"
@@ -2298,7 +2439,7 @@ export default function WarehouseReceiptFormPage() {
                 <ReceiptInfoRow
                   label="Received By"
                   value={activeForm.receivedBy}
-                  editable
+                  editable={isReceiptDetailsEditable}
                   required
                   error={receiptInfoErrors[activeForm.id]?.receivedBy}
                   maxLength={100}
@@ -2307,7 +2448,7 @@ export default function WarehouseReceiptFormPage() {
                 <ReceiptInfoRow
                   label="Location"
                   value={activeForm.location}
-                  editable
+                  editable={isReceiptDetailsEditable}
                   required
                   error={receiptInfoErrors[activeForm.id]?.location}
                   onChange={(value) => updateActiveFormField('location', value)}
@@ -2327,6 +2468,7 @@ export default function WarehouseReceiptFormPage() {
                 <Autocomplete
                   options={customerOptions}
                   value={activeForm.customerSelection}
+                  disabled={!isReceiptDetailsEditable}
                   getOptionLabel={getCustomerOptionLabel}
                   isOptionEqualToValue={(option, value) =>
                     option.customerId === value.customerId && option.stationId === value.stationId
@@ -2377,14 +2519,14 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField
                     label="Invoice No"
                     value={getRowValue(row, ['invoiceNo', 'invoiceNumber'], '')}
-                    editable
+                    editable={isReceiptDetailsEditable}
                     maxLength={50}
                     onChange={(value) => updateActiveRowField('invoiceNo', value)}
                   />
                   <DisplayField
                     label="PO No"
                     value={getRowValue(row, ['poNumber', 'poNo'], '')}
-                    editable
+                    editable={isReceiptDetailsEditable}
                     maxLength={50}
                     onChange={(value) => updateActiveRowField('poNumber', value)}
                   />
@@ -2394,7 +2536,7 @@ export default function WarehouseReceiptFormPage() {
                     label="Customer Ref No"
                     value={getRowValue(row, ['customerRefNo', 'customerReference'], '')}
                     width={{ xs: '100%', sm: '25%' }}
-                    editable
+                    editable={isReceiptDetailsEditable}
                     maxLength={50}
                     onChange={(value) => updateActiveRowField('customerRefNo', value)}
                   />
@@ -2402,7 +2544,7 @@ export default function WarehouseReceiptFormPage() {
                     label="Package ID"
                     value={getRowValue(row, ['packageId', 'packageNumber'], '')}
                     width={{ xs: '100%', sm: '25%' }}
-                    editable
+                    editable={isReceiptDetailsEditable}
                     onChange={(value) => updateActiveRowField('packageId', value)}
                   />
                   <Box sx={{ flex: 1 }} />
@@ -2525,7 +2667,7 @@ export default function WarehouseReceiptFormPage() {
                         control={
                           <Checkbox
                             checked={Boolean(activeFreightInfo.conditions[label])}
-                            disabled={isMobileReceiptForm}
+                            disabled={isMobileReceiptForm || !isReceiptDetailsEditable}
                             onChange={(event) =>
                               updateActiveFreightInfo((info) => ({
                                 conditions: { ...info.conditions, [label]: event.target.checked },
@@ -2561,7 +2703,7 @@ export default function WarehouseReceiptFormPage() {
                         control={
                           <Checkbox
                             checked={activeFreightInfo.badFreightCondition}
-                            disabled={isMobileReceiptForm}
+                            disabled={isMobileReceiptForm || !isReceiptDetailsEditable}
                             onChange={(event) =>
                               updateActiveFreightInfo({
                                 badFreightCondition: event.target.checked,
@@ -2580,7 +2722,7 @@ export default function WarehouseReceiptFormPage() {
                             size="small"
                             title="Capture freight condition image"
                             onClick={handleOpenFreightCamera}
-                            disabled={isMobileReceiptForm}
+                            disabled={isMobileReceiptForm || !isReceiptDetailsEditable}
                             sx={{
                               bgcolor: '#A22',
                               color: '#fff',
@@ -2596,7 +2738,7 @@ export default function WarehouseReceiptFormPage() {
                             size="small"
                             title="Upload freight condition image"
                             onClick={handleOpenFreightUpload}
-                            disabled={isMobileReceiptForm}
+                            disabled={isMobileReceiptForm || !isReceiptDetailsEditable}
                             sx={{
                               bgcolor: '#A22',
                               color: '#fff',
@@ -2613,32 +2755,30 @@ export default function WarehouseReceiptFormPage() {
                     </Stack>
                     {activeFreightInfo.badFreightCondition && activeFreightInfo.freightConditionImages.length > 0 && (
                       <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 0.5 }}>
-                        {activeFreightInfo.freightConditionImages.map((file, index) => {
-                          const imageUrl = getImageUrl(file);
-                          return (
-                            <Box
-                              key={`${getImageName(file, index)}-${index}`}
-                              component="img"
-                              src={imageUrl}
-                              alt={getImageName(file, index)}
-                              onClick={() =>
-                                setImageDialog({
-                                  open: true,
-                                  images: activeFreightInfo.freightConditionImages,
-                                  itemLabel: 'Bad Freight Condition',
-                                })
-                              }
-                              sx={{
-                                width: 54,
-                                height: 54,
-                                objectFit: 'cover',
-                                border: '1px solid #d0d0d0',
-                                borderRadius: 1,
-                                cursor: 'pointer',
-                              }}
-                            />
-                          );
-                        })}
+                        {activeFreightInfo.freightConditionImages.map((file, index) => (
+                          <WarehouseImage
+                            key={`${getImageName(file, index)}-${index}`}
+                            file={file}
+                            imageType="badFreight"
+                            alt={getImageName(file, index)}
+                            onClick={() =>
+                              setImageDialog({
+                                open: true,
+                                images: activeFreightInfo.freightConditionImages,
+                                itemLabel: 'Bad Freight Condition',
+                                imageType: 'badFreight',
+                              })
+                            }
+                            sx={{
+                              width: 54,
+                              height: 54,
+                              objectFit: 'cover',
+                              border: '1px solid #d0d0d0',
+                              borderRadius: 1,
+                              cursor: 'pointer',
+                            }}
+                          />
+                        ))}
                       </Stack>
                     )}
                     <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Freight Condition</Typography>
@@ -2650,6 +2790,7 @@ export default function WarehouseReceiptFormPage() {
                         updateActiveFreightInfo({ freightConditionDescription: event.target.value })
                       }
                       size="small"
+                      InputProps={{ readOnly: !isReceiptDetailsEditable }}
                       sx={{ '& textarea': { fontSize: 12 } }}
                     />
                   </Stack>
@@ -2667,6 +2808,7 @@ export default function WarehouseReceiptFormPage() {
                       control={
                         <Checkbox
                           checked={activeFreightInfo.hazMat}
+                          disabled={!isReceiptDetailsEditable}
                           onChange={(event) => updateActiveFreightInfo({ hazMat: event.target.checked })}
                           size="small"
                           sx={{ p: 0.4 }}
@@ -2679,6 +2821,7 @@ export default function WarehouseReceiptFormPage() {
                         control={
                           <Checkbox
                             checked={activeFreightInfo.originalDgd}
+                            disabled={!isReceiptDetailsEditable}
                             onChange={(event) => updateActiveFreightInfo({ originalDgd: event.target.checked })}
                             size="small"
                             sx={{ p: 0.4 }}
@@ -2697,6 +2840,7 @@ export default function WarehouseReceiptFormPage() {
                         onInputChange={(value) => updateActiveFreightInfo({ unNumberInput: value })}
                         onAdd={(value) => addTagValue(value, 'unNumbers', 'unNumberInput')}
                         onRemove={(index) => removeTagValue(index, 'unNumbers')}
+                        disabled={!isReceiptDetailsEditable}
                       />
                       <TagInputBox
                         label="Hazmat Class"
@@ -2705,6 +2849,7 @@ export default function WarehouseReceiptFormPage() {
                         onInputChange={(value) => updateActiveFreightInfo({ hazmatClassInput: value })}
                         onAdd={(value) => addTagValue(value, 'hazmatClasses', 'hazmatClassInput')}
                         onRemove={(index) => removeTagValue(index, 'hazmatClasses')}
+                        disabled={!isReceiptDetailsEditable}
                       />
                     </>
                   )}
@@ -2713,7 +2858,7 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField
                     label="Proper Shipping Name"
                     value={activeFreightInfo.properShippingName}
-                    editable
+                    editable={isReceiptDetailsEditable}
                     onChange={(value) => updateActiveFreightInfo({ properShippingName: value })}
                   />
                   <Typography sx={{ fontSize: 12 }}>Description</Typography>
@@ -2723,6 +2868,7 @@ export default function WarehouseReceiptFormPage() {
                     size="small"
                     value={activeFreightInfo.hazardousDescription}
                     onChange={(event) => updateActiveFreightInfo({ hazardousDescription: event.target.value })}
+                    InputProps={{ readOnly: !isReceiptDetailsEditable }}
                     sx={{ '& textarea': { fontSize: 12 } }}
                   />
                 </Stack>
@@ -2735,7 +2881,7 @@ export default function WarehouseReceiptFormPage() {
               <DisplayField
                 label="Destination"
                 value={getRowValue(row, ['destination', 'finalDestination'], '')}
-                editable
+                editable={isReceiptDetailsEditable}
                 onChange={(value) => updateActiveRowField('destination', value)}
               />
             </Stack>
@@ -2747,6 +2893,7 @@ export default function WarehouseReceiptFormPage() {
                 size="small"
                 value={activeFreightInfo.notes}
                 onChange={(event) => updateActiveFreightInfo({ notes: event.target.value })}
+                InputProps={{ readOnly: !isReceiptDetailsEditable }}
                 sx={{ '& textarea': { fontSize: 12 } }}
               />
             </Stack>
@@ -2769,22 +2916,19 @@ export default function WarehouseReceiptFormPage() {
             <Typography sx={{ fontSize: 13 }}>No uploaded images available.</Typography>
           ) : (
             <Stack direction="row" flexWrap="wrap" gap={2}>
-              {imageDialog.images.map((file, index) => {
-                const imageUrl = getImageUrl(file);
-                return (
-                  <Stack
-                    key={`${getImageName(file, index)}-${index}`}
-                    spacing={0.8}
-                    sx={{ width: 160, minWidth: 0 }}
-                  >
-                    <Box sx={{ position: 'relative', width: 160, height: 120 }}>
-                      {imageUrl ? (
-                        <Box
-                          component="img"
-                          src={imageUrl}
-                          alt={getImageName(file, index)}
-                          onClick={() => handleOpenFullImage(file, getImageName(file, index))}
-                          sx={{
+              {imageDialog.images.map((file, index) => (
+                <Stack
+                  key={`${getImageName(file, index)}-${index}`}
+                  spacing={0.8}
+                  sx={{ width: 160, minWidth: 0 }}
+                >
+                  <Box sx={{ position: 'relative', width: 160, height: 120 }}>
+                    <WarehouseImage
+                      file={file}
+                      imageType={imageDialog.imageType}
+                      alt={getImageName(file, index)}
+                      onClick={() => handleOpenFullImage(file, getImageName(file, index), imageDialog.imageType)}
+                      sx={{
                             width: 160,
                             height: 120,
                             objectFit: 'cover',
@@ -2793,16 +2937,7 @@ export default function WarehouseReceiptFormPage() {
                             cursor: 'zoom-in',
                           }}
                         />
-                      ) : (
-                        <Stack
-                          alignItems="center"
-                          justifyContent="center"
-                          sx={{ width: 160, height: 120, border: '1px solid #d0d0d0', borderRadius: 1 }}
-                        >
-                          <Iconify icon="mdi:image-off" width={28} />
-                        </Stack>
-                      )}
-                      {imageDialog.itemLabel === 'Bad Freight Condition' && !isMobileReceiptForm && (
+                      {imageDialog.itemLabel === 'Bad Freight Condition' && !isMobileReceiptForm && isReceiptDetailsEditable && (
                         <IconButton
                           size="small"
                           title="Remove image"
@@ -2824,8 +2959,7 @@ export default function WarehouseReceiptFormPage() {
                       {getImageName(file, index)}
                     </Typography>
                   </Stack>
-                );
-              })}
+              ))}
             </Stack>
           )}
         </DialogContent>
@@ -2852,10 +2986,10 @@ export default function WarehouseReceiptFormPage() {
           </IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ bgcolor: '#111', p: 2 }}>
-          {getImageUrl(fullImageDialog.image) ? (
-            <Box
-              component="img"
-              src={getImageUrl(fullImageDialog.image)}
+          {getImageUrl(fullImageDialog.image, fullImageDialog.imageType) ? (
+            <WarehouseImage
+              file={fullImageDialog.image}
+              imageType={fullImageDialog.imageType}
               alt={fullImageDialog.title || 'Image Preview'}
               sx={{
                 display: 'block',

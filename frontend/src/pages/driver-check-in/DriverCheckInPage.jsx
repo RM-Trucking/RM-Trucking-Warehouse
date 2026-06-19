@@ -1174,6 +1174,7 @@ const handleDriverNameFocus = () => {
       onReset={handleResetForm}
       submitLoading={submitLoading}
       showCancel={false}
+      stickyHeader
     >
       <Stack spacing={4}>
         <fieldset

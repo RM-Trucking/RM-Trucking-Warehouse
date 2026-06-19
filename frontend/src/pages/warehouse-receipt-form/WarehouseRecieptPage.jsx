@@ -4,14 +4,12 @@ import {
   Box,
   Button,
   Checkbox,
-  CircularProgress,
   Dialog,
   DialogContent,
   FormControlLabel,
   IconButton,
   InputAdornment,
   MenuItem,
-  Popover,
   Snackbar,
   Stack,
   TextField,
@@ -19,7 +17,7 @@ import {
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
-import FilterListIcon from '@mui/icons-material/FilterList';
+import ClearIcon from '@mui/icons-material/Clear';
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
@@ -28,24 +26,35 @@ import { useDispatch, useSelector } from '../../redux/store';
 import { getWarehouseReceipts } from '../../redux/slices/warehouseReceipt';
 
 const statusTabs = [
-  { label: 'Active', count: 100 },
-  { label: 'Accounting', count: 5 },
+  { label: 'Active', countKey: 'active' },
+  { label: 'Accounting', countKey: 'accounting' },
 ];
 
 const quickStatuses = [
-  { label: 'Initiated', count: 25 },
-  { label: 'On-Hand', count: 25 },
-  { label: 'Approved', count: 40 },
-  { label: 'Waiting', count: 10 },
+  { label: 'Initiated', countKey: 'initiate' },
+  { label: 'On-Hand', countKey: 'onHand' },
+  { label: 'Prepared', countKey: 'prepared' },
+  { label: 'Scanned', countKey: 'scanned' },
+  { label: 'Shipped', countKey: 'shipped' },
+  { label: 'Rejected', countKey: 'rejected' },
+  { label: 'Archived', countKey: 'archived' },
 ];
 
-const filterStatuses = ['Initiated', 'On-Hand', 'Prepared', 'Scanned', 'Shipped', 'Rejected', 'Archived'];
+const statusApiValues = {
+  Initiated: 'INITIATED',
+  'On-Hand': 'ON_HAND',
+  Prepared: 'PREPARED',
+  Scanned: 'SCANNED',
+  Shipped: 'SHIPPED',
+  Rejected: 'REJECTED',
+  Archived: 'ARCHIVED',
+};
 
 const actionIcons = [
   'mdi:eye',
   'mdi:printer',
   'location-edit',
-  'mdi:download',
+  'mdi:upload',
   'mdi:file-document',
   'mdi:send',
   'mdi:hourglass',
@@ -61,30 +70,51 @@ const gridSx = {
   '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 'bold', fontSize: '14px' },
 };
 
+const isYes = (value) => String(value || '').toUpperCase() === 'Y';
+
+const buildFreightInfoFromReceipt = (receipt = {}) => ({
+  conditions: {
+    'Banded Skid': isYes(receipt.bandedSkid),
+    'Shrink Wrapped Skid': isYes(receipt.shrinkWrappedSkid),
+    'SHT / IPPC Skid': isYes(receipt.shtIppcSkid),
+    'Plastic Skid': isYes(receipt.plasticSkid),
+    Document: isYes(receipt.documents),
+  },
+  badFreightCondition: isYes(receipt.freightCondition) || Boolean(receipt.badFreightConditionImages?.length),
+  freightConditionImages: receipt.badFreightConditionImages || [],
+  hazMat: isYes(receipt.hazMat),
+  originalDgd: isYes(receipt.originalDgd),
+  unNumbers: Array.isArray(receipt.unNumber) ? receipt.unNumber : [],
+  hazmatClasses: Array.isArray(receipt.class) ? receipt.class : [],
+  unNumberInput: '',
+  hazmatClassInput: '',
+  properShippingName: receipt.properShippingName || '',
+  freightConditionDescription: receipt.handlingDescription || '',
+  hazardousDescription: receipt.hazardousDescription || '',
+  notes: receipt.notes || '',
+});
+
 export default function WarehouseRecieptPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { receipts, isLoading, error, pagination } = useSelector((state) => state.warehouseReceiptdata);
+  const { receipts, isLoading, error, pagination, countList } = useSelector((state) => state.warehouseReceiptdata);
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
-  const [filterAnchorEl, setFilterAnchorEl] = useState(null);
+  const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState('');
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
   const [locationOverrides, setLocationOverrides] = useState({});
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
-  const [selectedStatuses, setSelectedStatuses] = useState({
-    Initiated: false,
-    'On-Hand': true,
-    Approved: false,
-    Waiting: false,
-  });
+  const [selectedStatus, setSelectedStatus] = useState('');
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
 
   useEffect(() => {
     dispatch(getWarehouseReceipts({
       page: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
+      status: selectedStatus ? statusApiValues[selectedStatus] : '',
+      receiptNumber: submittedReceiptNumber,
     }));
-  }, [dispatch, paginationModel.page, paginationModel.pageSize]);
+  }, [dispatch, paginationModel.page, paginationModel.pageSize, selectedStatus, submittedReceiptNumber]);
 
   const gridRowCount = pagination.totalRecords || (
     paginationModel.page * paginationModel.pageSize +
@@ -92,26 +122,14 @@ export default function WarehouseRecieptPage() {
     (receipts.length === paginationModel.pageSize ? 1 : 0)
   );
 
-  const filteredRows = useMemo(() => {
-    const search = searchValue.trim().toLowerCase();
-    const checkedStatuses = Object.entries(selectedStatuses)
-      .filter(([, checked]) => checked)
-      .map(([label]) => label);
+  const getCount = (key) => Number(countList?.[key] ?? 0);
 
+  const filteredRows = useMemo(() => {
     return receipts.map((row) => ({
       ...row,
       location: locationOverrides[row.id] ?? row.location,
-    })).filter((row) => {
-      const matchesSearch =
-        !search ||
-        String(row.receiptNumber).includes(search) ||
-        row.customer.toLowerCase().includes(search) ||
-        row.proNumber.toLowerCase().includes(search);
-
-      const matchesStatus = checkedStatuses.length === 0 || checkedStatuses.includes(row.status);
-      return matchesSearch && matchesStatus;
-    });
-  }, [locationOverrides, receipts, searchValue, selectedStatuses]);
+    }));
+  }, [locationOverrides, receipts]);
 
   const handleCopyReceiptNumber = async (event, receiptNumber) => {
     event.stopPropagation();
@@ -186,6 +204,7 @@ export default function WarehouseRecieptPage() {
       sortable: false,
       filterable: false,
       minWidth: 190,
+      headerAlign: 'center',
       align: 'right',
       renderCell: (params) => (
         <Stack
@@ -221,7 +240,18 @@ export default function WarehouseRecieptPage() {
   ];
 
   const handleStatusChange = (label, checked) => {
-    setSelectedStatuses((prev) => ({ ...prev, [label]: checked }));
+    setSelectedStatus(checked ? label : '');
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleReceiptSearch = () => {
+    setSubmittedReceiptNumber(searchValue.trim());
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleClearReceiptSearch = () => {
+    setSearchValue('');
+    setSubmittedReceiptNumber('');
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
@@ -245,6 +275,7 @@ export default function WarehouseRecieptPage() {
 
   const handleViewReceipt = (row) => {
     const receipt = row.rawData || {};
+    const freightInfo = buildFreightInfoFromReceipt(receipt);
     const freightItems = receipt.freightInformation?.length
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
@@ -304,6 +335,7 @@ export default function WarehouseRecieptPage() {
                 receiptNumber: row.receiptNumber,
                 freightOptions: [],
                 badFreightImages: receipt.badFreightConditionImages || [],
+                freightInfo,
                 items: freightItems,
               },
             ],
@@ -322,21 +354,30 @@ export default function WarehouseRecieptPage() {
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
         <TextField
           size="small"
-          placeholder="Search..."
+          placeholder="Search by Receipt Number"
           value={searchValue}
           onChange={(event) => setSearchValue(event.target.value)}
-          sx={{ width: 245 }}
+          sx={{
+            width: 245,
+            '& .MuiOutlinedInput-root': {
+              paddingRight: 0.5,
+            },
+          }}
           InputProps={{
             endAdornment: (
-              <InputAdornment position="end">
-                <SearchIcon sx={{ fontSize: 18, color: '#777' }} />
+              <InputAdornment position="end" sx={{ gap: 0.5, mr: 0 }}>
+                {searchValue && (
+                  <IconButton size="small" onClick={handleClearReceiptSearch} sx={{ p: 0.2 }}>
+                    <ClearIcon sx={{ fontSize: 18, color: '#999' }} />
+                  </IconButton>
+                )}
+                <IconButton size="small" onClick={handleReceiptSearch} sx={{ p: 0.2 }}>
+                  <SearchIcon sx={{ fontSize: 18, color: '#777' }} />
+                </IconButton>
               </InputAdornment>
             ),
           }}
         />
-        <IconButton size="small" onClick={(event) => setFilterAnchorEl(event.currentTarget)}>
-          <FilterListIcon sx={{ fontSize: 20 }} />
-        </IconButton>
         <IconButton size="small" sx={{ bgcolor: '#a22', color: '#fff', borderRadius: 0.8, '&:hover': { bgcolor: '#8b1c1c' } }}>
           <Iconify icon="mdi:table" width={18} />
         </IconButton>
@@ -362,7 +403,7 @@ export default function WarehouseRecieptPage() {
                   fontWeight: selected ? 700 : 400,
                 }}
               >
-                {tab.label} ({String(tab.count).padStart(2, '0')})
+                {tab.label} ({String(getCount(tab.countKey)).padStart(2, '0')})
               </Button>
             );
           })}
@@ -377,14 +418,14 @@ export default function WarehouseRecieptPage() {
             control={
               <Checkbox
                 size="small"
-                checked={Boolean(selectedStatuses[status.label])}
+                checked={selectedStatus === status.label}
                 onChange={(event) => handleStatusChange(status.label, event.target.checked)}
                 sx={{ p: 0.3, '&.Mui-checked': { color: '#1b426f' } }}
               />
             }
             label={
               <Typography sx={{ fontSize: 12 }}>
-                {status.label} ({status.count})
+                {status.label} ({getCount(status.countKey)})
               </Typography>
             }
           />
@@ -401,13 +442,6 @@ export default function WarehouseRecieptPage() {
           rows={filteredRows}
           columns={columns}
           loading={isLoading}
-          slots={{
-            loadingOverlay: () => (
-              <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }}>
-                <CircularProgress size={28} />
-              </Stack>
-            ),
-          }}
           disableRowSelectionOnClick
           disableColumnMenu
           paginationMode="server"
@@ -477,32 +511,6 @@ export default function WarehouseRecieptPage() {
           </Stack>
         </DialogContent>
       </Dialog>
-
-      <Popover
-        open={Boolean(filterAnchorEl)}
-        anchorEl={filterAnchorEl}
-        onClose={() => setFilterAnchorEl(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{ sx: { width: 205, p: 1.2, borderRadius: 1, border: '1px solid #dedede' } }}
-      >
-        <Stack>
-          {filterStatuses.map((status) => (
-            <FormControlLabel
-              key={status}
-              control={
-                <Checkbox
-                  size="small"
-                  checked={Boolean(selectedStatuses[status])}
-                  onChange={(event) => handleStatusChange(status, event.target.checked)}
-                  sx={{ p: 0.45 }}
-                />
-              }
-              label={<Typography sx={{ fontSize: 12 }}>{status}</Typography>}
-            />
-          ))}
-        </Stack>
-      </Popover>
 
       <Snackbar
         open={copyMessageOpen}
