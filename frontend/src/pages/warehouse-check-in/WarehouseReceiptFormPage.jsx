@@ -155,6 +155,11 @@ const fileToBase64 = (file) =>
       return;
     }
 
+    if (!(file instanceof Blob)) {
+      resolve('');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const result = String(reader.result || '');
@@ -565,6 +570,27 @@ const getImageName = (file, index) => {
   return file.name || file.filename || file.fileName || file.imageName || file.path?.split('/').pop() || file.filePath?.split('/').pop() || file.imagePath?.split('/').pop() || `Image ${index + 1}`;
 };
 
+const getCargoApiImageValue = (image) => {
+  if (!image) return '';
+  if (typeof image === 'string') return image.trim();
+  if (image instanceof Blob) return '';
+
+  return (
+    image.base64 ||
+    image.image ||
+    image.data ||
+    image.url ||
+    image.preview ||
+    image.fileName ||
+    image.filename ||
+    image.imageName ||
+    image.path ||
+    image.filePath ||
+    image.imagePath ||
+    ''
+  );
+};
+
 function WarehouseImage({ file, imageType = 'freight', alt = '', sx, ...props }) {
   const sourceUrl = getImageUrl(file, imageType);
 
@@ -584,6 +610,20 @@ function WarehouseImage({ file, imageType = 'freight', alt = '', sx, ...props })
 }
 
 const getSubmittedImageValue = async (image) => {
+  const cargoImageValue = getCargoApiImageValue(image);
+
+  if (cargoImageValue) {
+    const cleanValue = String(cargoImageValue).trim();
+    if (!cleanValue) return '';
+    if (/^(https?:\/\/|blob:)/i.test(cleanValue)) return cleanValue;
+    if (cleanValue.startsWith('data:image/')) {
+      const base64Value = cleanValue.includes(',') ? cleanValue.split(',').pop() : cleanValue;
+      return base64Value ? `base64,${base64Value}` : '';
+    }
+    if (cleanValue.startsWith('base64,')) return cleanValue;
+    return looksLikeBase64Image(cleanValue) ? `base64,${cleanValue}` : cleanValue;
+  }
+
   const base64Image = await fileToBase64(image);
   if (!base64Image) return '';
 
