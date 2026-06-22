@@ -167,6 +167,32 @@ const normalizeEmailList = (value) => {
   return [];
 };
 
+// const fileToBase64 = (file) =>
+//   new Promise((resolve, reject) => {
+//     if (!file) {
+//       resolve('');
+//       return;
+//     }
+
+//     if (typeof file === 'string') {
+//       resolve(file.includes(',') ? file.split(',').pop() : file);
+//       return;
+//     }
+
+//     if (!(file instanceof Blob)) {
+//       resolve('');
+//       return;
+//     }
+
+//     const reader = new FileReader();
+//     reader.onload = () => {
+//       const result = String(reader.result || '');
+//       resolve(result.includes(',') ? result.split(',').pop() : result);
+//     };
+//     reader.onerror = reject;
+//     reader.readAsDataURL(file);
+//   });
+
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
     if (!file) {
@@ -179,24 +205,38 @@ const fileToBase64 = (file) =>
       return;
     }
 
-    if (!(file instanceof Blob)) {
+    // Use Duck Typing instead of strict instanceof Blob
+    if (!isFileLike(file)) {
       resolve('');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      resolve(result.includes(',') ? result.split(',').pop() : result);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        resolve(result.includes(',') ? result.split(',').pop() : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    } catch (error) {
+      reject(error);
+    }
   });
+
+const isFileLike = (obj) => {
+  if (!obj) return false;
+  if (obj instanceof File || obj instanceof Blob) return true;
+  // Duck typing for cross-context WebViews (Zebra Scanners)
+  return typeof obj === 'object' && typeof obj.size === 'number' && typeof obj.type === 'string';
+};
 
 const getCargoApiImageValue = (image) => {
   if (!image) return '';
   if (typeof image === 'string') return image.trim();
-  if (image instanceof Blob) return '';
+  
+  // Safely skip camera Files/Blobs using Duck Typing
+  if (isFileLike(image)) return '';
 
   return (
     image.base64 ||
@@ -1153,11 +1193,11 @@ export default function WarehouseCheckInPage({
   const handleCaptureImage = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       cameraInputRef.current?.click();
-      setSnackbar({
-        open: true,
-        message: 'Camera is not available in this browser. Please use file upload.',
-        severity: 'warning',
-      });
+      // setSnackbar({
+      //   open: true,
+      //   message: 'Camera is not available in this browser. Please use file upload.',
+      //   severity: 'warning',
+      // });
       return;
     }
 
