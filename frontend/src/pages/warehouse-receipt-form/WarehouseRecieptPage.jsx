@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Autocomplete,
   Box,
   Button,
   Checkbox,
+  CircularProgress,
   Dialog,
   DialogContent,
   FormControlLabel,
@@ -13,17 +15,20 @@ import {
   Snackbar,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
 import { getWarehouseReceipts, updateWarehouseReceiptLocation } from '../../redux/slices/warehouseReceipt';
+import { searchCarriers } from '../../redux/slices/enroute';
 
 const statusTabs = [
   { label: 'Active', countKey: 'active' },
@@ -40,6 +45,17 @@ const quickStatuses = [
   { label: 'Archived', countKey: 'archived' },
 ];
 
+const filterStatusOptions = [
+  { label: 'ALL', value: '' },
+  { label: 'INITIATED', value: 'INITIATED' },
+  { label: 'ON-HAND', value: 'ON_HAND' },
+  { label: 'PREPARED', value: 'PREPARED' },
+  { label: 'SCANNED', value: 'SCANNED' },
+  { label: 'SHIPPED', value: 'SHIPPED' },
+  { label: 'REJECTED', value: 'REJECTED' },
+  { label: 'ARCHIVED', value: 'ARCHIVED' },
+];
+
 const statusApiValues = {
   Initiated: 'INITIATED',
   'On-Hand': 'ON_HAND',
@@ -48,6 +64,21 @@ const statusApiValues = {
   Shipped: 'SHIPPED',
   Rejected: 'REJECTED',
   Archived: 'ARCHIVED',
+};
+
+const emptyReceiptFilters = {
+  startDate: '',
+  endDate: '',
+  carrier: '',
+  carrierId: '',
+  location: '',
+  proNumber: '',
+  receiptNumber: '',
+  verificationId: '',
+  customer: '',
+  station: '',
+  destination: '',
+  status: '',
 };
 
 const actionIcons = [
@@ -71,6 +102,31 @@ const gridSx = {
 };
 
 const isYes = (value) => String(value || '').toUpperCase() === 'Y';
+
+const isSendToTellSystemYes = (value) => ['Y', 'YES'].includes(String(value || '').trim().toUpperCase());
+
+const statusPillColors = {
+  'on-hand': '#8ec7ee',
+  initiated: '#c9a47f',
+  prepared: '#b99adf',
+  scanned: '#62b36e',
+  shipped: '#1f7a3a',
+  rejected: '#c62828',
+  archived: '#8a8a8a',
+};
+
+const getStatusPillColor = (status) => {
+  const key = String(status || '').trim().toLowerCase();
+  return statusPillColors[key] || '#62b36e';
+};
+
+const isOnHandStatus = (status) => String(status || '').trim().toLowerCase().replace('_', '-') === 'on-hand';
+
+const getCarrierOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+  return option.carrierName || option.name || option.label || '';
+};
 
 const buildFreightInfoFromReceipt = (receipt = {}) => ({
   conditions: {
@@ -98,6 +154,7 @@ export default function WarehouseRecieptPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { receipts, isLoading, error, pagination, countList } = useSelector((state) => state.warehouseReceiptdata);
+  const { carrierOptions, carrierLoading } = useSelector((state) => state.enroutedata);
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
   const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState('');
@@ -108,16 +165,63 @@ export default function WarehouseRecieptPage() {
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [receiptFilters, setReceiptFilters] = useState(emptyReceiptFilters);
+  const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(emptyReceiptFilters);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
+
+  const activeFilterCount = Object.entries(appliedReceiptFilters)
+    .filter(([key, value]) => key !== 'carrier' && String(value || '').trim())
+    .length;
+  const requestStatus = appliedReceiptFilters.status || (selectedStatus ? statusApiValues[selectedStatus] : '');
+  const requestReceiptNumber = appliedReceiptFilters.receiptNumber || submittedReceiptNumber;
+  const requestFilters = {
+    startDate: appliedReceiptFilters.startDate,
+    endDate: appliedReceiptFilters.endDate,
+    carrierId: appliedReceiptFilters.carrierId,
+    location: appliedReceiptFilters.location,
+    proNumber: appliedReceiptFilters.proNumber,
+    verificationId: appliedReceiptFilters.verificationId,
+    customer: appliedReceiptFilters.customer,
+    station: appliedReceiptFilters.station,
+    destination: appliedReceiptFilters.destination,
+  };
 
   useEffect(() => {
     dispatch(getWarehouseReceipts({
       page: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
-      status: selectedStatus ? statusApiValues[selectedStatus] : '',
-      receiptNumber: submittedReceiptNumber,
+      status: requestStatus,
+      receiptNumber: requestReceiptNumber,
+      filters: requestFilters,
     }));
-  }, [dispatch, paginationModel.page, paginationModel.pageSize, selectedStatus, submittedReceiptNumber]);
+  }, [
+    dispatch,
+    paginationModel.page,
+    paginationModel.pageSize,
+    requestStatus,
+    requestReceiptNumber,
+    requestFilters.startDate,
+    requestFilters.endDate,
+    requestFilters.carrierId,
+    requestFilters.location,
+    requestFilters.proNumber,
+    requestFilters.verificationId,
+    requestFilters.customer,
+    requestFilters.station,
+    requestFilters.destination,
+  ]);
+
+  useEffect(() => {
+    if (!filterDialogOpen) return undefined;
+    if (receiptFilters.carrierId) return undefined;
+
+    const timer = setTimeout(() => {
+      dispatch(searchCarriers(receiptFilters.carrier));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, filterDialogOpen, receiptFilters.carrier, receiptFilters.carrierId]);
 
   const gridRowCount = pagination.totalRecords || (
     paginationModel.page * paginationModel.pageSize +
@@ -160,39 +264,66 @@ export default function WarehouseRecieptPage() {
       headerName: 'Receipt Number',
       minWidth: 130,
       flex: 1,
-      renderCell: (params) => (
-        <Stack direction="row" alignItems="center" spacing={0.6} sx={{ height: '100%' }}>
-          <Typography sx={{ fontSize: 12 }}>{params.value}</Typography>
-          <IconButton
-            size="small"
-            aria-label={`Copy receipt number ${params.value}`}
-            onClick={(event) => handleCopyReceiptNumber(event, params.value)}
-            sx={{ p: 0.2 }}
-          >
-            <Iconify icon="mdi:content-copy" width={13} sx={{ color: '#9db9cf' }} />
-          </IconButton>
-          <Iconify icon="mdi:check-circle" width={14} sx={{ color: '#63b66e' }} />
-        </Stack>
-      ),
+      renderCell: (params) => {
+        const sentToTellSystem = isSendToTellSystemYes(params.row.sendToTellSystem);
+
+        return (
+          <Stack direction="row" alignItems="center" spacing={0.6} sx={{ height: '100%' }}>
+            <Typography sx={{ fontSize: 12 }}>{params.value}</Typography>
+            <IconButton
+              size="small"
+              aria-label={`Copy receipt number ${params.value}`}
+              onClick={(event) => handleCopyReceiptNumber(event, params.value)}
+              sx={{ p: 0.2 }}
+            >
+              <Iconify icon="mdi:content-copy" width={13} sx={{ color: '#9db9cf' }} />
+            </IconButton>
+            {sentToTellSystem ? (
+              <Tooltip title="Warehouse receipt sent to the Tell system." arrow>
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <Iconify icon="mdi:check-circle" width={14} sx={{ color: '#63b66e' }} />
+                </Box>
+              </Tooltip>
+            ) : (
+              <Tooltip title="Waiting to send the warehouse receipt to the Tell system." arrow>
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <Iconify icon="mdi:clock-outline" width={18} sx={{ color: '#777' }} />
+                </Box>
+              </Tooltip>
+            )}
+          </Stack>
+        );
+      },
     },
     {
       field: 'status',
       headerName: 'Status',
       minWidth: 140,
-      renderCell: (params) => (
-        <Box
-          sx={{
-            bgcolor: '#62b36e',
-            color: '#fff',
-            borderRadius: 3,
-            minWidth: 60,
-            textAlign: 'center',
-            fontSize: 11,
-          }}
-        >
-          {params.value}
-        </Box>
-      ),
+      renderCell: (params) => {
+        const pillColor = getStatusPillColor(params.value);
+
+        return (
+          <Stack alignItems="center" justifyContent="center" sx={{ width: '100%', height: '100%' }}>
+            <Box
+              sx={{
+                bgcolor: pillColor,
+                color: '#fff',
+                borderRadius: 999,
+                width: 'calc(100% - 18px)',
+                height: 30,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 600,
+                lineHeight: 1,
+              }}
+            >
+              {params.value}
+            </Box>
+          </Stack>
+        );
+      },
     },
     { field: 'carrier', headerName: 'Carrier', minWidth: 100, flex: 0.8 },
     { field: 'customer', headerName: 'Customer', minWidth: 155, flex: 1.2 },
@@ -208,42 +339,47 @@ export default function WarehouseRecieptPage() {
       filterable: false,
       minWidth: 190,
       headerAlign: 'center',
-      align: 'right',
-      renderCell: (params) => (
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="flex-end"
-          spacing={0.4}
-          sx={{ width: '100%', height: '100%' }}
-        >
-          {actionIcons.map((icon) => (
-            <IconButton
-              key={icon}
-              size="small"
-              onClick={
-                icon === 'mdi:eye'
-                  ? () => handleViewReceipt(params.row)
-                  : icon === 'location-edit'
-                    ? () => handleOpenLocationDialog(params.row)
-                    : undefined
-              }
-              sx={{ p: 0.25 }}
-            >
-              {icon === 'location-edit' ? (
-                <EditLocationAltIcon sx={{ color: '#050505', fontSize: 18 }} />
-              ) : (
-                <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
-              )}
-            </IconButton>
-          ))}
-        </Stack>
-      ),
+      align: 'center',
+      renderCell: (params) => {
+        const visibleActionIcons = isOnHandStatus(params.row.status) ? actionIcons : ['mdi:eye'];
+
+        return (
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="center"
+            spacing={0.4}
+            sx={{ width: '100%', height: '100%' }}
+          >
+            {visibleActionIcons.map((icon) => (
+              <IconButton
+                key={icon}
+                size="small"
+                onClick={
+                  icon === 'mdi:eye'
+                    ? () => handleViewReceipt(params.row)
+                    : icon === 'location-edit'
+                      ? () => handleOpenLocationDialog(params.row)
+                      : undefined
+                }
+                sx={{ p: 0.25 }}
+              >
+                {icon === 'location-edit' ? (
+                  <EditLocationAltIcon sx={{ color: '#050505', fontSize: 18 }} />
+                ) : (
+                  <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
+                )}
+              </IconButton>
+            ))}
+          </Stack>
+        );
+      },
     },
   ];
 
   const handleStatusChange = (label, checked) => {
     setSelectedStatus(checked ? label : '');
+    setAppliedReceiptFilters((prev) => ({ ...prev, status: '' }));
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
@@ -255,6 +391,52 @@ export default function WarehouseRecieptPage() {
   const handleClearReceiptSearch = () => {
     setSearchValue('');
     setSubmittedReceiptNumber('');
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleReceiptFilterChange = (field, value) => {
+    setReceiptFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleReceiptCarrierInputChange = (value, reason) => {
+    setReceiptFilters((prev) => ({
+      ...prev,
+      carrier: value,
+      carrierId: reason === 'reset' ? prev.carrierId : '',
+    }));
+  };
+
+  const handleReceiptCarrierChange = (value) => {
+    setReceiptFilters((prev) => ({
+      ...prev,
+      carrier: getCarrierOptionLabel(value),
+      carrierId: value?.carrierId || value?.id || '',
+    }));
+  };
+
+  const handleOpenReceiptFilters = () => {
+    setReceiptFilters(appliedReceiptFilters);
+    setFilterDialogOpen(true);
+  };
+
+  const handleCloseReceiptFilters = () => {
+    setFilterDialogOpen(false);
+  };
+
+  const handleSearchReceiptFilters = () => {
+    const nextFilters = receiptFilters.carrierId
+      ? receiptFilters
+      : { ...receiptFilters, carrier: '' };
+
+    setReceiptFilters(nextFilters);
+    setAppliedReceiptFilters(nextFilters);
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+    setFilterDialogOpen(false);
+  };
+
+  const handleClearReceiptFilters = () => {
+    setReceiptFilters(emptyReceiptFilters);
+    setAppliedReceiptFilters(emptyReceiptFilters);
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
@@ -272,7 +454,7 @@ export default function WarehouseRecieptPage() {
   const handleSubmitLocation = async () => {
     if (!locationDialog.row) return;
 
-    const receiptNumber = locationDialog.row.receiptNumber;
+    const receiptId = locationDialog.row.receiptId || locationDialog.row.id;
     const location = locationDialog.location.trim();
 
     if (!location) {
@@ -284,7 +466,7 @@ export default function WarehouseRecieptPage() {
     setLocationError('');
 
     const response = await dispatch(updateWarehouseReceiptLocation({
-      receiptNumber,
+      receiptId,
       location,
     }));
 
@@ -336,6 +518,7 @@ export default function WarehouseRecieptPage() {
         draftKey: `warehouse-receipt-view-${row.receiptNumber}`,
         warehouseReceiptView: true,
         viewReceiptSummary: {
+          receiptId: row.receiptId || row.id,
           receiptNumber: row.receiptNumber,
           status: row.status,
         },
@@ -408,6 +591,20 @@ export default function WarehouseRecieptPage() {
             ),
           }}
         />
+        <IconButton
+          size="small"
+          onClick={handleOpenReceiptFilters}
+          sx={{
+            color: activeFilterCount ? '#1b426f' : '#111',
+            bgcolor: activeFilterCount ? 'rgba(27, 66, 111, 0.1)' : 'transparent',
+            borderRadius: 0.8,
+            '&:hover': {
+              bgcolor: activeFilterCount ? 'rgba(27, 66, 111, 0.16)' : 'rgba(0, 0, 0, 0.04)',
+            },
+          }}
+        >
+          <FilterListIcon sx={{ fontSize: 20 }} />
+        </IconButton>
         <IconButton size="small" sx={{ bgcolor: '#a22', color: '#fff', borderRadius: 0.8, '&:hover': { bgcolor: '#8b1c1c' } }}>
           <Iconify icon="mdi:table" width={18} />
         </IconButton>
@@ -484,6 +681,177 @@ export default function WarehouseRecieptPage() {
       </Box>
 
       <Dialog
+        open={filterDialogOpen}
+        onClose={handleCloseReceiptFilters}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            width: 'min(100%, 960px)',
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Box sx={{ position: 'relative', pb: 1 }}>
+            <Typography sx={{ textAlign: 'center', fontWeight: 700, fontSize: 16, mt: 2, mb: 2.2 }}>
+              Search Filters
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={handleCloseReceiptFilters}
+              sx={{ position: 'absolute', top: 0, right: 0, color: '#A22' }}
+            >
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+              gap: 2,
+            }}
+          >
+            <TextField
+              size="small"
+              label="Start Date"
+              type="date"
+              value={receiptFilters.startDate}
+              onChange={(event) => handleReceiptFilterChange('startDate', event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="End Date"
+              type="date"
+              value={receiptFilters.endDate}
+              onChange={(event) => handleReceiptFilterChange('endDate', event.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <Autocomplete
+              options={carrierOptions}
+              getOptionLabel={getCarrierOptionLabel}
+              isOptionEqualToValue={(option, value) => String(option?.carrierId || option?.id || '') === String(value?.carrierId || value?.id || '')}
+              value={
+                receiptFilters.carrierId
+                  ? { carrierId: receiptFilters.carrierId, carrierName: receiptFilters.carrier }
+                  : null
+              }
+              inputValue={receiptFilters.carrier}
+              onInputChange={(event, newInputValue, reason) => handleReceiptCarrierInputChange(newInputValue, reason)}
+              onChange={(event, newValue) => handleReceiptCarrierChange(newValue)}
+              loading={carrierLoading}
+              loadingText="Searching carriers..."
+              noOptionsText={receiptFilters.carrier ? 'No carriers found' : 'Type to search for carriers'}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  placeholder="Search By Carrier"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {carrierLoading ? <CircularProgress color="inherit" size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Location"
+              value={receiptFilters.location}
+              onChange={(event) => handleReceiptFilterChange('location', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Pro"
+              value={receiptFilters.proNumber}
+              onChange={(event) => handleReceiptFilterChange('proNumber', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Receipt Number"
+              value={receiptFilters.receiptNumber}
+              onChange={(event) => handleReceiptFilterChange('receiptNumber', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by ID Verification Number"
+              value={receiptFilters.verificationId}
+              onChange={(event) => handleReceiptFilterChange('verificationId', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Destination"
+              value={receiptFilters.destination}
+              onChange={(event) => handleReceiptFilterChange('destination', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Customer"
+              value={receiptFilters.customer}
+              onChange={(event) => handleReceiptFilterChange('customer', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Station"
+              value={receiptFilters.station}
+              onChange={(event) => handleReceiptFilterChange('station', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              select
+              size="small"
+              label="Select Status"
+              value={receiptFilters.status}
+              onChange={(event) => handleReceiptFilterChange('status', event.target.value)}
+              SelectProps={{ displayEmpty: true }}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            >
+              {filterStatusOptions.map((option) => (
+                <MenuItem key={option.label} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleClearReceiptFilters}
+                sx={{ color: '#333', borderColor: '#aaa', textTransform: 'none', minWidth: 70 }}
+              >
+                Clear
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleSearchReceiptFilters}
+                sx={{ bgcolor: '#3949ab', '&:hover': { bgcolor: '#303f9f' }, textTransform: 'none', minWidth: 76 }}
+              >
+                Search
+              </Button>
+            </Box>
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={locationDialog.open}
         onClose={handleCloseLocationDialog}
         maxWidth="xs"
@@ -491,16 +859,17 @@ export default function WarehouseRecieptPage() {
         PaperProps={{
           sx: {
             borderRadius: 1,
+            maxWidth: 360,
           },
         }}
       >
-        <DialogContent sx={{ p: 2 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
-            <Typography sx={{ fontSize: 22, fontWeight: 700 }}>
+        <DialogContent sx={{ p: 1.5 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.6 }}>
+            <Typography sx={{ fontSize: 18, fontWeight: 700 }}>
               Update Location - {locationDialog.row?.receiptNumber || ''}
             </Typography>
             <IconButton size="small" onClick={handleCloseLocationDialog} sx={{ p: 0.2, color: '#111' }}>
-              <CloseIcon sx={{ fontSize: 24 }} />
+              <CloseIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Stack>
 
@@ -520,28 +889,29 @@ export default function WarehouseRecieptPage() {
             helperText={locationError || ' '}
             fullWidth
             sx={{
-              mt: 4,
-              '& .MuiInputLabel-root': { fontSize: 18 },
-              '& .MuiInputBase-input': { fontSize: 18, py: 0.8 },
+              mt: 3,
+              '& .MuiInputLabel-root': { fontSize: 15 },
+              '& .MuiInputBase-input': { fontSize: 15, py: 0.5 },
+              '& .MuiFormHelperText-root': { minHeight: 18, fontSize: 11 },
             }}
           />
 
-          <Stack direction="row" spacing={2.2} sx={{ mt: 7 }}>
+          <Stack direction="row" spacing={1.5} sx={{ mt: 4.5 }}>
             <Button
               variant="outlined"
-              size="large"
+              size="small"
               onClick={handleCloseLocationDialog}
               disabled={locationSaving}
-              sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 98, fontSize: 20, height: 34 }}
+              sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 82, fontSize: 15, height: 30 }}
             >
               Cancel
             </Button>
             <Button
               variant="contained"
-              size="large"
+              size="small"
               onClick={handleSubmitLocation}
               disabled={locationSaving}
-              sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 98, fontSize: 18, height: 34 }}
+              sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 82, fontSize: 15, height: 30 }}
             >
               {locationSaving ? 'Saving...' : 'Submit'}
             </Button>

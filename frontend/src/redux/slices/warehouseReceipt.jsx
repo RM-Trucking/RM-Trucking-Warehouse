@@ -12,6 +12,9 @@ const initialState = {
     totalRecords: 0,
   },
   countList: {},
+  auditLogs: [],
+  auditLogsLoading: false,
+  auditLogsError: null,
 };
 
 const formatDate = (value) => {
@@ -37,6 +40,7 @@ const toGridRow = (receipt = {}) => {
     id: receipt.receiptId || receipt.receiptNumber,
     receiptId: receipt.receiptId,
     receiptNumber: receipt.receiptNumber,
+    sendToTellSystem: receipt.sendToTellSystem,
     status: formatStatus(receipt.status),
     carrier: receipt.carrierName || '',
     customer: [receipt.customerName, receipt.stationName].filter(Boolean).join(' | '),
@@ -87,10 +91,10 @@ const slice = createSlice({
       state.countList = payload.countList || {};
     },
     updateWarehouseReceiptLocationSuccess(state, action) {
-      const { receiptNumber, location } = action.payload || {};
+      const { receiptId, location } = action.payload || {};
 
       state.receipts = state.receipts.map((row) =>
-        String(row.receiptNumber) === String(receiptNumber)
+        String(row.receiptId || row.id) === String(receiptId)
           ? {
               ...row,
               location,
@@ -102,6 +106,21 @@ const slice = createSlice({
           : row
       );
     },
+    startAuditLogsLoading(state) {
+      state.auditLogsLoading = true;
+      state.auditLogsError = null;
+      state.auditLogs = [];
+    },
+    getWarehouseReceiptAuditLogsSuccess(state, action) {
+      state.auditLogsLoading = false;
+      state.auditLogsError = null;
+      state.auditLogs = action.payload || [];
+    },
+    getWarehouseReceiptAuditLogsError(state, action) {
+      state.auditLogsLoading = false;
+      state.auditLogsError = action.payload?.message || action.payload || 'Failed to load warehouse receipt status history';
+      state.auditLogs = [];
+    },
     hasError(state, action) {
       state.isLoading = false;
       state.error = action.payload?.message || action.payload || 'Failed to load warehouse receipts';
@@ -112,7 +131,7 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '' } = {}) {
+export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '', filters = {} } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
@@ -129,6 +148,13 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
         params.set('receiptNumber', receiptNumber);
       }
 
+      Object.entries(filters || {}).forEach(([key, value]) => {
+        const cleanValue = String(value ?? '').trim();
+        if (cleanValue) {
+          params.set(key, cleanValue);
+        }
+      });
+
       const response = await axios.get(`/warehouse-receipt?${params.toString()}`);
       const responseData = response.data || {};
       const sourceRows = Array.isArray(responseData.data) ? responseData.data : [];
@@ -144,19 +170,19 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
   };
 }
 
-export function updateWarehouseReceiptLocation({ receiptNumber, location } = {}) {
+export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
   return async () => {
-    if (!receiptNumber) {
-      return { error: true, message: 'Receipt number is required to update location' };
+    if (!receiptId) {
+      return { error: true, message: 'Receipt ID is required to update location' };
     }
 
     try {
-      const response = await axios.put(`/warehouse-receipt/${encodeURIComponent(receiptNumber)}/location`, {
+      const response = await axios.patch(`/warehouse-receipt/${encodeURIComponent(receiptId)}/location`, {
         location,
       });
 
       dispatch(slice.actions.updateWarehouseReceiptLocationSuccess({
-        receiptNumber,
+        receiptId,
         location,
       }));
 
@@ -167,6 +193,34 @@ export function updateWarehouseReceiptLocation({ receiptNumber, location } = {})
         error.message ||
         'Failed to update warehouse receipt location';
 
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function getWarehouseReceiptAuditLogs(receiptId) {
+  return async () => {
+    if (!receiptId) {
+      const message = 'Receipt ID is required to load status history';
+      dispatch(slice.actions.getWarehouseReceiptAuditLogsError(message));
+      return { error: true, message };
+    }
+
+    dispatch(slice.actions.startAuditLogsLoading());
+
+    try {
+      const response = await axios.get(`/warehouse-receipt/${encodeURIComponent(receiptId)}/audit-logs`);
+      const logs = Array.isArray(response.data?.data) ? response.data.data : [];
+
+      dispatch(slice.actions.getWarehouseReceiptAuditLogsSuccess(logs));
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to load warehouse receipt status history';
+
+      dispatch(slice.actions.getWarehouseReceiptAuditLogsError(errorMessage));
       return { error: true, message: errorMessage };
     }
   };
