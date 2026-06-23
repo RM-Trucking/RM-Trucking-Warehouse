@@ -23,7 +23,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getWarehouseReceipts } from '../../redux/slices/warehouseReceipt';
+import { getWarehouseReceipts, updateWarehouseReceiptLocation } from '../../redux/slices/warehouseReceipt';
 
 const statusTabs = [
   { label: 'Active', countKey: 'active' },
@@ -103,6 +103,9 @@ export default function WarehouseRecieptPage() {
   const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState('');
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
   const [locationOverrides, setLocationOverrides] = useState({});
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
@@ -257,20 +260,47 @@ export default function WarehouseRecieptPage() {
 
   const handleOpenLocationDialog = (row) => {
     setLocationDialog({ open: true, row, location: row.location || '' });
+    setLocationError('');
   };
 
   const handleCloseLocationDialog = () => {
+    if (locationSaving) return;
     setLocationDialog({ open: false, row: null, location: '' });
+    setLocationError('');
   };
 
-  const handleSubmitLocation = () => {
+  const handleSubmitLocation = async () => {
     if (!locationDialog.row) return;
+
+    const receiptNumber = locationDialog.row.receiptNumber;
+    const location = locationDialog.location.trim();
+
+    if (!location) {
+      setLocationError('Location is required');
+      return;
+    }
+
+    setLocationSaving(true);
+    setLocationError('');
+
+    const response = await dispatch(updateWarehouseReceiptLocation({
+      receiptNumber,
+      location,
+    }));
+
+    setLocationSaving(false);
+
+    if (response?.error || response?.success === false) {
+      setLocationError(response?.message || 'Failed to update warehouse receipt location');
+      return;
+    }
 
     setLocationOverrides((prev) => ({
       ...prev,
-      [locationDialog.row.id]: locationDialog.location,
+      [locationDialog.row.id]: location,
     }));
     handleCloseLocationDialog();
+    setLocationMessageOpen(true);
   };
 
   const handleViewReceipt = (row) => {
@@ -482,7 +512,12 @@ export default function WarehouseRecieptPage() {
               </Box>
             }
             value={locationDialog.location}
-            onChange={(event) => setLocationDialog((prev) => ({ ...prev, location: event.target.value }))}
+            onChange={(event) => {
+              setLocationDialog((prev) => ({ ...prev, location: event.target.value }));
+              setLocationError('');
+            }}
+            error={Boolean(locationError)}
+            helperText={locationError || ' '}
             fullWidth
             sx={{
               mt: 4,
@@ -496,6 +531,7 @@ export default function WarehouseRecieptPage() {
               variant="outlined"
               size="large"
               onClick={handleCloseLocationDialog}
+              disabled={locationSaving}
               sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 98, fontSize: 20, height: 34 }}
             >
               Cancel
@@ -504,9 +540,10 @@ export default function WarehouseRecieptPage() {
               variant="contained"
               size="large"
               onClick={handleSubmitLocation}
+              disabled={locationSaving}
               sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 98, fontSize: 18, height: 34 }}
             >
-              Submit
+              {locationSaving ? 'Saving...' : 'Submit'}
             </Button>
           </Stack>
         </DialogContent>
@@ -517,6 +554,13 @@ export default function WarehouseRecieptPage() {
         autoHideDuration={2000}
         onClose={() => setCopyMessageOpen(false)}
         message="Receipt number copied"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={locationMessageOpen}
+        autoHideDuration={2000}
+        onClose={() => setLocationMessageOpen(false)}
+        message="Location updated successfully"
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>
