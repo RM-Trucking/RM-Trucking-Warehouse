@@ -86,6 +86,22 @@ const slice = createSlice({
       };
       state.countList = payload.countList || {};
     },
+    updateWarehouseReceiptLocationSuccess(state, action) {
+      const { receiptNumber, location } = action.payload || {};
+
+      state.receipts = state.receipts.map((row) =>
+        String(row.receiptNumber) === String(receiptNumber)
+          ? {
+              ...row,
+              location,
+              rawData: {
+                ...(row.rawData || {}),
+                location,
+              },
+            }
+          : row
+      );
+    },
     hasError(state, action) {
       state.isLoading = false;
       state.error = action.payload?.message || action.payload || 'Failed to load warehouse receipts';
@@ -124,6 +140,34 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
       }));
     } catch (error) {
       dispatch(slice.actions.hasError(error));
+    }
+  };
+}
+
+export function updateWarehouseReceiptLocation({ receiptNumber, location } = {}) {
+  return async () => {
+    if (!receiptNumber) {
+      return { error: true, message: 'Receipt number is required to update location' };
+    }
+
+    try {
+      const response = await axios.put(`/warehouse-receipt/${encodeURIComponent(receiptNumber)}/location`, {
+        location,
+      });
+
+      dispatch(slice.actions.updateWarehouseReceiptLocationSuccess({
+        receiptNumber,
+        location,
+      }));
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update warehouse receipt location';
+
+      return { error: true, message: errorMessage };
     }
   };
 }
