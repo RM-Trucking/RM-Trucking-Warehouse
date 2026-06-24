@@ -11,7 +11,6 @@ import {
   FormControlLabel,
   IconButton,
   InputAdornment,
-  MenuItem,
   Snackbar,
   Stack,
   TextField,
@@ -27,7 +26,12 @@ import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getWarehouseReceipts, updateWarehouseReceiptLocation } from '../../redux/slices/warehouseReceipt';
+import {
+  getWarehouseReceipts,
+  searchWarehouseReceiptCustomers,
+  searchWarehouseReceiptStations,
+  updateWarehouseReceiptLocation,
+} from '../../redux/slices/warehouseReceipt';
 import { searchCarriers } from '../../redux/slices/enroute';
 
 const statusTabs = [
@@ -43,17 +47,6 @@ const quickStatuses = [
   { label: 'Shipped', countKey: 'shipped' },
   { label: 'Rejected', countKey: 'rejected' },
   { label: 'Archived', countKey: 'archived' },
-];
-
-const filterStatusOptions = [
-  { label: 'ALL', value: '' },
-  { label: 'INITIATED', value: 'INITIATED' },
-  { label: 'ON-HAND', value: 'ON_HAND' },
-  { label: 'PREPARED', value: 'PREPARED' },
-  { label: 'SCANNED', value: 'SCANNED' },
-  { label: 'SHIPPED', value: 'SHIPPED' },
-  { label: 'REJECTED', value: 'REJECTED' },
-  { label: 'ARCHIVED', value: 'ARCHIVED' },
 ];
 
 const statusApiValues = {
@@ -76,9 +69,10 @@ const emptyReceiptFilters = {
   receiptNumber: '',
   verificationId: '',
   customer: '',
+  customerId: '',
   station: '',
+  stationId: '',
   destination: '',
-  status: '',
 };
 
 const actionIcons = [
@@ -128,6 +122,22 @@ const getCarrierOptionLabel = (option) => {
   return option.carrierName || option.name || option.label || '';
 };
 
+const getCustomerOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+
+  const customerName = option.customerName || option.name || option.label || '';
+  const stationName = option.stationName || '';
+
+  return stationName ? `${customerName} | ${stationName}` : customerName;
+};
+
+const getStationOptionLabel = (option) => {
+  if (!option) return '';
+  if (typeof option === 'string') return option;
+  return option.stationName || option.name || option.label || '';
+};
+
 const buildFreightInfoFromReceipt = (receipt = {}) => ({
   conditions: {
     'Banded Skid': isYes(receipt.bandedSkid),
@@ -153,7 +163,17 @@ const buildFreightInfoFromReceipt = (receipt = {}) => ({
 export default function WarehouseRecieptPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { receipts, isLoading, error, pagination, countList } = useSelector((state) => state.warehouseReceiptdata);
+  const {
+    receipts,
+    isLoading,
+    error,
+    pagination,
+    countList,
+    customerOptions,
+    customerLoading,
+    stationOptions,
+    stationLoading,
+  } = useSelector((state) => state.warehouseReceiptdata);
   const { carrierOptions, carrierLoading } = useSelector((state) => state.enroutedata);
   const [activeTab, setActiveTab] = useState('Active');
   const [searchValue, setSearchValue] = useState('');
@@ -168,12 +188,13 @@ export default function WarehouseRecieptPage() {
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [receiptFilters, setReceiptFilters] = useState(emptyReceiptFilters);
   const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(emptyReceiptFilters);
+  const [filterSearchVersion, setFilterSearchVersion] = useState(0);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
 
   const activeFilterCount = Object.entries(appliedReceiptFilters)
-    .filter(([key, value]) => key !== 'carrier' && String(value || '').trim())
+    .filter(([key, value]) => !['carrier', 'customerId', 'stationId'].includes(key) && String(value || '').trim())
     .length;
-  const requestStatus = appliedReceiptFilters.status || (selectedStatus ? statusApiValues[selectedStatus] : '');
+  const requestStatus = selectedStatus ? statusApiValues[selectedStatus] : '';
   const requestReceiptNumber = appliedReceiptFilters.receiptNumber || submittedReceiptNumber;
   const requestFilters = {
     startDate: appliedReceiptFilters.startDate,
@@ -182,8 +203,8 @@ export default function WarehouseRecieptPage() {
     location: appliedReceiptFilters.location,
     proNumber: appliedReceiptFilters.proNumber,
     verificationId: appliedReceiptFilters.verificationId,
-    customer: appliedReceiptFilters.customer,
-    station: appliedReceiptFilters.station,
+    customerId: appliedReceiptFilters.customerId,
+    stationId: appliedReceiptFilters.stationId,
     destination: appliedReceiptFilters.destination,
   };
 
@@ -197,6 +218,7 @@ export default function WarehouseRecieptPage() {
     }));
   }, [
     dispatch,
+    filterSearchVersion,
     paginationModel.page,
     paginationModel.pageSize,
     requestStatus,
@@ -207,8 +229,8 @@ export default function WarehouseRecieptPage() {
     requestFilters.location,
     requestFilters.proNumber,
     requestFilters.verificationId,
-    requestFilters.customer,
-    requestFilters.station,
+    requestFilters.customerId,
+    requestFilters.stationId,
     requestFilters.destination,
   ]);
 
@@ -222,6 +244,28 @@ export default function WarehouseRecieptPage() {
 
     return () => clearTimeout(timer);
   }, [dispatch, filterDialogOpen, receiptFilters.carrier, receiptFilters.carrierId]);
+
+  useEffect(() => {
+    if (!filterDialogOpen) return undefined;
+    if (receiptFilters.customerId) return undefined;
+
+    const timer = setTimeout(() => {
+      dispatch(searchWarehouseReceiptCustomers(receiptFilters.customer));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, filterDialogOpen, receiptFilters.customer, receiptFilters.customerId]);
+
+  useEffect(() => {
+    if (!filterDialogOpen) return undefined;
+    if (receiptFilters.stationId) return undefined;
+
+    const timer = setTimeout(() => {
+      dispatch(searchWarehouseReceiptStations(receiptFilters.customerId, receiptFilters.station));
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [dispatch, filterDialogOpen, receiptFilters.customerId, receiptFilters.station, receiptFilters.stationId]);
 
   const gridRowCount = pagination.totalRecords || (
     paginationModel.page * paginationModel.pageSize +
@@ -330,6 +374,7 @@ export default function WarehouseRecieptPage() {
     { field: 'proNumber', headerName: 'Pro Number', minWidth: 170, flex: 1.4 },
     { field: 'idVerification', headerName: 'Id Verification', minWidth: 120, flex: 1 },
     { field: 'location', headerName: 'Location', minWidth: 85, flex: 0.6 },
+    { field: 'destination', headerName: 'Destination', minWidth: 130, flex: 1 },
     { field: 'rate', headerName: 'Rate', minWidth: 80, flex: 0.6 },
     { field: 'createdDate', headerName: 'Created Date', minWidth: 125, flex: 0.9 },
     {
@@ -379,7 +424,6 @@ export default function WarehouseRecieptPage() {
 
   const handleStatusChange = (label, checked) => {
     setSelectedStatus(checked ? label : '');
-    setAppliedReceiptFilters((prev) => ({ ...prev, status: '' }));
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
@@ -414,6 +458,42 @@ export default function WarehouseRecieptPage() {
     }));
   };
 
+  const handleReceiptCustomerInputChange = (value, reason) => {
+    setReceiptFilters((prev) => ({
+      ...prev,
+      customer: value,
+      customerId: reason === 'reset' ? prev.customerId : '',
+      station: reason === 'reset' ? prev.station : '',
+      stationId: reason === 'reset' ? prev.stationId : '',
+    }));
+  };
+
+  const handleReceiptCustomerChange = (value) => {
+    setReceiptFilters((prev) => ({
+      ...prev,
+      customer: getCustomerOptionLabel(value),
+      customerId: value?.customerId || value?.id || '',
+      station: '',
+      stationId: '',
+    }));
+  };
+
+  const handleReceiptStationInputChange = (value, reason) => {
+    setReceiptFilters((prev) => ({
+      ...prev,
+      station: value,
+      stationId: reason === 'reset' ? prev.stationId : '',
+    }));
+  };
+
+  const handleReceiptStationChange = (value) => {
+    setReceiptFilters((prev) => ({
+      ...prev,
+      station: getStationOptionLabel(value),
+      stationId: value?.stationId || value?.id || '',
+    }));
+  };
+
   const handleOpenReceiptFilters = () => {
     setReceiptFilters(appliedReceiptFilters);
     setFilterDialogOpen(true);
@@ -424,12 +504,16 @@ export default function WarehouseRecieptPage() {
   };
 
   const handleSearchReceiptFilters = () => {
-    const nextFilters = receiptFilters.carrierId
-      ? receiptFilters
-      : { ...receiptFilters, carrier: '' };
+    const nextFilters = {
+      ...receiptFilters,
+      carrier: receiptFilters.carrierId ? receiptFilters.carrier : '',
+      customer: receiptFilters.customerId ? receiptFilters.customer : '',
+      station: receiptFilters.stationId ? receiptFilters.station : '',
+    };
 
     setReceiptFilters(nextFilters);
     setAppliedReceiptFilters(nextFilters);
+    setFilterSearchVersion((prev) => prev + 1);
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
     setFilterDialogOpen(false);
   };
@@ -521,6 +605,7 @@ export default function WarehouseRecieptPage() {
           receiptId: row.receiptId || row.id,
           receiptNumber: row.receiptNumber,
           status: row.status,
+          noteThreadId: receipt.noteThreadId,
         },
         receipts: [
           {
@@ -799,37 +884,92 @@ export default function WarehouseRecieptPage() {
               onChange={(event) => handleReceiptFilterChange('destination', event.target.value)}
               fullWidth
             />
-            <TextField
-              size="small"
-              placeholder="Search by Customer"
-              value={receiptFilters.customer}
-              onChange={(event) => handleReceiptFilterChange('customer', event.target.value)}
+            <Autocomplete
+              options={customerOptions}
+              getOptionLabel={getCustomerOptionLabel}
+              isOptionEqualToValue={(option, value) =>
+                String(option?.customerId || option?.id || '') === String(value?.customerId || value?.id || '')
+              }
+              value={
+                receiptFilters.customerId
+                  ? { id: receiptFilters.customerId, name: receiptFilters.customer }
+                  : null
+              }
+              inputValue={receiptFilters.customer}
+              onInputChange={(event, newInputValue, reason) => handleReceiptCustomerInputChange(newInputValue, reason)}
+              onChange={(event, newValue) => handleReceiptCustomerChange(newValue)}
+              loading={customerLoading}
+              loadingText="Searching customers..."
+              noOptionsText={receiptFilters.customer ? 'No customers found' : 'Type to search for customers'}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  placeholder="Search by Customer"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {customerLoading ? <CircularProgress color="inherit" size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
               fullWidth
             />
-            <TextField
-              size="small"
-              placeholder="Search by Station"
-              value={receiptFilters.station}
-              onChange={(event) => handleReceiptFilterChange('station', event.target.value)}
+            <Autocomplete
+              options={stationOptions}
+              getOptionLabel={getStationOptionLabel}
+              isOptionEqualToValue={(option, value) =>
+                String(option?.stationId || option?.id || '') === String(value?.stationId || value?.id || '')
+              }
+              value={
+                receiptFilters.stationId
+                  ? { id: receiptFilters.stationId, name: receiptFilters.station }
+                  : null
+              }
+              inputValue={receiptFilters.station}
+              onInputChange={(event, newInputValue, reason) => handleReceiptStationInputChange(newInputValue, reason)}
+              onChange={(event, newValue) => handleReceiptStationChange(newValue)}
+              loading={stationLoading}
+              loadingText="Searching stations..."
+              noOptionsText={
+                receiptFilters.customerId
+                  ? receiptFilters.station
+                    ? 'No stations found'
+                    : 'Type to search for stations'
+                  : 'Select a customer first'
+              }
+              disabled={!receiptFilters.customerId}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  placeholder="Search by Station"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {stationLoading ? <CircularProgress color="inherit" size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
               fullWidth
             />
-            <TextField
-              select
-              size="small"
-              label="Select Status"
-              value={receiptFilters.status}
-              onChange={(event) => handleReceiptFilterChange('status', event.target.value)}
-              SelectProps={{ displayEmpty: true }}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+            <Box
+              sx={{
+                gridColumn: '1 / -1',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: 1,
+              }}
             >
-              {filterStatusOptions.map((option) => (
-                <MenuItem key={option.label} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1 }}>
               <Button
                 variant="outlined"
                 size="small"
@@ -842,7 +982,7 @@ export default function WarehouseRecieptPage() {
                 variant="contained"
                 size="small"
                 onClick={handleSearchReceiptFilters}
-                sx={{ bgcolor: '#3949ab', '&:hover': { bgcolor: '#303f9f' }, textTransform: 'none', minWidth: 76 }}
+                sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 76 }}
               >
                 Search
               </Button>

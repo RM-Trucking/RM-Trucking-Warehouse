@@ -41,7 +41,11 @@ import {
   setWarehouseCheckInDraft,
   submitWarehouseReceiptBatch,
 } from '../../redux/slices/warehouse';
-import { getWarehouseReceiptAuditLogs } from '../../redux/slices/warehouseReceipt';
+import {
+  getWarehouseReceiptAuditLogs,
+  getWarehouseReceiptNotes,
+  postWarehouseReceiptNote,
+} from '../../redux/slices/warehouseReceipt';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { HOST_API_KEY } from '../../config';
 
@@ -357,13 +361,6 @@ const getReceiptFormSignature = (forms = []) =>
     .map((form) => `${form.id}:${form.receiptNumber || ''}:${form.items?.length || 0}`)
     .join('|');
 
-const INITIAL_WAREHOUSE_RECEIPT_NOTES = [
-  { time: '10/29/2025 13:30', user: 'Mike', notes: 'Updated Shipment DIMS' },
-  { time: '09/28/2025 18:10', user: 'Ross', notes: 'Moved Shipment Add to queue' },
-  { time: '09/28/2025 18:10', user: 'Ross', notes: 'Setup for pickup today' },
-  { time: '09/20/2025 18:10', user: 'Ross', notes: 'Pickup from Forward Air' },
-];
-
 const SPLIT_MAIL_LIST_ROWS = [
   { id: 1, sno: '01', type: 'Station', emailId: 'Department1@ventanaserra.com' },
   { id: 2, sno: '02', type: 'Department', emailId: 'Department2@ventanaserra.com' },
@@ -674,7 +671,15 @@ export default function WarehouseReceiptFormPage() {
   const { state } = useLocation();
   const { customerOptions, customerLoading } = useSelector((reduxState) => reduxState.enroutedata);
   const { warehouseReceiptBatch, printersDropdown, warehouseCheckInDrafts } = useSelector((reduxState) => reduxState.warehousedata);
-  const { auditLogs, auditLogsLoading, auditLogsError } = useSelector((reduxState) => reduxState.warehouseReceiptdata);
+  const {
+    auditLogs,
+    auditLogsLoading,
+    auditLogsError,
+    receiptNotes,
+    receiptNotesLoading,
+    receiptNotesSaving,
+    receiptNotesError,
+  } = useSelector((reduxState) => reduxState.warehouseReceiptdata);
   const isMobileReceiptForm = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const isSelectingCustomerRef = useRef(false);
   const freightCameraVideoRef = useRef(null);
@@ -724,6 +729,7 @@ export default function WarehouseReceiptFormPage() {
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
+  const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
   const [selectedSplitMailIds, setSelectedSplitMailIds] = useState(INITIAL_SPLIT_MAIL_SELECTED_IDS);
@@ -733,10 +739,7 @@ export default function WarehouseReceiptFormPage() {
   const [splitFormCount, setSplitFormCount] = useState(1);
   const [activeSplitFormTab, setActiveSplitFormTab] = useState(0);
   const [splitExistingFormItems, setSplitExistingFormItems] = useState([[]]);
-  const [receiptNoteText, setReceiptNoteText] = useState(
-    initialReceiptForms[0]?.freightInfo?.notes || 'Balance Item need to be arrange'
-  );
-  const [receiptNotes, setReceiptNotes] = useState(INITIAL_WAREHOUSE_RECEIPT_NOTES);
+  const [receiptNoteText, setReceiptNoteText] = useState(initialReceiptForms[0]?.freightInfo?.notes || '');
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
   const persistReceiptFormDraft = (forms = receiptForms) => {
@@ -1225,33 +1228,36 @@ export default function WarehouseReceiptFormPage() {
     setSnackbar({ open: true, message, severity: 'info' });
   };
 
-  const handleAddReceiptNote = () => {
+  const getActiveNoteThreadId = () =>
+    viewReceiptSummary?.noteThreadId ||
+    getRowValue(activeForm?.row, 'noteThreadId', '') ||
+    activeForm?.noteThreadId ||
+    0;
+
+  const handleOpenNotesDialog = () => {
+    const noteThreadId = getActiveNoteThreadId();
+
+    setNotesDialogOpen(true);
+    dispatch(getWarehouseReceiptNotes(noteThreadId));
+  };
+
+  const handleAddReceiptNote = async () => {
     const noteText = receiptNoteText.trim();
     if (!noteText) {
       setSnackbar({ open: true, message: 'Notes is mandatory', severity: 'error' });
       return;
     }
 
-    const now = new Date();
-    const datePart = now.toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-    });
-    const timePart = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const response = await dispatch(postWarehouseReceiptNote({
+      noteThreadId: getActiveNoteThreadId(),
+      messageText: noteText,
+    }));
 
-    setReceiptNotes((prev) => [
-      {
-        time: `${datePart} ${timePart}`,
-        user: 'Warehouse Staff',
-        notes: noteText,
-      },
-      ...prev,
-    ]);
+    if (response?.error) {
+      setSnackbar({ open: true, message: response.message || 'Failed to add warehouse receipt note', severity: 'error' });
+      return;
+    }
+
     setReceiptNoteText('');
   };
 
@@ -1341,26 +1347,32 @@ export default function WarehouseReceiptFormPage() {
     const cleanVerificationId = String(verificationId || '').trim();
     if (!cleanVerificationId) return;
 
-    const response = await dispatch(getIdVerificationData({
-      page: 1,
-      pageSize: 10,
-      filters: { verificationId: cleanVerificationId },
-      filterLogic: 'AND',
-    }));
-    const verificationRecord = response?.data?.find(
-      (record) => String(record.verificationId) === cleanVerificationId
-    );
+    setStatusHistoryLinkLoadingId(cleanVerificationId);
 
-    if (!verificationRecord) {
-      setSnackbar({
-        open: true,
-        message: `ID Verification ${cleanVerificationId} was not found`,
-        severity: 'error',
-      });
-      return;
+    try {
+      const response = await dispatch(getIdVerificationData({
+        page: 1,
+        pageSize: 10,
+        filters: { verificationId: cleanVerificationId },
+        filterLogic: 'AND',
+      }));
+      const verificationRecord = response?.data?.find(
+        (record) => String(record.verificationId) === cleanVerificationId
+      );
+
+      if (!verificationRecord) {
+        setSnackbar({
+          open: true,
+          message: `ID Verification ${cleanVerificationId} was not found`,
+          severity: 'error',
+        });
+        return;
+      }
+
+      navigate(PATH_DASHBOARD.idVerificationView(verificationRecord.verificationId));
+    } finally {
+      setStatusHistoryLinkLoadingId('');
     }
-
-    navigate(PATH_DASHBOARD.idVerificationView(verificationRecord.verificationId));
   };
 
   const renderStatusHistoryDescription = (description) => {
@@ -1382,6 +1394,7 @@ export default function WarehouseReceiptFormPage() {
           variant="text"
           size="small"
           onClick={() => handleOpenIdVerificationView(verificationId)}
+          disabled={Boolean(statusHistoryLinkLoadingId)}
           sx={{
             minWidth: 0,
             p: 0,
@@ -1391,10 +1404,15 @@ export default function WarehouseReceiptFormPage() {
             lineHeight: 'inherit',
             textDecoration: 'underline',
             verticalAlign: 'baseline',
+            '&.Mui-disabled': { color: '#A22' },
             '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
           }}
         >
-          {verificationId}
+          {statusHistoryLinkLoadingId === verificationId ? (
+            <CircularProgress size={12} sx={{ color: '#A22' }} />
+          ) : (
+            verificationId
+          )}
         </Button>
         {afterText}
       </>
@@ -2447,7 +2465,7 @@ export default function WarehouseReceiptFormPage() {
             </Button>
             <IconButton
               size="small"
-              onClick={() => setNotesDialogOpen(true)}
+              onClick={handleOpenNotesDialog}
               sx={{ color: '#A22', borderRadius: 0.6, width: 32, height: 28, '&:hover': { bgcolor: 'rgba(170, 34, 34, 0.08)' } }}
             >
               <Iconify icon="mdi:notebook" width={26} />
@@ -3584,9 +3602,10 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleAddReceiptNote}
+              disabled={receiptNotesSaving}
               sx={{ ...actionBtnSx, mt: 0.8, height: 24, minWidth: 82, fontSize: 11 }}
             >
-              Add Notes
+              {receiptNotesSaving ? 'Saving...' : 'Add Notes'}
             </Button>
           </Box>
 
@@ -3607,13 +3626,33 @@ export default function WarehouseReceiptFormPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {receiptNotes.map((note, index) => (
-                <TableRow key={`${note.time}-${note.user}-${index}`}>
-                  <TableCell>{note.time}</TableCell>
-                  <TableCell>{note.user}</TableCell>
-                  <TableCell>{note.notes}</TableCell>
+              {receiptNotesLoading ? (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                    <CircularProgress size={24} />
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : receiptNotesError ? (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#A22' }}>
+                    {receiptNotesError}
+                  </TableCell>
+                </TableRow>
+              ) : receiptNotes.length ? (
+                receiptNotes.map((note, index) => (
+                  <TableRow key={note.noteMessageId || `${note.createdAt}-${note.createdBy}-${index}`}>
+                    <TableCell>{formatStatusHistoryTime(note.createdAt)}</TableCell>
+                    <TableCell>{note.createdBy || ''}</TableCell>
+                    <TableCell>{note.messageText || ''}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                    No notes found
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </DialogContent>
