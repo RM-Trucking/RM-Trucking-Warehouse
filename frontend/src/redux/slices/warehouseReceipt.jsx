@@ -12,6 +12,17 @@ const initialState = {
     totalRecords: 0,
   },
   countList: {},
+  customerOptions: [],
+  customerLoading: false,
+  stationOptions: [],
+  stationLoading: false,
+  receiptNotes: [],
+  receiptNotesLoading: false,
+  receiptNotesSaving: false,
+  receiptNotesError: null,
+  auditLogs: [],
+  auditLogsLoading: false,
+  auditLogsError: null,
 };
 
 const formatDate = (value) => {
@@ -37,9 +48,11 @@ const toGridRow = (receipt = {}) => {
     id: receipt.receiptId || receipt.receiptNumber,
     receiptId: receipt.receiptId,
     receiptNumber: receipt.receiptNumber,
+    sendToTellSystem: receipt.sendToTellSystem,
     status: formatStatus(receipt.status),
     carrier: receipt.carrierName || '',
     customer: [receipt.customerName, receipt.stationName].filter(Boolean).join(' | '),
+    destination: receipt.destination || receipt.finalDestination || '',
     proNumber: receipt.proNumber || '',
     idVerification: receipt.verificationId || '',
     location: receipt.location || '',
@@ -58,6 +71,16 @@ const toGridRow = (receipt = {}) => {
     receiptType: receipt.receiptType || '',
     rawData: receipt,
   };
+};
+
+const getNoteRowsFromResponse = (responseData) => {
+  if (Array.isArray(responseData)) return responseData;
+  if (Array.isArray(responseData?.data)) return responseData.data;
+  if (Array.isArray(responseData?.message?.data)) return responseData.message.data;
+  if (responseData?.noteMessageId) return [responseData];
+  if (responseData?.data?.noteMessageId) return [responseData.data];
+  if (responseData?.message?.data?.noteMessageId) return [responseData.message.data];
+  return [];
 };
 
 const slice = createSlice({
@@ -87,10 +110,10 @@ const slice = createSlice({
       state.countList = payload.countList || {};
     },
     updateWarehouseReceiptLocationSuccess(state, action) {
-      const { receiptNumber, location } = action.payload || {};
+      const { receiptId, location } = action.payload || {};
 
       state.receipts = state.receipts.map((row) =>
-        String(row.receiptNumber) === String(receiptNumber)
+        String(row.receiptId || row.id) === String(receiptId)
           ? {
               ...row,
               location,
@@ -102,6 +125,77 @@ const slice = createSlice({
           : row
       );
     },
+    startCustomerLoading(state) {
+      state.customerLoading = true;
+      state.customerOptions = [];
+    },
+    getCustomerOptionsSuccess(state, action) {
+      state.customerLoading = false;
+      state.customerOptions = action.payload || [];
+    },
+    customerSearchError(state) {
+      state.customerLoading = false;
+      state.customerOptions = [];
+    },
+    startStationLoading(state) {
+      state.stationLoading = true;
+      state.stationOptions = [];
+    },
+    getStationOptionsSuccess(state, action) {
+      state.stationLoading = false;
+      state.stationOptions = action.payload || [];
+    },
+    stationSearchError(state) {
+      state.stationLoading = false;
+      state.stationOptions = [];
+    },
+    startReceiptNotesLoading(state) {
+      state.receiptNotesLoading = true;
+      state.receiptNotesError = null;
+      state.receiptNotes = [];
+    },
+    getReceiptNotesSuccess(state, action) {
+      state.receiptNotesLoading = false;
+      state.receiptNotesError = null;
+      state.receiptNotes = action.payload || [];
+    },
+    getReceiptNotesError(state, action) {
+      state.receiptNotesLoading = false;
+      state.receiptNotesError = action.payload?.message || action.payload || 'Failed to load warehouse receipt notes';
+      state.receiptNotes = [];
+    },
+    startReceiptNotesSaving(state) {
+      state.receiptNotesSaving = true;
+      state.receiptNotesError = null;
+    },
+    postReceiptNoteSuccess(state, action) {
+      state.receiptNotesSaving = false;
+      state.receiptNotesError = null;
+      const newNotes = action.payload || [];
+      const existingIds = new Set(state.receiptNotes.map((note) => note.noteMessageId).filter(Boolean));
+      const notesToAdd = newNotes.filter((note) => !note.noteMessageId || !existingIds.has(note.noteMessageId));
+
+      state.receiptNotes = [...notesToAdd, ...state.receiptNotes];
+    },
+    postReceiptNoteError(state, action) {
+      state.receiptNotesSaving = false;
+      state.receiptNotesError = action.payload?.message || action.payload || 'Failed to add warehouse receipt note';
+    },
+    startAuditLogsLoading(state) {
+      state.auditLogsLoading = true;
+      state.auditLogsError = null;
+      state.auditLogs = [];
+    },
+    getWarehouseReceiptAuditLogsSuccess(state, action) {
+      state.auditLogsLoading = false;
+      state.auditLogsError = null;
+      state.auditLogs = action.payload || [];
+    },
+    getWarehouseReceiptAuditLogsError(state, action) {
+      state.auditLogsLoading = false;
+      state.auditLogsError = action.payload?.message || action.payload || 'Failed to load warehouse receipt status history';
+      state.auditLogs = [];
+    },
     hasError(state, action) {
       state.isLoading = false;
       state.error = action.payload?.message || action.payload || 'Failed to load warehouse receipts';
@@ -112,7 +206,7 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '' } = {}) {
+export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '', filters = {} } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
@@ -129,6 +223,13 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
         params.set('receiptNumber', receiptNumber);
       }
 
+      Object.entries(filters || {}).forEach(([key, value]) => {
+        const cleanValue = String(value ?? '').trim();
+        if (cleanValue) {
+          params.set(key, cleanValue);
+        }
+      });
+
       const response = await axios.get(`/warehouse-receipt?${params.toString()}`);
       const responseData = response.data || {};
       const sourceRows = Array.isArray(responseData.data) ? responseData.data : [];
@@ -144,19 +245,19 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
   };
 }
 
-export function updateWarehouseReceiptLocation({ receiptNumber, location } = {}) {
+export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
   return async () => {
-    if (!receiptNumber) {
-      return { error: true, message: 'Receipt number is required to update location' };
+    if (!receiptId) {
+      return { error: true, message: 'Receipt ID is required to update location' };
     }
 
     try {
-      const response = await axios.put(`/warehouse-receipt/${encodeURIComponent(receiptNumber)}/location`, {
+      const response = await axios.patch(`/warehouse-receipt/${encodeURIComponent(receiptId)}/location`, {
         location,
       });
 
       dispatch(slice.actions.updateWarehouseReceiptLocationSuccess({
-        receiptNumber,
+        receiptId,
         location,
       }));
 
@@ -167,6 +268,152 @@ export function updateWarehouseReceiptLocation({ receiptNumber, location } = {})
         error.message ||
         'Failed to update warehouse receipt location';
 
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function searchWarehouseReceiptCustomers(searchTerm) {
+  return async () => {
+    const cleanSearchTerm = String(searchTerm || '').trim();
+
+    if (!cleanSearchTerm) {
+      dispatch(slice.actions.getCustomerOptionsSuccess([]));
+      return;
+    }
+
+    dispatch(slice.actions.startCustomerLoading());
+
+    try {
+      const response = await axios.get(
+        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}`
+      );
+      const customers = Array.isArray(response.data?.data) ? response.data.data : [];
+
+      dispatch(slice.actions.getCustomerOptionsSuccess(customers));
+    } catch (error) {
+      dispatch(slice.actions.customerSearchError());
+    }
+  };
+}
+
+export function searchWarehouseReceiptStations(customerId, searchTerm) {
+  return async () => {
+    const cleanCustomerId = String(customerId || '').trim();
+    const cleanSearchTerm = String(searchTerm || '').trim();
+
+    if (!cleanCustomerId) {
+      dispatch(slice.actions.getStationOptionsSuccess([]));
+      return;
+    }
+
+    dispatch(slice.actions.startStationLoading());
+
+    try {
+      const params = new URLSearchParams({
+        customerId: cleanCustomerId,
+      });
+
+      if (cleanSearchTerm) {
+        params.set('search', cleanSearchTerm);
+      }
+
+      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}`);
+      const stations = Array.isArray(response.data?.data) ? response.data.data : [];
+
+      dispatch(slice.actions.getStationOptionsSuccess(stations));
+    } catch (error) {
+      dispatch(slice.actions.stationSearchError());
+    }
+  };
+}
+
+export function getWarehouseReceiptNotes(noteThreadId) {
+  return async () => {
+    const cleanNoteThreadId = String(noteThreadId ?? '').trim();
+
+    if (!cleanNoteThreadId) {
+      const message = 'Note thread ID is required to load notes';
+      dispatch(slice.actions.getReceiptNotesError(message));
+      return { error: true, message };
+    }
+
+    dispatch(slice.actions.startReceiptNotesLoading());
+
+    try {
+      const response = await axios.get(`/maintenance/note/${encodeURIComponent(cleanNoteThreadId)}`);
+      const notes = getNoteRowsFromResponse(response.data);
+
+      dispatch(slice.actions.getReceiptNotesSuccess(notes));
+      return notes;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to load warehouse receipt notes';
+
+      dispatch(slice.actions.getReceiptNotesError(errorMessage));
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function postWarehouseReceiptNote({ noteThreadId = 0, messageText = '' } = {}) {
+  return async () => {
+    const cleanMessageText = String(messageText || '').trim();
+
+    if (!cleanMessageText) {
+      const message = 'Notes is mandatory';
+      dispatch(slice.actions.postReceiptNoteError(message));
+      return { error: true, message };
+    }
+
+    dispatch(slice.actions.startReceiptNotesSaving());
+
+    try {
+      const response = await axios.post('/maintenance/note', {
+        noteThreadId: Number(noteThreadId || 0),
+        messageText: cleanMessageText,
+      });
+      const notes = getNoteRowsFromResponse(response.data);
+
+      dispatch(slice.actions.postReceiptNoteSuccess(notes));
+      return notes;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to add warehouse receipt note';
+
+      dispatch(slice.actions.postReceiptNoteError(errorMessage));
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function getWarehouseReceiptAuditLogs(receiptId) {
+  return async () => {
+    if (!receiptId) {
+      const message = 'Receipt ID is required to load status history';
+      dispatch(slice.actions.getWarehouseReceiptAuditLogsError(message));
+      return { error: true, message };
+    }
+
+    dispatch(slice.actions.startAuditLogsLoading());
+
+    try {
+      const response = await axios.get(`/warehouse-receipt/${encodeURIComponent(receiptId)}/audit-logs`);
+      const logs = Array.isArray(response.data?.data) ? response.data.data : [];
+
+      dispatch(slice.actions.getWarehouseReceiptAuditLogsSuccess(logs));
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to load warehouse receipt status history';
+
+      dispatch(slice.actions.getWarehouseReceiptAuditLogsError(errorMessage));
       return { error: true, message: errorMessage };
     }
   };

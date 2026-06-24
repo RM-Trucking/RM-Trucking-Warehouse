@@ -33,6 +33,7 @@ import StyledTextField from '../../sections/shared/StyledTextField';
 import rmLogo from '../../assets/RM.png';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchCustomers } from '../../redux/slices/enroute';
+import { getIdVerificationData } from '../../redux/slices/idVerification';
 import {
   clearWarehouseCheckInDraft,
   fetchPrintersDropdown,
@@ -40,6 +41,11 @@ import {
   setWarehouseCheckInDraft,
   submitWarehouseReceiptBatch,
 } from '../../redux/slices/warehouse';
+import {
+  getWarehouseReceiptAuditLogs,
+  getWarehouseReceiptNotes,
+  postWarehouseReceiptNote,
+} from '../../redux/slices/warehouseReceipt';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { HOST_API_KEY } from '../../config';
 
@@ -225,6 +231,33 @@ const buildCustomerSelection = (row = {}) => {
 const formatDate = (date = new Date()) =>
   date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
+const formatStatusHistoryTime = (value) => {
+  if (!value) return '';
+
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  const date = match
+    ? new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        Number(match[4]),
+        Number(match[5]),
+        Number(match[6] || 0)
+      )
+    : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString('en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    year: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
 const buildEmptyReceiptForms = () => [
   {
     id: 'empty-1',
@@ -327,13 +360,6 @@ const getReceiptFormSignature = (forms = []) =>
   forms
     .map((form) => `${form.id}:${form.receiptNumber || ''}:${form.items?.length || 0}`)
     .join('|');
-
-const INITIAL_WAREHOUSE_RECEIPT_NOTES = [
-  { time: '10/29/2025 13:30', user: 'Mike', notes: 'Updated Shipment DIMS' },
-  { time: '09/28/2025 18:10', user: 'Ross', notes: 'Moved Shipment Add to queue' },
-  { time: '09/28/2025 18:10', user: 'Ross', notes: 'Setup for pickup today' },
-  { time: '09/20/2025 18:10', user: 'Ross', notes: 'Pickup from Forward Air' },
-];
 
 const SPLIT_MAIL_LIST_ROWS = [
   { id: 1, sno: '01', type: 'Station', emailId: 'Department1@ventanaserra.com' },
@@ -645,6 +671,15 @@ export default function WarehouseReceiptFormPage() {
   const { state } = useLocation();
   const { customerOptions, customerLoading } = useSelector((reduxState) => reduxState.enroutedata);
   const { warehouseReceiptBatch, printersDropdown, warehouseCheckInDrafts } = useSelector((reduxState) => reduxState.warehousedata);
+  const {
+    auditLogs,
+    auditLogsLoading,
+    auditLogsError,
+    receiptNotes,
+    receiptNotesLoading,
+    receiptNotesSaving,
+    receiptNotesError,
+  } = useSelector((reduxState) => reduxState.warehouseReceiptdata);
   const isMobileReceiptForm = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const isSelectingCustomerRef = useRef(false);
   const freightCameraVideoRef = useRef(null);
@@ -694,6 +729,7 @@ export default function WarehouseReceiptFormPage() {
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
+  const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
   const [selectedSplitMailIds, setSelectedSplitMailIds] = useState(INITIAL_SPLIT_MAIL_SELECTED_IDS);
@@ -703,10 +739,7 @@ export default function WarehouseReceiptFormPage() {
   const [splitFormCount, setSplitFormCount] = useState(1);
   const [activeSplitFormTab, setActiveSplitFormTab] = useState(0);
   const [splitExistingFormItems, setSplitExistingFormItems] = useState([[]]);
-  const [receiptNoteText, setReceiptNoteText] = useState(
-    initialReceiptForms[0]?.freightInfo?.notes || 'Balance Item need to be arrange'
-  );
-  const [receiptNotes, setReceiptNotes] = useState(INITIAL_WAREHOUSE_RECEIPT_NOTES);
+  const [receiptNoteText, setReceiptNoteText] = useState(initialReceiptForms[0]?.freightInfo?.notes || '');
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
   const persistReceiptFormDraft = (forms = receiptForms) => {
@@ -1195,33 +1228,36 @@ export default function WarehouseReceiptFormPage() {
     setSnackbar({ open: true, message, severity: 'info' });
   };
 
-  const handleAddReceiptNote = () => {
+  const getActiveNoteThreadId = () =>
+    viewReceiptSummary?.noteThreadId ||
+    getRowValue(activeForm?.row, 'noteThreadId', '') ||
+    activeForm?.noteThreadId ||
+    0;
+
+  const handleOpenNotesDialog = () => {
+    const noteThreadId = getActiveNoteThreadId();
+
+    setNotesDialogOpen(true);
+    dispatch(getWarehouseReceiptNotes(noteThreadId));
+  };
+
+  const handleAddReceiptNote = async () => {
     const noteText = receiptNoteText.trim();
     if (!noteText) {
       setSnackbar({ open: true, message: 'Notes is mandatory', severity: 'error' });
       return;
     }
 
-    const now = new Date();
-    const datePart = now.toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-    });
-    const timePart = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const response = await dispatch(postWarehouseReceiptNote({
+      noteThreadId: getActiveNoteThreadId(),
+      messageText: noteText,
+    }));
 
-    setReceiptNotes((prev) => [
-      {
-        time: `${datePart} ${timePart}`,
-        user: 'Warehouse Staff',
-        notes: noteText,
-      },
-      ...prev,
-    ]);
+    if (response?.error) {
+      setSnackbar({ open: true, message: response.message || 'Failed to add warehouse receipt note', severity: 'error' });
+      return;
+    }
+
     setReceiptNoteText('');
   };
 
@@ -1307,40 +1343,108 @@ export default function WarehouseReceiptFormPage() {
     };
   };
 
-  const getStatusHistoryRows = () => {
-    const receiptNumber = viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber || '';
-    const proNumber = getRowValue(activeForm?.row, 'proNumber', '');
-    const status = String(viewReceiptSummary?.status || getRowValue(activeForm?.row, 'status', '') || 'ON-HAND').toUpperCase();
-    const description = (
+  const handleOpenIdVerificationView = async (verificationId) => {
+    const cleanVerificationId = String(verificationId || '').trim();
+    if (!cleanVerificationId) return;
+
+    setStatusHistoryLinkLoadingId(cleanVerificationId);
+
+    try {
+      const response = await dispatch(getIdVerificationData({
+        page: 1,
+        pageSize: 10,
+        filters: { verificationId: cleanVerificationId },
+        filterLogic: 'AND',
+      }));
+      const verificationRecord = response?.data?.find(
+        (record) => String(record.verificationId) === cleanVerificationId
+      );
+
+      if (!verificationRecord) {
+        setSnackbar({
+          open: true,
+          message: `ID Verification ${cleanVerificationId} was not found`,
+          severity: 'error',
+        });
+        return;
+      }
+
+      navigate(PATH_DASHBOARD.idVerificationView(verificationRecord.verificationId));
+    } finally {
+      setStatusHistoryLinkLoadingId('');
+    }
+  };
+
+  const renderStatusHistoryDescription = (description) => {
+    const text = String(description || '');
+    const match = text.match(/(verification\s+ID\s+)(\d+)/i);
+
+    if (!match) return text;
+
+    const [matchedText, label, verificationId] = match;
+    const startIndex = text.indexOf(matchedText);
+    const beforeText = text.slice(0, startIndex);
+    const afterText = text.slice(startIndex + matchedText.length);
+
+    return (
       <>
-        Items from ID verification form{' '}
-        <Box component="span" sx={{ color: '#A22', fontWeight: 700, textDecoration: 'underline' }}>
-          {receiptNumber}
-        </Box>{' '}
-        have been successfully loaded in the Warehouse
+        {beforeText}
+        {label}
+        <Button
+          variant="text"
+          size="small"
+          onClick={() => handleOpenIdVerificationView(verificationId)}
+          disabled={Boolean(statusHistoryLinkLoadingId)}
+          sx={{
+            minWidth: 0,
+            p: 0,
+            color: '#A22',
+            fontSize: 'inherit',
+            fontWeight: 700,
+            lineHeight: 'inherit',
+            textDecoration: 'underline',
+            verticalAlign: 'baseline',
+            '&.Mui-disabled': { color: '#A22' },
+            '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
+          }}
+        >
+          {statusHistoryLinkLoadingId === verificationId ? (
+            <CircularProgress size={12} sx={{ color: '#A22' }} />
+          ) : (
+            verificationId
+          )}
+        </Button>
+        {afterText}
       </>
     );
+  };
 
-    return [
-      {
-        warehouseId: receiptNumber,
-        pro: proNumber,
-        level: 'Important',
-        time: '5/6/26, 3:52 AM',
-        user: 'Chris',
-        status,
-        description,
-      },
-      {
-        warehouseId: receiptNumber,
-        pro: proNumber,
-        level: 'Important',
-        time: '5/6/26, 3:52 AM',
-        user: 'Mike',
-        status,
-        description,
-      },
-    ];
+  const getStatusHistoryRows = () => {
+    return (auditLogs || []).map((log) => ({
+      warehouseId: log.receiptNumber || '',
+      pro: log.proNumber || '',
+      level: log.level || '',
+      time: formatStatusHistoryTime(log.eventTime),
+      user: log.userName || log.userId || '',
+      status: log.status || '',
+      description: renderStatusHistoryDescription(log.description),
+    }));
+  };
+
+  const handleOpenStatusHistory = () => {
+    const receiptId =
+      viewReceiptSummary?.receiptId ||
+      getRowValue(activeForm?.row, 'receiptId', '') ||
+      activeForm?.receiptId ||
+      '';
+
+    if (!receiptId) {
+      setSnackbar({ open: true, message: 'Receipt ID is required to load status history', severity: 'error' });
+      return;
+    }
+
+    dispatch(getWarehouseReceiptAuditLogs(receiptId));
+    setStatusHistoryDialogOpen(true);
   };
 
   const renderSplitStepper = (activeStep = 0) => {
@@ -2305,7 +2409,7 @@ export default function WarehouseReceiptFormPage() {
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={() => setStatusHistoryDialogOpen(true)}
+                  onClick={handleOpenStatusHistory}
                   sx={{ ...actionBtnSx, height: 24, minWidth: 110, px: 1.2, fontSize: 12 }}
                 >
                   Status History
@@ -2361,7 +2465,7 @@ export default function WarehouseReceiptFormPage() {
             </Button>
             <IconButton
               size="small"
-              onClick={() => setNotesDialogOpen(true)}
+              onClick={handleOpenNotesDialog}
               sx={{ color: '#A22', borderRadius: 0.6, width: 32, height: 28, '&:hover': { bgcolor: 'rgba(170, 34, 34, 0.08)' } }}
             >
               <Iconify icon="mdi:notebook" width={26} />
@@ -2382,7 +2486,7 @@ export default function WarehouseReceiptFormPage() {
       >
         <Stack direction="row" alignItems="center" spacing={0.7} sx={{ cursor: 'pointer' }} onClick={handleBack}>
           <Iconify icon="eva:arrow-ios-back-fill" width={14} />
-          <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{pageTitle}</Typography>
+          <Typography sx={{ fontSize: 18, fontWeight: 600 }}>{pageTitle}</Typography>
         </Stack>
         {isWarehouseReceiptView ? null : isWarehouseReceiptEdit ? (
           <Stack direction="row" spacing={1}>
@@ -3417,17 +3521,37 @@ export default function WarehouseReceiptFormPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {getStatusHistoryRows().map((row, index) => (
-                <TableRow key={`${row.warehouseId}-${row.user}-${index}`}>
-                  <TableCell>{row.warehouseId}</TableCell>
-                  <TableCell>{row.pro}</TableCell>
-                  <TableCell>{row.level}</TableCell>
-                  <TableCell>{row.time}</TableCell>
-                  <TableCell>{row.user}</TableCell>
-                  <TableCell>{row.status}</TableCell>
-                  <TableCell>{row.description}</TableCell>
+              {auditLogsLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                    <CircularProgress size={24} />
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : auditLogsError ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3, color: '#A22' }}>
+                    {auditLogsError}
+                  </TableCell>
+                </TableRow>
+              ) : getStatusHistoryRows().length ? (
+                getStatusHistoryRows().map((row, index) => (
+                  <TableRow key={`${row.warehouseId}-${row.user}-${index}`}>
+                    <TableCell>{row.warehouseId}</TableCell>
+                    <TableCell>{row.pro}</TableCell>
+                    <TableCell>{row.level}</TableCell>
+                    <TableCell>{row.time}</TableCell>
+                    <TableCell>{row.user}</TableCell>
+                    <TableCell>{row.status}</TableCell>
+                    <TableCell>{row.description}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
+                    No status history found
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </DialogContent>
@@ -3478,9 +3602,10 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleAddReceiptNote}
+              disabled={receiptNotesSaving}
               sx={{ ...actionBtnSx, mt: 0.8, height: 24, minWidth: 82, fontSize: 11 }}
             >
-              Add Notes
+              {receiptNotesSaving ? 'Saving...' : 'Add Notes'}
             </Button>
           </Box>
 
@@ -3501,13 +3626,33 @@ export default function WarehouseReceiptFormPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {receiptNotes.map((note, index) => (
-                <TableRow key={`${note.time}-${note.user}-${index}`}>
-                  <TableCell>{note.time}</TableCell>
-                  <TableCell>{note.user}</TableCell>
-                  <TableCell>{note.notes}</TableCell>
+              {receiptNotesLoading ? (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                    <CircularProgress size={24} />
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : receiptNotesError ? (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#A22' }}>
+                    {receiptNotesError}
+                  </TableCell>
+                </TableRow>
+              ) : receiptNotes.length ? (
+                receiptNotes.map((note, index) => (
+                  <TableRow key={note.noteMessageId || `${note.createdAt}-${note.createdBy}-${index}`}>
+                    <TableCell>{formatStatusHistoryTime(note.createdAt)}</TableCell>
+                    <TableCell>{note.createdBy || ''}</TableCell>
+                    <TableCell>{note.messageText || ''}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                    No notes found
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </DialogContent>
