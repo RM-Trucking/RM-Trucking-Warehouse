@@ -60,6 +60,13 @@ const actionBtnSx = {
   '&:hover': { bgcolor: '#8b1c1c' },
 };
 
+const comingSoonBtnSx = {
+  bgcolor: '#e5e5e5',
+  color: '#8f8f8f',
+  textTransform: 'none',
+  '&:hover': { bgcolor: '#dedede' },
+};
+
 const fieldSx = {
   '& .MuiInputBase-input': { fontSize: 13, py: 0.2 },
   '& .MuiFormHelperText-root': { display: 'none' },
@@ -2420,24 +2427,24 @@ export default function WarehouseReceiptFormPage() {
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
-                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
+                    onClick={() => handleViewAction('This feature will be available soon')}
+                    sx={{ ...comingSoonBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print
                   </Button>
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
-                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
+                    onClick={() => handleViewAction('This feature will be available soon')}
+                    sx={{ ...comingSoonBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print Labels
                   </Button>
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => setRatesDialogOpen(true)}
-                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
+                    onClick={() => handleViewAction('This feature will be available soon')}
+                    sx={{ ...comingSoonBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Rates
                   </Button>
@@ -2450,16 +2457,16 @@ export default function WarehouseReceiptFormPage() {
             <Button
               variant="contained"
               size="small"
-              onClick={handleOpenSplitDialog}
-              sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
+              onClick={() => handleViewAction('This feature will be available soon')}
+              sx={{ ...comingSoonBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Split
             </Button>
             <Button
               variant="contained"
               size="small"
-              onClick={handleEditWarehouseReceipt}
-              sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
+              onClick={() => handleViewAction('This feature will be available soon')}
+              sx={{ ...comingSoonBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Edit
             </Button>
