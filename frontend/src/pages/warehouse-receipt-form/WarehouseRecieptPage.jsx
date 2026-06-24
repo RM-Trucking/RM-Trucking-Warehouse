@@ -184,6 +184,7 @@ export default function WarehouseRecieptPage() {
   const [locationError, setLocationError] = useState('');
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
+  const [comingSoonMessageOpen, setComingSoonMessageOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [receiptFilters, setReceiptFilters] = useState(emptyReceiptFilters);
@@ -396,26 +397,31 @@ export default function WarehouseRecieptPage() {
             spacing={0.4}
             sx={{ width: '100%', height: '100%' }}
           >
-            {visibleActionIcons.map((icon) => (
-              <IconButton
-                key={icon}
-                size="small"
-                onClick={
-                  icon === 'mdi:eye'
-                    ? () => handleViewReceipt(params.row)
-                    : icon === 'location-edit'
-                      ? () => handleOpenLocationDialog(params.row)
-                      : undefined
-                }
-                sx={{ p: 0.25 }}
-              >
-                {icon === 'location-edit' ? (
-                  <EditLocationAltIcon sx={{ color: '#050505', fontSize: 18 }} />
-                ) : (
-                  <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
-                )}
-              </IconButton>
-            ))}
+            {visibleActionIcons.map((icon) => {
+              const isEnabledAction = ['mdi:eye', 'location-edit'].includes(icon);
+              const iconColor = isEnabledAction ? '#050505' : '#a8a8a8';
+
+              return (
+                <IconButton
+                  key={icon}
+                  size="small"
+                  onClick={
+                    icon === 'mdi:eye'
+                      ? () => handleViewReceipt(params.row)
+                      : icon === 'location-edit'
+                        ? () => handleOpenLocationDialog(params.row)
+                        : () => setComingSoonMessageOpen(true)
+                  }
+                  sx={{ p: 0.25, color: iconColor }}
+                >
+                  {icon === 'location-edit' ? (
+                    <EditLocationAltIcon sx={{ color: iconColor, fontSize: 18 }} />
+                  ) : (
+                    <Iconify icon={icon} width={16} sx={{ color: iconColor }} />
+                  )}
+                </IconButton>
+              );
+            })}
           </Stack>
         );
       },
@@ -690,8 +696,17 @@ export default function WarehouseRecieptPage() {
         >
           <FilterListIcon sx={{ fontSize: 20 }} />
         </IconButton>
-        <IconButton size="small" sx={{ bgcolor: '#a22', color: '#fff', borderRadius: 0.8, '&:hover': { bgcolor: '#8b1c1c' } }}>
-          <Iconify icon="mdi:table" width={18} />
+        <IconButton
+          size="small"
+          onClick={() => setComingSoonMessageOpen(true)}
+          sx={{
+            bgcolor: '#e5e5e5',
+            color: '#9a9a9a',
+            borderRadius: 0.8,
+            '&:hover': { bgcolor: '#dedede' },
+          }}
+        >
+          <Iconify icon="mdi:table" width={18} sx={{ color: '#9a9a9a' }} />
         </IconButton>
       </Box>
 
@@ -699,20 +714,27 @@ export default function WarehouseRecieptPage() {
         <Stack direction="row" alignItems="flex-end" spacing={2}>
           {statusTabs.map((tab) => {
             const selected = activeTab === tab.label;
+            const isDisabledTab = tab.label === 'Accounting';
             return (
               <Button
                 key={tab.label}
-                onClick={() => setActiveTab(tab.label)}
+                onClick={() => {
+                  if (isDisabledTab) {
+                    setComingSoonMessageOpen(true);
+                    return;
+                  }
+                  setActiveTab(tab.label);
+                }}
                 sx={{
                   px: 0,
                   pb: 0.7,
                   minWidth: 0,
                   borderRadius: 0,
-                  color: selected ? '#111' : '#777',
-                  borderBottom: selected ? '2px solid #a22' : '2px solid transparent',
+                  color: isDisabledTab ? '#a8a8a8' : selected ? '#111' : '#777',
+                  borderBottom: selected && !isDisabledTab ? '2px solid #a22' : '2px solid transparent',
                   textTransform: 'none',
                   fontSize: 14,
-                  fontWeight: selected ? 700 : 400,
+                  fontWeight: selected && !isDisabledTab ? 700 : 400,
                 }}
               >
                 {tab.label} ({String(getCount(tab.countKey)).padStart(2, '0')})
@@ -1071,6 +1093,13 @@ export default function WarehouseRecieptPage() {
         autoHideDuration={2000}
         onClose={() => setLocationMessageOpen(false)}
         message="Location updated successfully"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={comingSoonMessageOpen}
+        autoHideDuration={2000}
+        onClose={() => setComingSoonMessageOpen(false)}
+        message="This feature will be available soon"
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>
