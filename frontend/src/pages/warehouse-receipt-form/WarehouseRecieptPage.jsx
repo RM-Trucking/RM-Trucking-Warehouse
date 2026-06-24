@@ -100,13 +100,13 @@ const isYes = (value) => String(value || '').toUpperCase() === 'Y';
 const isSendToTellSystemYes = (value) => ['Y', 'YES'].includes(String(value || '').trim().toUpperCase());
 
 const statusPillColors = {
-  'on-hand': '#8ec7ee',
-  initiated: '#c9a47f',
-  prepared: '#b99adf',
-  scanned: '#62b36e',
+  'on-hand': '#4aa3d8',
+  initiated: '#a87b4f',
+  prepared: '#8f63c7',
+  scanned: '#3f9d50',
   shipped: '#1f7a3a',
   rejected: '#c62828',
-  archived: '#8a8a8a',
+  archived: '#707070',
 };
 
 const getStatusPillColor = (status) => {

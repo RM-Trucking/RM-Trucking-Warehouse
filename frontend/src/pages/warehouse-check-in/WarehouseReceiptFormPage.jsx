@@ -2486,7 +2486,7 @@ export default function WarehouseReceiptFormPage() {
       >
         <Stack direction="row" alignItems="center" spacing={0.7} sx={{ cursor: 'pointer' }} onClick={handleBack}>
           <Iconify icon="eva:arrow-ios-back-fill" width={14} />
-          <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{pageTitle}</Typography>
+          <Typography sx={{ fontSize: 18, fontWeight: 600 }}>{pageTitle}</Typography>
         </Stack>
         {isWarehouseReceiptView ? null : isWarehouseReceiptEdit ? (
           <Stack direction="row" spacing={1}>

@@ -77,6 +77,9 @@ const getNoteRowsFromResponse = (responseData) => {
   if (Array.isArray(responseData)) return responseData;
   if (Array.isArray(responseData?.data)) return responseData.data;
   if (Array.isArray(responseData?.message?.data)) return responseData.message.data;
+  if (responseData?.noteMessageId) return [responseData];
+  if (responseData?.data?.noteMessageId) return [responseData.data];
+  if (responseData?.message?.data?.noteMessageId) return [responseData.message.data];
   return [];
 };
 
@@ -168,7 +171,11 @@ const slice = createSlice({
     postReceiptNoteSuccess(state, action) {
       state.receiptNotesSaving = false;
       state.receiptNotesError = null;
-      state.receiptNotes = action.payload || [];
+      const newNotes = action.payload || [];
+      const existingIds = new Set(state.receiptNotes.map((note) => note.noteMessageId).filter(Boolean));
+      const notesToAdd = newNotes.filter((note) => !note.noteMessageId || !existingIds.has(note.noteMessageId));
+
+      state.receiptNotes = [...notesToAdd, ...state.receiptNotes];
     },
     postReceiptNoteError(state, action) {
       state.receiptNotesSaving = false;
