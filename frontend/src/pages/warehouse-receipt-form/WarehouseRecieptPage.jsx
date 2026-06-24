@@ -375,7 +375,6 @@ export default function WarehouseRecieptPage() {
     { field: 'proNumber', headerName: 'Pro Number', minWidth: 170, flex: 1.4 },
     { field: 'idVerification', headerName: 'Id Verification', minWidth: 120, flex: 1 },
     { field: 'location', headerName: 'Location', minWidth: 85, flex: 0.6 },
-    { field: 'destination', headerName: 'Destination', minWidth: 130, flex: 1 },
     { field: 'rate', headerName: 'Rate', minWidth: 80, flex: 0.6 },
     { field: 'createdDate', headerName: 'Created Date', minWidth: 125, flex: 0.9 },
     {

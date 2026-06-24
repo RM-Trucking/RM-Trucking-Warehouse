@@ -3649,7 +3649,7 @@ export default function WarehouseReceiptFormPage() {
                 receiptNotes.map((note, index) => (
                   <TableRow key={note.noteMessageId || `${note.createdAt}-${note.createdBy}-${index}`}>
                     <TableCell>{formatStatusHistoryTime(note.createdAt)}</TableCell>
-                    <TableCell>{note.createdBy || ''}</TableCell>
+                    <TableCell>{note.createdByName || note.createdBy || ''}</TableCell>
                     <TableCell>{note.messageText || ''}</TableCell>
                   </TableRow>
                 ))
