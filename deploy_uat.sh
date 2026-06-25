@@ -65,6 +65,7 @@ FREIGHT_IMAGE_PATH=/home/warehouse-app-docs/freight-images
 BAD_FREIGHT_IMAGE_PATH=/home/warehouse-app-docs/bad-freight-images
 WAREHOUSE_IMAGE_PATH=/home/warehouse-app-docs/warehouse-images
 WAREHOUSE_DOC_PATH=/home/warehouse-app-docs/warehouse-docs
+TEMP_RECEIPT_OUTPUT=/home/warehouse-app-docs/temp-receipt-output
 ENVFILE
 
 # Remove existing zip on remote

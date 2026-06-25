@@ -341,13 +341,79 @@ paths:
           name: status
           schema:
             type: string
-            enum: [INITIATE, IN_PROGRESS, COMPLETED, HOLD]
+            enum:
+              [
+                INITIATED,
+                ON_HAND,
+                PREPARED,
+                SCANNED,
+                SHIPPED,
+                REJECTED,
+                ARCHIVED,
+              ]
           description: Filter by receipt status
+        - in: query
+          name: receiptNumber
+          schema:
+            type: integer
+          description: Filter by receipt number
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+          description: Filter receipts created after this date (inclusive)
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+          description: Filter receipts created before this date (inclusive)
+        - in: query
+          name: customerId
+          schema:
+            type: integer
+          description: Filter by customer ID
+        - in: query
+          name: stationId
+          schema:
+            type: integer
+          description: Filter by station ID
         - in: query
           name: carrierId
           schema:
             type: integer
           description: Filter by carrier ID
+        - in: query
+          name: location
+          schema:
+            type: string
+          description: Filter by location (partial match)
+        - in: query
+          name: proNumber
+          schema:
+            type: string
+          description: Filter by PRO number (partial match)
+        - in: query
+          name: verificationId
+          schema:
+            type: integer
+          description: Filter by ID verification ID
+        - in: query
+          name: destination
+          schema:
+            type: string
+          description: Filter by destination (partial match)
+        - in: query
+          name: packageId
+          schema:
+            type: string
+          description: Filter by package ID (partial match)
+        - in: query
+          name: customerRefNumber
+          schema:
+            type: string
+          description: Filter by customer reference number (partial match)
       responses:
         "200":
           description: Receipts retrieved successfully
@@ -485,6 +551,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/{receiptId}/location:
+    patch:
+      tags:
+        - Receipts
+      summary: Update warehouse receipt location
+      description: Update only the location field of a warehouse receipt. This is a targeted update for location changes without affecting other receipt properties.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: receiptId
+          schema:
+            type: string
+          required: true
+          description: Unique receipt identifier (bigint)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLocationRequest"
+            example:
+              location: "Warehouse B, Zone 2"
+      responses:
+        "200":
+          description: Receipt location updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Receipt location updated successfully"
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceipt"
+        "400":
+          description: Missing or invalid location field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt/{receiptId}/reject:
     put:
       tags:
@@ -561,6 +685,48 @@ paths:
                     example: true
                   data:
                     $ref: "#/components/schemas/ReceiptSummary"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/warehouse-receipt/{receiptId}/audit-logs:
+    get:
+      tags:
+        - Receipts
+      summary: Get audit logs for a warehouse receipt
+      description: Retrieve all audit logs associated with a specific warehouse receipt, showing status changes and updates over time.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: receiptId
+          schema:
+            type: string
+          required: true
+          description: Unique receipt identifier (bigint)
+      responses:
+        "200":
+          description: Audit logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditLogEntry"
         "404":
           description: Receipt not found
           content:
@@ -1229,7 +1395,16 @@ components:
               description: "Receipt type (e.g., Regular, Special, etc.)"
             status:
               type: string
-              enum: [INITIATE, ON-HAND, REJECTED, HOLD]
+              enum:
+                [
+                  INITIATE,
+                  ON-HAND,
+                  REJECTED,
+                  PREPARED,
+                  SCANNED,
+                  SHIPPED,
+                  ARCHIVED,
+                ]
               example: "INITIATE"
             entityId:
               type: integer
@@ -1343,7 +1518,8 @@ components:
           example: "Regular"
         status:
           type: string
-          enum: [INITIATE, ON-HAND, REJECTED, HOLD]
+          enum:
+            [INITIATE, ON-HAND, REJECTED, PREPARED, SCANNED, SHIPPED, ARCHIVED]
           example: "INITIATE"
         createdAt:
           type: string
@@ -1430,6 +1606,16 @@ components:
         updatedBy:
           type: integer
           example: 1
+
+    UpdateLocationRequest:
+      type: object
+      required:
+        - location
+      properties:
+        location:
+          type: string
+          example: "Warehouse B, Zone 2"
+          description: Storage location for the warehouse receipt
 
     PaginationInfo:
       type: object

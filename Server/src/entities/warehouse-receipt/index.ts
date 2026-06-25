@@ -10,7 +10,7 @@ export interface WarehouseReceiptTemp {
     carrierId: number;
     createdAt: Date;
     createdBy: number;
-    status: string;
+    status: "INITIATED" | "ON_HAND" | "PREPARED" | "SCANNED" | "SHIPPED" | "REJECTED" | "ARCHIVED";
     destination?: string | null;
     proNumber?: string | null;
     packageId?: string | null;
@@ -74,7 +74,7 @@ export interface WarehouseReceipt {
     packageId?: string;
     properShippingName?: string;
     hazardousDescription?: string;
-    status: string;
+    status: "INITIATED" | "ON_HAND" | "PREPARED" | "SCANNED" | "SHIPPED" | "REJECTED" | "ARCHIVED";
     noteThreadId?: number;
     entityId: number;
     toEmails?: string[];
@@ -125,7 +125,7 @@ export interface CreateWarehouseReceipt {
     packageId?: string;
     properShippingName?: string;
     hazardousDescription?: string;
-    status: string;
+    status: "INITIATED" | "ON_HAND" | "PREPARED" | "SCANNED" | "SHIPPED" | "REJECTED" | "ARCHIVED";
     noteThreadId?: number;
     entityId: number;
     receiptType?: 'Regular' | 'Trailer';
@@ -146,7 +146,7 @@ export interface UpdateWarehouseReceipt {
     weightInland?: number;
     cubicMeter?: number;
     reWeight?: number;
-    status?: string;
+    status?: "INITIATED" | "ON_HAND" | "PREPARED" | "SCANNED" | "SHIPPED" | "REJECTED" | "ARCHIVED";
     updatedBy?: number;
     updatedAt?: Date;
 }
