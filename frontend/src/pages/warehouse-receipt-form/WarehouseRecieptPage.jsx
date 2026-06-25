@@ -399,18 +399,31 @@ export default function WarehouseRecieptPage() {
             {visibleActionIcons.map((icon) => {
               const isEnabledAction = ['mdi:eye', 'location-edit'].includes(icon);
               const iconColor = isEnabledAction ? '#050505' : '#a8a8a8';
+              const handleActionClick = (event) => {
+                event.stopPropagation();
+
+                if (icon === 'mdi:eye') {
+                  handleViewReceipt(params.row);
+                  return;
+                }
+
+                if (icon === 'location-edit') {
+                  handleOpenLocationDialog(params.row);
+                  return;
+                }
+
+                setComingSoonMessageOpen(true);
+              };
+              const handleActionMouseDown = (event) => {
+                event.stopPropagation();
+              };
 
               return (
                 <IconButton
                   key={icon}
                   size="small"
-                  onClick={
-                    icon === 'mdi:eye'
-                      ? () => handleViewReceipt(params.row)
-                      : icon === 'location-edit'
-                        ? () => handleOpenLocationDialog(params.row)
-                        : () => setComingSoonMessageOpen(true)
-                  }
+                  onClick={handleActionClick}
+                  onMouseDown={handleActionMouseDown}
                   sx={{ p: 0.25, color: iconColor }}
                 >
                   {icon === 'location-edit' ? (
@@ -577,7 +590,7 @@ export default function WarehouseRecieptPage() {
   const handleViewReceipt = (row) => {
     const receipt = row.rawData || {};
     const freightInfo = buildFreightInfoFromReceipt(receipt);
-    const freightItems = receipt.freightInformation?.length
+    const freightItems = Array.isArray(receipt.freightInformation)
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
           pieces: item.pieces,
@@ -588,18 +601,7 @@ export default function WarehouseRecieptPage() {
           weight: item.weight,
           images: item.images || [],
         }))
-      : [
-          {
-            id: 1,
-            pieces: row.pieces,
-            type: row.type,
-            length: row.length,
-            width: row.width,
-            height: row.height,
-            weight: row.weight,
-            images: [],
-          },
-        ];
+      : [];
 
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       state: {

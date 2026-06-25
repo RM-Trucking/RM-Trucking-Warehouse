@@ -238,24 +238,24 @@ const buildCustomerSelection = (row = {}) => {
 const formatDate = (date = new Date()) =>
   date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 
+const getLocalDstDeltaMinutes = (date) => {
+  const januaryOffset = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
+  const julyOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+  const standardOffset = Math.max(januaryOffset, julyOffset);
+
+  return Math.max(standardOffset - date.getTimezoneOffset(), 0);
+};
+
 const formatStatusHistoryTime = (value) => {
   if (!value) return '';
 
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
-  const date = match
-    ? new Date(
-        Number(match[1]),
-        Number(match[2]) - 1,
-        Number(match[3]),
-        Number(match[4]),
-        Number(match[5]),
-        Number(match[6] || 0)
-      )
-    : new Date(value);
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return String(value);
 
-  return date.toLocaleString('en-US', {
+  const displayDate = new Date(date.getTime() - getLocalDstDeltaMinutes(date) * 60 * 1000);
+
+  return displayDate.toLocaleString('en-US', {
     month: 'numeric',
     day: 'numeric',
     year: '2-digit',
