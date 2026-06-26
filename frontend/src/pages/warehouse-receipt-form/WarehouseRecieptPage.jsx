@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
   Box,
@@ -162,6 +162,8 @@ const buildFreightInfoFromReceipt = (receipt = {}) => ({
 
 export default function WarehouseRecieptPage() {
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const gridState = state?.warehouseReceiptGridState || {};
   const dispatch = useDispatch();
   const {
     receipts,
@@ -176,8 +178,8 @@ export default function WarehouseRecieptPage() {
   } = useSelector((state) => state.warehouseReceiptdata);
   const { carrierOptions, carrierLoading } = useSelector((state) => state.enroutedata);
   const [activeTab, setActiveTab] = useState('Active');
-  const [searchValue, setSearchValue] = useState('');
-  const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState('');
+  const [searchValue, setSearchValue] = useState(gridState.searchValue || '');
+  const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState(gridState.submittedReceiptNumber || '');
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
   const [locationOverrides, setLocationOverrides] = useState({});
   const [locationSaving, setLocationSaving] = useState(false);
@@ -185,12 +187,12 @@ export default function WarehouseRecieptPage() {
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [comingSoonMessageOpen, setComingSoonMessageOpen] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState(gridState.selectedStatus || '');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
-  const [receiptFilters, setReceiptFilters] = useState(emptyReceiptFilters);
-  const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(emptyReceiptFilters);
+  const [receiptFilters, setReceiptFilters] = useState(gridState.receiptFilters || gridState.appliedReceiptFilters || emptyReceiptFilters);
+  const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
+  const [paginationModel, setPaginationModel] = useState(gridState.paginationModel || { page: 0, pageSize: 10 });
 
   const activeFilterCount = Object.entries(appliedReceiptFilters)
     .filter(([key, value]) => !['carrier', 'customerId', 'stationId'].includes(key) && String(value || '').trim())
@@ -399,18 +401,31 @@ export default function WarehouseRecieptPage() {
             {visibleActionIcons.map((icon) => {
               const isEnabledAction = ['mdi:eye', 'location-edit'].includes(icon);
               const iconColor = isEnabledAction ? '#050505' : '#a8a8a8';
+              const handleActionClick = (event) => {
+                event.stopPropagation();
+
+                if (icon === 'mdi:eye') {
+                  handleViewReceipt(params.row);
+                  return;
+                }
+
+                if (icon === 'location-edit') {
+                  handleOpenLocationDialog(params.row);
+                  return;
+                }
+
+                setComingSoonMessageOpen(true);
+              };
+              const handleActionMouseDown = (event) => {
+                event.stopPropagation();
+              };
 
               return (
                 <IconButton
                   key={icon}
                   size="small"
-                  onClick={
-                    icon === 'mdi:eye'
-                      ? () => handleViewReceipt(params.row)
-                      : icon === 'location-edit'
-                        ? () => handleOpenLocationDialog(params.row)
-                        : () => setComingSoonMessageOpen(true)
-                  }
+                  onClick={handleActionClick}
+                  onMouseDown={handleActionMouseDown}
                   sx={{ p: 0.25, color: iconColor }}
                 >
                   {icon === 'location-edit' ? (
@@ -574,10 +589,19 @@ export default function WarehouseRecieptPage() {
     setLocationMessageOpen(true);
   };
 
+  const getWarehouseReceiptGridState = () => ({
+    selectedStatus,
+    searchValue,
+    submittedReceiptNumber,
+    receiptFilters,
+    appliedReceiptFilters,
+    paginationModel,
+  });
+
   const handleViewReceipt = (row) => {
     const receipt = row.rawData || {};
     const freightInfo = buildFreightInfoFromReceipt(receipt);
-    const freightItems = receipt.freightInformation?.length
+    const freightItems = Array.isArray(receipt.freightInformation)
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
           pieces: item.pieces,
@@ -588,24 +612,14 @@ export default function WarehouseRecieptPage() {
           weight: item.weight,
           images: item.images || [],
         }))
-      : [
-          {
-            id: 1,
-            pieces: row.pieces,
-            type: row.type,
-            length: row.length,
-            width: row.width,
-            height: row.height,
-            weight: row.weight,
-            images: [],
-          },
-        ];
+      : [];
 
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       state: {
         title: 'Warehouse Receipt Form',
         draftKey: `warehouse-receipt-view-${row.receiptNumber}`,
         warehouseReceiptView: true,
+        warehouseReceiptGridState: getWarehouseReceiptGridState(),
         viewReceiptSummary: {
           receiptId: row.receiptId || row.id,
           receiptNumber: row.receiptNumber,
@@ -659,7 +673,14 @@ export default function WarehouseRecieptPage() {
           size="small"
           placeholder="Search by Receipt Number"
           value={searchValue}
-          onChange={(event) => setSearchValue(event.target.value)}
+          onChange={(event) => setSearchValue(event.target.value.slice(0, 100))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleReceiptSearch();
+            }
+          }}
+          inputProps={{ maxLength: 100 }}
           sx={{
             width: 245,
             '& .MuiOutlinedInput-root': {
