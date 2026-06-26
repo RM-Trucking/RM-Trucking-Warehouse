@@ -2261,7 +2261,7 @@ export default function WarehouseCheckInPage({
 
   const handleMobileRegularSuccessOk = () => {
     setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
-    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    dispatch(clearWarehouseCheckInDraft(draftKey));
     draftRestoredRef.current = false;
     resetCheckInState();
     dispatch(clearReceiptSearch());
@@ -2275,7 +2275,7 @@ export default function WarehouseCheckInPage({
   };
 
   const handleComplete = () => {
-    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    dispatch(clearWarehouseCheckInDraft(draftKey));
     draftRestoredRef.current = false;
     resetCheckInState();
     dispatch(clearReceiptSearch());

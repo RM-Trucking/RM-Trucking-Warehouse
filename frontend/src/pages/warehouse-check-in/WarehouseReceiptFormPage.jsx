@@ -759,7 +759,11 @@ export default function WarehouseReceiptFormPage() {
   };
   const handleBack = () => {
     if (isWarehouseReceiptView || isWarehouseReceiptEdit) {
-      navigate(PATH_DASHBOARD.warehouseReceiptDashboard);
+      navigate(PATH_DASHBOARD.warehouseReceiptDashboard, {
+        state: {
+          warehouseReceiptGridState: state?.warehouseReceiptGridState,
+        },
+      });
       return;
     }
 
