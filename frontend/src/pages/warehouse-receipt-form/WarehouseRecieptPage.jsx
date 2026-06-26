@@ -73,6 +73,8 @@ const emptyReceiptFilters = {
   station: '',
   stationId: '',
   destination: '',
+  packageId: '',
+  customerRefNumber: '',
 };
 
 const actionIcons = [
@@ -209,6 +211,8 @@ export default function WarehouseRecieptPage() {
     customerId: appliedReceiptFilters.customerId,
     stationId: appliedReceiptFilters.stationId,
     destination: appliedReceiptFilters.destination,
+    packageId: appliedReceiptFilters.packageId,
+    customerRefNumber: appliedReceiptFilters.customerRefNumber,
   };
 
   useEffect(() => {
@@ -235,6 +239,8 @@ export default function WarehouseRecieptPage() {
     requestFilters.customerId,
     requestFilters.stationId,
     requestFilters.destination,
+    requestFilters.packageId,
+    requestFilters.customerRefNumber,
   ]);
 
   useEffect(() => {
@@ -924,6 +930,20 @@ export default function WarehouseRecieptPage() {
               placeholder="Search by Destination"
               value={receiptFilters.destination}
               onChange={(event) => handleReceiptFilterChange('destination', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Package ID"
+              value={receiptFilters.packageId}
+              onChange={(event) => handleReceiptFilterChange('packageId', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Customer Ref Number"
+              value={receiptFilters.customerRefNumber}
+              onChange={(event) => handleReceiptFilterChange('customerRefNumber', event.target.value)}
               fullWidth
             />
             <Autocomplete
