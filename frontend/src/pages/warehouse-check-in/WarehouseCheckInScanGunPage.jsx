@@ -19,6 +19,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import { DataGrid } from '@mui/x-data-grid';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
@@ -39,6 +40,66 @@ const FREIGHT_BUTTON_OPTIONS = ['Banded Skid', 'Shrink Wrapped Skid', 'SHT / IPP
 const mobileFieldSx = {
   '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
   '& .MuiFormHelperText-root': { display: 'none' },
+};
+
+const normalizeEmailList = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((email) => (typeof email === 'string' ? email : email?.entryEmail || email?.email || ''))
+      .map((email) => String(email || '').trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') return value.split(',').map((email) => email.trim()).filter(Boolean);
+  return [];
+};
+
+const normalizeEmailRows = (emails) => {
+  if (!Array.isArray(emails)) return [];
+
+  return emails
+    .map((email, index) => {
+      if (typeof email === 'string') {
+        return {
+          entryId: `email_${index}_${email}`,
+          entryType: 'Email',
+          entryEmail: email,
+        };
+      }
+
+      if (email && typeof email === 'object') {
+        const entryEmail = email.entryEmail || email.email || '';
+
+        return {
+          entryId: email.entryId || `email_${index}_${entryEmail}`,
+          entryType: email.entryType || email.type || 'Email',
+          entryEmail,
+        };
+      }
+
+      return null;
+    })
+    .filter((email) => email?.entryEmail);
+};
+
+const buildSelectedEmailMap = (emails = [], toEmails = []) => {
+  const selectedEmailSet = new Set(normalizeEmailList(toEmails).map((email) => String(email).toLowerCase()));
+
+  return emails.reduce((selectedMap, email) => {
+    const emailAddress = String(email.entryEmail || '').trim().toLowerCase();
+
+    if (emailAddress && selectedEmailSet.has(emailAddress)) {
+      selectedMap[email.entryId] = true;
+    }
+
+    return selectedMap;
+  }, {});
+};
+
+const getReceiptMailRows = (row = {}) => {
+  const customerEmails = normalizeEmailRows(row.customerEmails || []);
+  if (customerEmails.length) return customerEmails;
+
+  return normalizeEmailRows(row.toEmails || []);
 };
 
 function ScanField({ label, value, onChange, required = false, error = false, select = false, children, ...rest }) {
@@ -374,6 +435,12 @@ export default function WarehouseCheckInScanGunPage({
   const visibleRows = (warehouseReceiptSearch.data?.rows || []).filter((row) => !rejectedRowIds.includes(row.id));
   const [deleteItemDialog, setDeleteItemDialog] = useState(null);
   const [deleteFormDialog, setDeleteFormDialog] = useState(null);
+  const [mailListDialog, setMailListDialog] = useState({
+    open: false,
+    receiptKey: '',
+    emails: [],
+    selectedEmails: {},
+  });
   const requestRemoveItem = (receiptKey, formId, itemId, itemIndex) => {
     setDeleteItemDialog({ receiptKey, formId, itemId, itemIndex });
   };
@@ -397,6 +464,46 @@ export default function WarehouseCheckInScanGunPage({
 
     removeForm(deleteFormDialog.receiptKey, deleteFormDialog.formId);
     setDeleteFormDialog(null);
+  };
+
+  const handleOpenMailList = (receipt) => {
+    const emails = getReceiptMailRows(receipt.row);
+    const selectedEmails = buildSelectedEmailMap(emails, receipt.row?.toEmails || []);
+
+    setMailListDialog({
+      open: true,
+      receiptKey: receipt.key,
+      emails,
+      selectedEmails,
+    });
+  };
+
+  const handleCloseMailList = () => {
+    setMailListDialog((prev) => ({ ...prev, open: false }));
+  };
+
+  const handleEmailCheckboxChange = (emailId) => {
+    setMailListDialog((prev) => ({
+      ...prev,
+      selectedEmails: {
+        ...prev.selectedEmails,
+        [emailId]: !prev.selectedEmails[emailId],
+      },
+    }));
+  };
+
+  const handleMailSubmit = () => {
+    const selectedToEmails = mailListDialog.emails
+      .filter((email) => mailListDialog.selectedEmails[email.entryId])
+      .map((email) => email.entryEmail);
+
+    updateReceipt(mailListDialog.receiptKey, (receipt) => ({
+      row: {
+        ...receipt.row,
+        toEmails: selectedToEmails,
+      },
+    }));
+    setMailListDialog((prev) => ({ ...prev, open: false }));
   };
 
   const toggleFreightOption = (receiptKey, formId, option) => {
@@ -567,7 +674,16 @@ export default function WarehouseCheckInScanGunPage({
             <Stack key={receipt.key} spacing={1.2}>
               <Box sx={sectionSx}>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
-                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{receipt.proNumber}</Typography>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{receipt.proNumber}</Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleOpenMailList(receipt)}
+                      sx={{ color: '#A22', p: 0.25 }}
+                    >
+                      <Iconify icon="mdi:email-outline" width={20} />
+                    </IconButton>
+                  </Stack>
                   <Button variant="contained" size="small" onClick={() => removeReceipt(receipt.key)} sx={scanActionBtnSx}>
                     Reset
                   </Button>
@@ -723,6 +839,109 @@ export default function WarehouseCheckInScanGunPage({
           ))}
         </Box>
       </Box>
+      <Dialog
+        open={mailListDialog.open}
+        onClose={handleCloseMailList}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '3px solid #a22',
+            m: 1.5,
+            width: 'calc(100% - 24px)',
+          },
+        }}
+      >
+        <Box sx={{ p: 1.25, bgcolor: '#a22', color: 'white', fontWeight: 'bold', fontSize: 13 }}>
+          Mail List
+        </Box>
+        <DialogContent sx={{ p: 1, height: 300 }}>
+          {mailListDialog.emails.length > 0 ? (
+            <DataGrid
+              rows={mailListDialog.emails.map((email, index) => ({
+                id: email.entryId,
+                sno: String(index + 1).padStart(2, '0'),
+                entryType: email.entryType || '',
+                emailid: email.entryEmail,
+                selected: mailListDialog.selectedEmails[email.entryId] || false,
+              }))}
+              columns={[
+                {
+                  field: 'selected',
+                  headerName: '',
+                  width: 44,
+                  sortable: false,
+                  renderCell: (params) => (
+                    <input
+                      type="checkbox"
+                      checked={params.row.selected}
+                      onChange={() => handleEmailCheckboxChange(params.row.id)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  ),
+                },
+                {
+                  field: 'sno',
+                  headerName: 'SNO',
+                  width: 56,
+                  sortable: false,
+                },
+                {
+                  field: 'entryType',
+                  headerName: 'Type',
+                  width: 78,
+                  sortable: false,
+                },
+                {
+                  field: 'emailid',
+                  headerName: 'Email ID',
+                  flex: 1,
+                  sortable: false,
+                },
+              ]}
+              hideFooter
+              disableRowSelectionOnClick
+              sx={{
+                fontSize: 11,
+                '& .MuiDataGrid-columnHeaders': {
+                  bgcolor: '#f5f5f5',
+                  borderBottom: '2px solid #e0e0e0',
+                  minHeight: '34px !important',
+                  maxHeight: '34px !important',
+                },
+                '& .MuiDataGrid-columnHeader': { px: 0.5 },
+                '& .MuiDataGrid-cell': {
+                  borderBottom: '1px solid #e0e0e0',
+                  px: 0.5,
+                },
+              }}
+            />
+          ) : (
+            <Typography variant="body2" sx={{ color: '#999', p: 2 }}>
+              No emails available for this receipt
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 1, pb: 1 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCloseMailList}
+            sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleMailSubmit}
+            sx={{ ...scanActionBtnSx, height: 32 }}
+          >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={Boolean(deleteItemDialog)} onClose={handleCancelRemoveItem} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>Delete Item</DialogTitle>
         <DialogContent dividers>
