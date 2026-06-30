@@ -1463,7 +1463,7 @@ export default function WarehouseReceiptFormPage() {
     const progressWidth = `${Math.max(0, Math.min(activeStep, steps.length - 1)) * 25}%`;
 
     return (
-      <Box sx={{ width: { xs: '100%', sm: 430 }, mx: 'auto', mt: 3.2 }}>
+      <Box sx={{ width: { xs: '100%', sm: 430 } }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', alignItems: 'start', position: 'relative' }}>
           <Box
             sx={{
@@ -1867,7 +1867,12 @@ export default function WarehouseReceiptFormPage() {
                         const item = splitItems[itemIndex] || {};
 
                         return (
-                          <TableRow key={`new-form-${formIndex}-${item.id || itemIndex}`}>
+                          <TableRow
+                            key={`new-form-${formIndex}-${item.id || itemIndex}`}
+                            draggable
+                            onDragStart={(event) => handleDragStart(event, itemIndex)}
+                            sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+                          >
                             <TableCell>{String(itemIndex + 1).padStart(2, '0')}</TableCell>
                             <TableCell>{item.pieces || ''}</TableCell>
                             <TableCell>{item.type || ''}</TableCell>
@@ -1913,8 +1918,184 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
+  const renderSplitNewFormAssignmentPanel = () => {
+    const splitItems = activeForm?.items?.length ? activeForm.items : [];
+    const assignedItemIndexes = new Set(splitExistingFormItems.flat());
+    const remainingSplitItems = splitItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ index }) => !assignedItemIndexes.has(index));
+
+    const handleDragStart = (event, itemIndex) => {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(itemIndex));
+    };
+
+    const handleDragOver = (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDropOnForm = (event, formIndex) => {
+      event.preventDefault();
+      const itemIndex = Number(event.dataTransfer.getData('text/plain'));
+      if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= splitItems.length) return;
+
+      setSplitExistingFormItems((prev) => {
+        const next = Array.from({ length: splitFormCount }, (_, index) => [...(prev[index] || [])]);
+        next.forEach((formItems, index) => {
+          next[index] = formItems.filter((assignedIndex) => assignedIndex !== itemIndex);
+        });
+        next[formIndex] = [...next[formIndex], itemIndex];
+        return next;
+      });
+    };
+
+    const handleRemoveFromSplitForm = (formIndex, itemIndex) => {
+      setSplitExistingFormItems((prev) =>
+        prev.map((formItems, index) =>
+          index === formIndex ? formItems.filter((assignedIndex) => assignedIndex !== itemIndex) : formItems
+        )
+      );
+    };
+
+    const renderItemRow = (item, itemIndex, rowKey, showRemove, formIndex = 0) => (
+      <TableRow
+        key={rowKey}
+        draggable
+        onDragStart={(event) => handleDragStart(event, itemIndex)}
+        sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+      >
+        <TableCell>{String(itemIndex + 1).padStart(2, '0')}</TableCell>
+        <TableCell>{item.pieces || ''}</TableCell>
+        <TableCell>{item.type || ''}</TableCell>
+        <TableCell>{item.length || ''}</TableCell>
+        <TableCell>{item.width || ''}</TableCell>
+        <TableCell>{item.height || ''}</TableCell>
+        <TableCell>{item.weight || ''}</TableCell>
+        <TableCell align="center">
+          <Stack direction="row" spacing={0.7} justifyContent="center">
+            <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
+              <Iconify icon="mdi:truck-fast" width={16} />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={showRemove ? () => handleRemoveFromSplitForm(formIndex, itemIndex) : undefined}
+              sx={{ p: 0.2, color: '#111' }}
+            >
+              <Iconify icon="mdi:dots-vertical" width={16} />
+            </IconButton>
+          </Stack>
+        </TableCell>
+      </TableRow>
+    );
+
+    const assignmentTableSx = {
+      border: '1px solid #d0d0d0',
+      '& th': { bgcolor: '#d7d7d7', fontSize: 11, fontWeight: 700, py: 0.55 },
+      '& td': { fontSize: 12, py: 0.5 },
+    };
+
+    return (
+      <Box sx={{ mb: 2.2 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>New Form Item Assignment</Typography>
+          <Box sx={{ bgcolor: '#e6f3fb', px: 1, py: 0.35 }}>
+            <Typography sx={{ fontSize: 10 }}>
+              Drag items between New Forms. Empty forms will be ignored.
+            </Typography>
+          </Box>
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start">
+          <Box sx={{ width: { xs: '100%', md: 470 }, maxHeight: 260, overflow: 'auto' }}>
+            <Table size="small" sx={assignmentTableSx}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Item</TableCell>
+                  <TableCell>Pieces</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Length</TableCell>
+                  <TableCell>Width</TableCell>
+                  <TableCell>Height</TableCell>
+                  <TableCell>Weight (lbs)</TableCell>
+                  <TableCell align="center">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {remainingSplitItems.map(({ item, index }) =>
+                  renderItemRow(item, index, `form-info-remaining-${item.id || index}`, false)
+                )}
+              </TableBody>
+            </Table>
+          </Box>
+
+          <Stack spacing={1.4} sx={{ flex: 1, minWidth: { xs: '100%', md: 0 }, maxHeight: 260, overflow: 'auto', pr: 0.5 }}>
+            {Array.from({ length: splitFormCount }, (_, formIndex) => {
+              const formItemIndexes = splitExistingFormItems[formIndex] || [];
+
+              return (
+                <Box
+                  key={`form-info-split-form-${formIndex + 1}`}
+                  component="fieldset"
+                  onDragOver={handleDragOver}
+                  onDrop={(event) => handleDropOnForm(event, formIndex)}
+                  sx={{
+                    minHeight: 98,
+                    border: '1px solid #777',
+                    borderRadius: 1,
+                    px: 1.2,
+                    py: 1,
+                    m: 0,
+                    bgcolor: formItemIndexes.length ? '#fff' : '#fafafa',
+                  }}
+                >
+                  <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                  <Table size="small" sx={assignmentTableSx}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Item</TableCell>
+                        <TableCell>Pieces</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Length</TableCell>
+                        <TableCell>Width</TableCell>
+                        <TableCell>Height</TableCell>
+                        <TableCell>Weight (lbs)</TableCell>
+                        <TableCell align="center">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {formItemIndexes.map((itemIndex) => {
+                        const item = splitItems[itemIndex] || {};
+                        return renderItemRow(item, itemIndex, `form-info-new-form-${formIndex}-${item.id || itemIndex}`, true, formIndex);
+                      })}
+                    </TableBody>
+                  </Table>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Stack>
+
+        <Stack alignItems="flex-end" sx={{ mt: 1.4 }}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => {
+              setSplitFormCount((prev) => prev + 1);
+              setSplitExistingFormItems((prev) => [...prev, []]);
+            }}
+            sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
+          >
+            Add New Form
+          </Button>
+        </Stack>
+      </Box>
+    );
+  };
+
   const renderSplitFormInfoStep = () => (
     <Box sx={{ mt: 3 }}>
+      {splitDimensionMode === 'existing' && renderSplitNewFormAssignmentPanel()}
       <Tabs
         value={Math.min(activeSplitFormTab, splitFormCount - 1)}
         onChange={(event, value) => setActiveSplitFormTab(value)}
@@ -2431,24 +2612,24 @@ export default function WarehouseReceiptFormPage() {
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleViewAction('This feature will be available soon')}
-                    sx={{ ...comingSoonBtnSx, height: 26, flex: 1, fontSize: 12 }}
+                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print
                   </Button>
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleViewAction('This feature will be available soon')}
-                    sx={{ ...comingSoonBtnSx, height: 26, flex: 1, fontSize: 12 }}
+                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print Labels
                   </Button>
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleViewAction('This feature will be available soon')}
-                    sx={{ ...comingSoonBtnSx, height: 26, flex: 1, fontSize: 12 }}
+                    onClick={() => setRatesDialogOpen(true)}
+                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Rates
                   </Button>
@@ -2461,16 +2642,16 @@ export default function WarehouseReceiptFormPage() {
             <Button
               variant="contained"
               size="small"
-              onClick={() => handleViewAction('This feature will be available soon')}
-              sx={{ ...comingSoonBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
+              onClick={handleOpenSplitDialog}
+              sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Split
             </Button>
             <Button
               variant="contained"
               size="small"
-              onClick={() => handleViewAction('This feature will be available soon')}
-              sx={{ ...comingSoonBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
+              onClick={handleEditWarehouseReceipt}
+              sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Edit
             </Button>
@@ -3441,17 +3622,34 @@ export default function WarehouseReceiptFormPage() {
             <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
               Split - {viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber || ''}
             </Typography>
-            {splitStep === 0 ? (
-              <Button
-                variant="contained"
+            <Stack direction="row" spacing={1} alignItems="center">
+              <IconButton
                 size="small"
                 onClick={handleCloseSplitDialog}
-                sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+                sx={{ color: '#111', width: 28, height: 28 }}
               >
-                Exit
-              </Button>
-            ) : (
-              <Stack direction="row" spacing={1}>
+                <Iconify icon="mdi:close" width={18} />
+              </IconButton>
+            </Stack>
+          </Stack>
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+            justifyContent="space-between"
+            spacing={2}
+            sx={{ mt: 3.2 }}
+          >
+            <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+              {renderSplitStepper(splitStep)}
+            </Box>
+            {splitStep !== 0 && (
+              <Stack
+                direction="row"
+                spacing={1}
+                justifyContent="flex-end"
+                sx={{ minWidth: { xs: '100%', sm: 125 }, pt: { xs: 0, sm: 0.1 } }}
+              >
                 <Button
                   variant="outlined"
                   size="small"
@@ -3479,8 +3677,6 @@ export default function WarehouseReceiptFormPage() {
               </Stack>
             )}
           </Stack>
-
-          {renderSplitStepper(splitStep)}
           {splitStep === 0 && renderSplitStartStep()}
           {splitStep === 1 && (splitDimensionMode === 'existing' ? renderSplitExistingFreightStep() : renderSplitFreightStep())}
           {splitStep === 2 && renderSplitFormInfoStep()}
