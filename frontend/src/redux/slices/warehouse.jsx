@@ -68,12 +68,12 @@ const transformWarehouseReceiptResponse = (receiptsData, searchValue) => {
 
     if (Array.isArray(receipts) && receipts.length > 0) {
         const rows = receipts.map((receipt, index) => ({
+            ...receipt,
             id: receipt.receiptId || receipt.id || index,
             sno: String(index + 1).padStart(2, '0'),
-            receiptNumber: receipt.receiptNumber,
-            carrier: receipt.carrierName || '-',
-            customer: receipt.customerName ? `${receipt.customerName} | ${receipt.stationName || '-'}` : '-',
-            ...receipt
+            receiptNumber: receipt.receiptNumber || receipt.receiptNo || receipt.verificationId || '',
+            carrier: receipt.carrier || receipt.carrierName || '-',
+            customer: receipt.customer || (receipt.customerName ? `${receipt.customerName} | ${receipt.stationName || '-'}` : '-'),
         }));
 
         return {

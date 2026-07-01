@@ -108,11 +108,15 @@ const formatDecimal10_2Input = (value) => {
 };
 
 const toDecimal10_2NumberOrNull = (value) => toNumberOrNull(formatDecimal10_2Input(value));
+const INCH_TO_METER = 0.0254;
 
-const calculateItemCbm = (item) =>
-  Number(formatDecimal10_2Input(item.length)) *
-  Number(formatDecimal10_2Input(item.width)) *
-  Number(formatDecimal10_2Input(item.height));
+const calculateItemCbm = (item) => {
+  const lengthMeters = Number(formatDecimal10_2Input(item.length)) * INCH_TO_METER;
+  const widthMeters = Number(formatDecimal10_2Input(item.width)) * INCH_TO_METER;
+  const heightMeters = Number(formatDecimal10_2Input(item.height)) * INCH_TO_METER;
+
+  return lengthMeters * widthMeters * heightMeters;
+};
 
 const formatMeasurement = (value) => {
   if (!value) return 0;
@@ -2110,7 +2114,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                    {['Item', 'Pieces', 'Type', 'Length (inches)', 'Width (inches)', 'Height (inches)', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
                       <TableCell
                         key={head}
                         sx={{
@@ -2717,7 +2721,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                    {['Item', 'Pieces', 'Type', 'Length (inches)', 'Width (inches)', 'Height (inches)', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
                       <TableCell
                         key={head}
                         sx={{

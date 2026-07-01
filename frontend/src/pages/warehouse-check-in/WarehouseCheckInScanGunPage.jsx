@@ -95,6 +95,30 @@ const buildSelectedEmailMap = (emails = [], toEmails = []) => {
   }, {});
 };
 
+const getScanRowValue = (row = {}, fields = [], fallback = '-') => {
+  const fieldList = Array.isArray(fields) ? fields : [fields];
+  const value = fieldList.map((field) => row?.[field]).find((entry) => entry !== undefined && entry !== null && String(entry).trim() !== '');
+
+  return value === undefined ? fallback : value;
+};
+
+const getScanReceiptNumber = (row = {}) =>
+  getScanRowValue(row, ['receiptNumber', 'receiptNo', 'verificationId', 'proNumber']);
+
+const getScanCarrier = (row = {}) =>
+  getScanRowValue(row, ['carrier', 'carrierName']);
+
+const getScanCustomer = (row = {}) => {
+  const customer = getScanRowValue(row, ['customer', 'customerName'], '');
+  if (!customer) return '-';
+
+  if (row.stationName && !String(customer).includes('|')) {
+    return `${customer} | ${row.stationName}`;
+  }
+
+  return customer;
+};
+
 const getReceiptMailRows = (row = {}) => {
   const customerEmails = normalizeEmailRows(row.customerEmails || []);
   if (customerEmails.length) return customerEmails;
@@ -261,9 +285,9 @@ function ScanItem({
         </ScanField>
         {[
           ['pieces', 'Pieces', false],
-          ['length', 'Length', true],
-          ['width', 'Width', true],
-          ['height', 'Height', true],
+          ['length', 'Length (inches)', true],
+          ['width', 'Width (inches)', true],
+          ['height', 'Height (inches)', true],
           ['weight', 'Weight(lbs)', true],
         ].map(([field, label, isDecimal]) => (
           <ScanField
@@ -656,9 +680,9 @@ export default function WarehouseCheckInScanGunPage({
             <Stack spacing={1}>
               {visibleRows.map((row) => (
                 <Box key={row.id} sx={sectionSx}>
-                  <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{row.receiptNumber || row.proNumber}</Typography>
-                  <Typography sx={{ fontSize: 11 }}>{row.carrier}</Typography>
-                  <Typography sx={{ fontSize: 11 }}>{row.customer}</Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{getScanReceiptNumber(row)}</Typography>
+                  <Typography sx={{ fontSize: 11 }}>{getScanCarrier(row)}</Typography>
+                  <Typography sx={{ fontSize: 11 }}>{getScanCustomer(row)}</Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75, mt: 1 }}>
                     {searchType !== 'rmDriver' && (
                       <Button variant="contained" size="small" onClick={() => handleRejectOpen(row)} sx={scanActionBtnSx}>Reject</Button>
@@ -690,11 +714,11 @@ export default function WarehouseCheckInScanGunPage({
                 </Stack>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '88px 1fr', rowGap: 0.5, columnGap: 1 }}>
                   <Typography sx={{ fontSize: 11, color: '#555' }}>Receipt No.</Typography>
-                  <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{receipt.row.receiptNumber}</Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{getScanReceiptNumber(receipt.row)}</Typography>
                   <Typography sx={{ fontSize: 11, color: '#555' }}>Carrier</Typography>
-                  <Typography sx={{ fontSize: 12 }}>{receipt.row.carrier}</Typography>
+                  <Typography sx={{ fontSize: 12 }}>{getScanCarrier(receipt.row)}</Typography>
                   <Typography sx={{ fontSize: 11, color: '#555' }}>Customer</Typography>
-                  <Typography sx={{ fontSize: 12 }}>{receipt.row.customer}</Typography>
+                  <Typography sx={{ fontSize: 12 }}>{getScanCustomer(receipt.row)}</Typography>
                 </Box>
               </Box>
 
@@ -744,28 +768,26 @@ export default function WarehouseCheckInScanGunPage({
                       </AccordionSummary>
                       <AccordionDetails sx={{ p: 1 }}>
                         <Stack spacing={1}>
-                          {showTrailerFreightHeader && (
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                              <ScanField
-                                label="Destination"
-                                required
-                                value={form.destination || ''}
-                                error={receiptErrors[receipt.key]?.formFields?.[`${form.id}-destination`]}
-                                onChange={(event) => {
-                                  updateFormField(receipt.key, form.id, 'destination', event.target.value);
-                                  clearFormFieldError(receipt.key, form.id, 'destination', event.target.value);
-                                }}
-                              />
-                              <ScanField
-                                label="Package ID"
-                                value={form.customerRefNoPackageId || ''}
-                                onChange={(event) => {
-                                  updateFormField(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
-                                  clearFormFieldError(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
-                                }}
-                              />
-                            </Box>
-                          )}
+                          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                            <ScanField
+                              label="Destination"
+                              required={showTrailerFreightHeader}
+                              value={form.destination || ''}
+                              error={showTrailerFreightHeader ? receiptErrors[receipt.key]?.formFields?.[`${form.id}-destination`] : false}
+                              onChange={(event) => {
+                                updateFormField(receipt.key, form.id, 'destination', event.target.value);
+                                clearFormFieldError(receipt.key, form.id, 'destination', event.target.value);
+                              }}
+                            />
+                            <ScanField
+                              label="Package ID"
+                              value={form.customerRefNoPackageId || ''}
+                              onChange={(event) => {
+                                updateFormField(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
+                                clearFormFieldError(receipt.key, form.id, 'customerRefNoPackageId', event.target.value);
+                              }}
+                            />
+                          </Box>
                           {(form.items || []).map((item, itemIndex) => (
                             <Box key={item.id}>
                               <ScanItem
