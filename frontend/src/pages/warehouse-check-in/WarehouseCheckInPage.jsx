@@ -67,9 +67,9 @@ const FREIGHT_TYPE_OPTIONS = ['Skid', 'Crate', 'Drum', 'Pail', 'Bundle', 'Bag','
 const REQUIRED_ITEM_FIELDS = [
   { field: 'pieces', label: 'Pieces' },
   { field: 'type', label: 'Type' },
-  { field: 'length', label: 'Length' },
-  { field: 'width', label: 'Width' },
-  { field: 'height', label: 'Height' },
+  { field: 'length', label: 'Length (in)' },
+  { field: 'width', label: 'Width (in)' },
+  { field: 'height', label: 'Height (in)' },
   { field: 'weight', label: 'Weight' },
 ];
 const DECIMAL_ITEM_FIELDS = new Set(['length', 'width', 'height', 'weight']);
@@ -149,11 +149,15 @@ const toValueOrNull = (value) => {
 };
 
 const toYesNo = (value) => (value ? 'Y' : 'N');
+const INCH_TO_METER = 0.0254;
 
 const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.length)) *
+  INCH_TO_METER *
   Number(formatDecimal10_2Input(item.width)) *
-  Number(formatDecimal10_2Input(item.height));
+  INCH_TO_METER *
+  Number(formatDecimal10_2Input(item.height)) *
+  INCH_TO_METER;
 
 const formatMeasurement = (value) => {
   const number = Number(value);
@@ -3026,9 +3030,9 @@ export default function WarehouseCheckInPage({
 
                                 {/* Length, Width, Height, Weight */}
                                 {[
-                                  { label: 'Length',      field: 'length' },
-                                  { label: 'Width',       field: 'width'  },
-                                  { label: 'Height',      field: 'height' },
+                                  { label: 'Length (in)', field: 'length' },
+                                  { label: 'Width (in)', field: 'width' },
+                                  { label: 'Height (in)', field: 'height' },
                                   { label: 'Weight(lbs)', field: 'weight' },
                                 ].map(({ label, field }) => (
                                   <Stack key={field} spacing={0.3} sx={{ flex: 1, minWidth: 70 }}>

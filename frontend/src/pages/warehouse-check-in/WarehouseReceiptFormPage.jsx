@@ -12,6 +12,7 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  Menu,
   MenuItem,
   Alert,
   Snackbar,
@@ -36,6 +37,7 @@ import { searchCustomers } from '../../redux/slices/enroute';
 import { getIdVerificationData } from '../../redux/slices/idVerification';
 import {
   clearWarehouseCheckInDraft,
+  createTempWarehouseReceipt,
   fetchPrintersDropdown,
   printWarehouseReceiptLabel,
   setWarehouseCheckInDraft,
@@ -73,6 +75,7 @@ const fieldSx = {
 };
 
 const FREIGHT_CONDITION_OPTIONS = ['Banded Skid', 'Shrink Wrapped Skid', 'SHT / IPPC Skid', 'Plastic Skid', 'Document'];
+const INCH_TO_METER = 0.0254;
 
 const createFreightInfo = () => ({
   conditions: {},
@@ -88,6 +91,23 @@ const createFreightInfo = () => ({
   freightConditionDescription: '',
   hazardousDescription: '',
   notes: '',
+});
+
+const createEmptySplitFormDetails = (baseRow = {}) => ({
+  row: {
+    ...baseRow,
+    invoiceNo: '',
+    invoiceNumber: '',
+    poNumber: '',
+    poNo: '',
+    customerRefNo: '',
+    customerReference: '',
+    packageId: '',
+    packageNumber: '',
+    destination: '',
+    finalDestination: '',
+  },
+  freightInfo: createFreightInfo(),
 });
 
 const toNumberOrNull = (value) => {
@@ -111,8 +131,11 @@ const toDecimal10_2NumberOrNull = (value) => toNumberOrNull(formatDecimal10_2Inp
 
 const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.length)) *
+  INCH_TO_METER *
   Number(formatDecimal10_2Input(item.width)) *
-  Number(formatDecimal10_2Input(item.height));
+  INCH_TO_METER *
+  Number(formatDecimal10_2Input(item.height)) *
+  INCH_TO_METER;
 
 const formatMeasurement = (value) => {
   if (!value) return 0;
@@ -367,6 +390,24 @@ const getReceiptFormSignature = (forms = []) =>
   forms
     .map((form) => `${form.id}:${form.receiptNumber || ''}:${form.items?.length || 0}`)
     .join('|');
+
+const buildTempReceiptPayloadFromForm = (form = {}) => {
+  const row = form.row || {};
+
+  return {
+    verificationId: getRowValue(row, 'verificationId', 0),
+    shipper: getRowValue(row, ['shipper', 'shipperName', 'shipperCompany'], ''),
+    customerId: getRowValue(row, 'customerId', 0),
+    stationId: getRowValue(row, 'stationId', 0),
+    carrierId: getRowValue(row, 'carrierId', 0),
+    status: 'INITIATE',
+    receivedBy: form.receivedBy || '',
+    location: form.location || '',
+    destination: getRowValue(row, ['destination', 'finalDestination'], 0),
+    proNumber: getRowValue(row, 'proNumber', ''),
+    packageId: getRowValue(row, ['packageId', 'packageNumber'], 0),
+  };
+};
 
 const SPLIT_MAIL_LIST_ROWS = [
   { id: 1, sno: '01', type: 'Station', emailId: 'Department1@ventanaserra.com' },
@@ -693,6 +734,7 @@ export default function WarehouseReceiptFormPage() {
   const freightCameraStreamRef = useRef(null);
   const freightCameraInputRef = useRef(null);
   const freightUploadInputRef = useRef(null);
+  const splitFreightImageFormIndexRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
   const isWarehouseReceiptView = Boolean(state?.warehouseReceiptView);
   const isWarehouseReceiptEdit = Boolean(state?.warehouseReceiptEdit);
@@ -724,7 +766,7 @@ export default function WarehouseReceiptFormPage() {
   }, [state?.receipts, selectedDraftKey, warehouseCheckInDrafts]);
   const [receiptForms, setReceiptForms] = useState(initialReceiptForms);
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
-  const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '', imageType: 'freight' });
+  const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '', imageType: 'freight', splitFormIndex: null });
   const [fullImageDialog, setFullImageDialog] = useState({ open: false, image: null, title: '', imageType: 'freight' });
   const [receiptInfoErrors, setReceiptInfoErrors] = useState({});
   const [customerSearchValue, setCustomerSearchValue] = useState('');
@@ -741,11 +783,17 @@ export default function WarehouseReceiptFormPage() {
   const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
   const [selectedSplitMailIds, setSelectedSplitMailIds] = useState(INITIAL_SPLIT_MAIL_SELECTED_IDS);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitBackConfirmOpen, setSplitBackConfirmOpen] = useState(false);
   const [splitStep, setSplitStep] = useState(0);
   const [splitDimensionMode, setSplitDimensionMode] = useState('recalculate');
   const [splitFormCount, setSplitFormCount] = useState(1);
   const [activeSplitFormTab, setActiveSplitFormTab] = useState(0);
   const [splitExistingFormItems, setSplitExistingFormItems] = useState([[]]);
+  const [splitFormDetails, setSplitFormDetails] = useState([]);
+  const [splitMoveMenu, setSplitMoveMenu] = useState({ anchorEl: null, itemIndex: null });
+  const [splitTempReceiptNumbers, setSplitTempReceiptNumbers] = useState([]);
+  const [splitTempReceiptLoading, setSplitTempReceiptLoading] = useState(false);
+  const [splitSubmitLoading, setSplitSubmitLoading] = useState(false);
   const [receiptNoteText, setReceiptNoteText] = useState(initialReceiptForms[0]?.freightInfo?.notes || '');
   const pageTitle = state?.title || 'Warehouse Check-In / Regular';
   const selectedDraft = warehouseCheckInDrafts?.[selectedDraftKey];
@@ -890,11 +938,12 @@ export default function WarehouseReceiptFormPage() {
       images: item.images || [],
       itemLabel: `Item ${String(index + 1).padStart(2, '0')}`,
       imageType: 'freight',
+      splitFormIndex: null,
     });
   };
 
   const handleCloseImages = () => {
-    setImageDialog({ open: false, images: [], itemLabel: '', imageType: 'freight' });
+    setImageDialog({ open: false, images: [], itemLabel: '', imageType: 'freight', splitFormIndex: null });
     setFullImageDialog({ open: false, image: null, title: '', imageType: 'freight' });
   };
 
@@ -909,12 +958,35 @@ export default function WarehouseReceiptFormPage() {
   const handleRemovePreviewImage = (index) => {
     if (imageDialog.itemLabel !== 'Bad Freight Condition') return;
 
-    updateActiveFreightInfo((info) => ({
-      freightConditionImages: info.freightConditionImages.filter((_, imageIndex) => imageIndex !== index),
-    }));
+    if (Number.isInteger(imageDialog.splitFormIndex)) {
+      updateSplitFormFreightInfo(imageDialog.splitFormIndex, (info) => ({
+        freightConditionImages: info.freightConditionImages.filter((_, imageIndex) => imageIndex !== index),
+      }));
+    } else {
+      updateActiveFreightInfo((info) => ({
+        freightConditionImages: info.freightConditionImages.filter((_, imageIndex) => imageIndex !== index),
+      }));
+    }
+
     setImageDialog((prev) => ({
       ...prev,
       images: prev.images.filter((_, imageIndex) => imageIndex !== index),
+    }));
+  };
+
+  const addFreightConditionImages = (images) => {
+    const imageList = Array.isArray(images) ? images : [images];
+    if (!imageList.length) return;
+
+    if (Number.isInteger(splitFreightImageFormIndexRef.current)) {
+      updateSplitFormFreightInfo(splitFreightImageFormIndexRef.current, (info) => ({
+        freightConditionImages: [...info.freightConditionImages, ...imageList],
+      }));
+      return;
+    }
+
+    updateActiveFreightInfo((info) => ({
+      freightConditionImages: [...info.freightConditionImages, ...imageList],
     }));
   };
 
@@ -923,7 +995,9 @@ export default function WarehouseReceiptFormPage() {
     freightCameraStreamRef.current = null;
   };
 
-  const handleOpenFreightCamera = async () => {
+  const handleOpenFreightCamera = async (splitFormIndex = null) => {
+    splitFreightImageFormIndexRef.current = Number.isInteger(splitFormIndex) ? splitFormIndex : null;
+
     if (!navigator.mediaDevices?.getUserMedia) {
       freightCameraInputRef.current?.click();
       return;
@@ -964,18 +1038,19 @@ export default function WarehouseReceiptFormPage() {
       if (!blob) return;
 
       const file = new File([blob], `bad-freight-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      updateActiveFreightInfo((info) => ({ freightConditionImages: [...info.freightConditionImages, file] }));
+      addFreightConditionImages(file);
       handleCloseFreightCamera();
     }, 'image/jpeg', 0.92);
   };
 
   const handleFreightCameraFileSelection = (event) => {
     const files = Array.from(event.target.files || []);
-    updateActiveFreightInfo((info) => ({ freightConditionImages: [...info.freightConditionImages, ...files] }));
+    addFreightConditionImages(files);
     event.target.value = '';
   };
 
-  const handleOpenFreightUpload = () => {
+  const handleOpenFreightUpload = (splitFormIndex = null) => {
+    splitFreightImageFormIndexRef.current = Number.isInteger(splitFormIndex) ? splitFormIndex : null;
     freightUploadInputRef.current?.click();
   };
 
@@ -995,8 +1070,8 @@ export default function WarehouseReceiptFormPage() {
     }));
   };
 
-  const buildReceiptPayload = () => ({
-    receipts: receiptForms.map((form, formIndex) => {
+  const buildReceiptBatchPayload = (forms = receiptForms, options = {}) => ({
+    receipts: forms.map((form, formIndex) => {
       const formRow = form.row || {};
       const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
       const customerSelection = form.customerSelection || {};
@@ -1022,7 +1097,9 @@ export default function WarehouseReceiptFormPage() {
       const cubicMeter = formatMeasurement(
         freightDetails.reduce((sum, item) => sum + Number(item.cubicMeter || 0), 0)
       );
-      const receiptId = formIndex === 0 ? toNumberOrNull(getRowValue(formRow, 'receiptId', null)) : 0;
+      const receiptId = options.forceNewReceipts
+        ? 0
+        : formIndex === 0 ? toNumberOrNull(getRowValue(formRow, 'receiptId', null)) : 0;
       const verificationId = toNumberOrNull(formRow.verificationId);
       const hasNoVerificationId = verificationId === 0 || verificationId === null;
 
@@ -1081,8 +1158,10 @@ export default function WarehouseReceiptFormPage() {
     }),
   });
 
-  const hasReceiptImages = () =>
-    receiptForms.some((form) => {
+  const buildReceiptPayload = () => buildReceiptBatchPayload(receiptForms);
+
+  const hasReceiptImages = (forms = receiptForms) =>
+    forms.some((form) => {
       const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
       return (
         (form.items || []).some((item) => (item.images || []).length > 0) ||
@@ -1121,14 +1200,14 @@ export default function WarehouseReceiptFormPage() {
     return true;
   };
 
-  const buildReceiptFormData = async () => {
-    const payload = buildReceiptPayload();
+  const buildReceiptFormData = async (forms = receiptForms, options = {}) => {
+    const payload = buildReceiptBatchPayload(forms, options);
     const formData = new FormData();
 
     formData.append('batchData', JSON.stringify(payload));
 
     await Promise.all(
-      receiptForms.flatMap((form, receiptIndex) => {
+      forms.flatMap((form, receiptIndex) => {
         const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
         const freightItemImageTasks = (form.items || []).flatMap((item, freightIndex) =>
           (item.images || []).map(async (image, imageIndex) => {
@@ -1176,6 +1255,80 @@ export default function WarehouseReceiptFormPage() {
       message: response?.message || 'Warehouse receipts submitted successfully',
       receiptNumbers: getReceiptNumbersFromResponse(response),
     });
+  };
+
+  const getSplitSubmitForms = () =>
+    splitExistingFormItems
+      .map((itemIndexes, formIndex) => {
+        const details = ensureSplitFormDetails(formIndex, splitFormDetails);
+
+        return {
+          id: `split-${formIndex + 1}`,
+          label: `Form ${formIndex + 1}`,
+          receiptNumber: splitTempReceiptNumbers[formIndex] || '',
+          receivedBy: activeForm.receivedBy,
+          location: activeForm.location,
+          customerSelection: activeForm.customerSelection,
+          freightInfo: details.freightInfo,
+          row: details.row,
+          items: itemIndexes.map((itemIndex) => activeForm.items[itemIndex]).filter(Boolean),
+        };
+      })
+      .filter((form) => form.items.length > 0);
+
+  const handleSplitSubmit = async () => {
+    const parentReceiptId = viewReceiptSummary?.receiptId || getRowValue(activeForm?.row, 'receiptId', '');
+
+    if (!parentReceiptId) {
+      setSnackbar({ open: true, message: 'Parent receiptId is required to submit split receipts', severity: 'error' });
+      return;
+    }
+
+    const splitForms = getSplitSubmitForms();
+
+    if (!splitForms.length) {
+      setSnackbar({ open: true, message: 'Please move at least one item to a New Form before submitting', severity: 'error' });
+      return;
+    }
+
+    const missingReceiptNumber = splitForms.some((form) => !form.receiptNumber);
+
+    if (missingReceiptNumber) {
+      setSnackbar({ open: true, message: 'Temporary receipt number is required for each split form', severity: 'error' });
+      return;
+    }
+
+    setSplitSubmitLoading(true);
+
+    try {
+      const payload = hasReceiptImages(splitForms)
+        ? await buildReceiptFormData(splitForms, { forceNewReceipts: true })
+        : buildReceiptBatchPayload(splitForms, { forceNewReceipts: true });
+      const response = await dispatch(
+        submitWarehouseReceiptBatch(payload, {
+          split: true,
+          parentReceiptId,
+        })
+      );
+
+      if (response?.error || response?.success === false) {
+        setSnackbar({
+          open: true,
+          message: response?.message || 'Failed to submit split warehouse receipts',
+          severity: 'error',
+        });
+        return;
+      }
+
+      handleCloseSplitDialog();
+      setSuccessDialog({
+        open: true,
+        message: response?.message || 'Split warehouse receipts submitted successfully',
+        receiptNumbers: getReceiptNumbersFromResponse(response),
+      });
+    } finally {
+      setSplitSubmitLoading(false);
+    }
   };
 
   const handleSuccessDialogOk = () => {
@@ -1288,16 +1441,329 @@ export default function WarehouseReceiptFormPage() {
     setSplitFormCount(1);
     setActiveSplitFormTab(0);
     setSplitExistingFormItems([[]]);
+    setSplitFormDetails([]);
+    setSplitMoveMenu({ anchorEl: null, itemIndex: null });
+    setSplitTempReceiptNumbers([]);
+    setSplitTempReceiptLoading(false);
+    setSplitSubmitLoading(false);
     setSplitDialogOpen(true);
   };
 
   const handleCloseSplitDialog = () => {
     setSplitDialogOpen(false);
+    setSplitBackConfirmOpen(false);
     setSplitStep(0);
     setSplitDimensionMode('recalculate');
     setSplitFormCount(1);
     setActiveSplitFormTab(0);
     setSplitExistingFormItems([[]]);
+    setSplitFormDetails([]);
+    setSplitMoveMenu({ anchorEl: null, itemIndex: null });
+    setSplitTempReceiptNumbers([]);
+    setSplitTempReceiptLoading(false);
+    setSplitSubmitLoading(false);
+  };
+
+  const resetSplitFreightInfoSelections = () => {
+    setSplitDimensionMode('recalculate');
+    setSplitFormCount(1);
+    setActiveSplitFormTab(0);
+    setSplitExistingFormItems([[]]);
+    setSplitFormDetails([]);
+    setSplitMoveMenu({ anchorEl: null, itemIndex: null });
+    setSplitTempReceiptNumbers([]);
+    setSplitTempReceiptLoading(false);
+    setSplitSubmitLoading(false);
+  };
+
+  const handleSplitBackClick = () => {
+    if (splitStep === 1) {
+      setSplitBackConfirmOpen(true);
+      return;
+    }
+
+    setSplitStep((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleCancelSplitBackConfirm = () => {
+    setSplitBackConfirmOpen(false);
+  };
+
+  const handleConfirmSplitBack = () => {
+    resetSplitFreightInfoSelections();
+    setSplitBackConfirmOpen(false);
+    setSplitStep(0);
+  };
+
+  const createSplitTempReceiptNumber = async () => {
+    setSplitTempReceiptLoading(true);
+
+    try {
+      const response = await dispatch(createTempWarehouseReceipt(buildTempReceiptPayloadFromForm(activeForm)));
+
+      if (response?.error || response?.success === false) {
+        setSnackbar({
+          open: true,
+          message: response?.message || 'Failed to create temporary warehouse receipt',
+          severity: 'error',
+        });
+        return '';
+      }
+
+      const receiptNumber = response?.data?.receiptNumber || '';
+
+      if (!receiptNumber) {
+        setSnackbar({
+          open: true,
+          message: 'Temporary warehouse receipt number is missing',
+          severity: 'error',
+        });
+        return '';
+      }
+
+      return receiptNumber;
+    } finally {
+      setSplitTempReceiptLoading(false);
+    }
+  };
+
+  const handleSplitNoClick = async () => {
+    const receiptNumber = await createSplitTempReceiptNumber();
+    if (!receiptNumber) return;
+
+    setSplitTempReceiptNumbers([receiptNumber]);
+    setSplitFormDetails([createEmptySplitFormDetails(activeForm.row)]);
+    setSplitDimensionMode('existing');
+    setSplitStep(1);
+  };
+
+  const handleSplitYesClick = async () => {
+    const receiptNumber = await createSplitTempReceiptNumber();
+    if (!receiptNumber) return;
+
+    setSplitTempReceiptNumbers([receiptNumber]);
+    setSplitFormDetails([createEmptySplitFormDetails(activeForm.row)]);
+    setSplitExistingFormItems([[]]);
+    setSplitDimensionMode('recalculate');
+    setSplitStep(1);
+  };
+
+  const handleAddSplitForm = async () => {
+    const receiptNumber = await createSplitTempReceiptNumber();
+    if (!receiptNumber) return;
+
+    setSplitTempReceiptNumbers((prev) => [...prev, receiptNumber]);
+    setSplitFormDetails((prev) => [...prev, createEmptySplitFormDetails(activeForm.row)]);
+
+    setSplitFormCount((prev) => prev + 1);
+    setSplitExistingFormItems((prev) => [...prev, []]);
+  };
+
+  const handleRemoveSplitForm = (formIndex) => {
+    setSplitExistingFormItems((prev) => {
+      if (splitDimensionMode !== 'existing' && splitFormCount <= 1) return [[]];
+
+      const next = Array.from({ length: splitFormCount }, (_, index) => [...(prev[index] || [])]);
+      next.splice(formIndex, 1);
+      return next.length || splitDimensionMode === 'existing' ? next : [[]];
+    });
+    setSplitTempReceiptNumbers((prev) => {
+      const next = [...prev];
+      next.splice(formIndex, 1);
+      return next;
+    });
+    setSplitFormDetails((prev) => {
+      const next = [...prev];
+      next.splice(formIndex, 1);
+      return next;
+    });
+    setSplitFormCount((prev) => Math.max(splitDimensionMode === 'existing' ? 0 : 1, prev - 1));
+    setActiveSplitFormTab((prev) => {
+      if (splitFormCount <= 1) return 0;
+      if (prev > formIndex) return prev - 1;
+      return Math.min(prev, Math.max(splitFormCount - 2, 0));
+    });
+  };
+
+  const getSplitItemAssignedFormIndex = (itemIndex) =>
+    splitExistingFormItems.findIndex((formItems) => formItems.includes(itemIndex));
+
+  const handleOpenSplitMoveMenu = (event, itemIndex) => {
+    event.stopPropagation();
+    setSplitMoveMenu({ anchorEl: event.currentTarget, itemIndex });
+  };
+
+  const handleCloseSplitMoveMenu = () => {
+    setSplitMoveMenu({ anchorEl: null, itemIndex: null });
+  };
+
+  const handleMoveSplitItem = (targetFormIndex) => {
+    const itemIndex = splitMoveMenu.itemIndex;
+    if (!Number.isInteger(itemIndex)) {
+      handleCloseSplitMoveMenu();
+      return;
+    }
+
+    setSplitExistingFormItems((prev) => {
+      const next = Array.from({ length: splitFormCount }, (_, index) => [...(prev[index] || [])]);
+      next.forEach((formItems, index) => {
+        next[index] = formItems.filter((assignedIndex) => assignedIndex !== itemIndex);
+      });
+
+      if (Number.isInteger(targetFormIndex) && targetFormIndex >= 0 && targetFormIndex < splitFormCount) {
+        next[targetFormIndex] = [...next[targetFormIndex], itemIndex];
+      }
+
+      return next;
+    });
+    handleCloseSplitMoveMenu();
+  };
+
+  const ensureSplitFormDetails = (formIndex, details) =>
+    details[formIndex] || createEmptySplitFormDetails(activeForm.row);
+
+  const updateSplitFormRowField = (formIndex, field, value) => {
+    setSplitFormDetails((prev) => {
+      const next = Array.from({ length: Math.max(splitFormCount, formIndex + 1) }, (_, index) =>
+        ensureSplitFormDetails(index, prev)
+      );
+
+      next[formIndex] = {
+        ...next[formIndex],
+        row: {
+          ...next[formIndex].row,
+          [field]: value,
+        },
+      };
+
+      return next;
+    });
+  };
+
+  const updateSplitFormFreightInfo = (formIndex, updater) => {
+    setSplitFormDetails((prev) => {
+      const next = Array.from({ length: Math.max(splitFormCount, formIndex + 1) }, (_, index) =>
+        ensureSplitFormDetails(index, prev)
+      );
+      const currentFreightInfo = { ...createFreightInfo(), ...(next[formIndex].freightInfo || {}) };
+      const nextFreightInfo = typeof updater === 'function' ? updater(currentFreightInfo) : updater;
+
+      next[formIndex] = {
+        ...next[formIndex],
+        freightInfo: {
+          ...currentFreightInfo,
+          ...nextFreightInfo,
+        },
+      };
+
+      return next;
+    });
+  };
+
+  const renderSplitMoveMenu = () => {
+    const assignedFormIndex = Number.isInteger(splitMoveMenu.itemIndex)
+      ? getSplitItemAssignedFormIndex(splitMoveMenu.itemIndex)
+      : -1;
+
+    return (
+      <Menu
+        anchorEl={splitMoveMenu.anchorEl}
+        open={Boolean(splitMoveMenu.anchorEl)}
+        onClose={handleCloseSplitMoveMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          dense
+          selected={assignedFormIndex === -1}
+          onClick={() => handleMoveSplitItem(null)}
+          sx={{ fontSize: 12, minWidth: 150 }}
+        >
+          Main Table
+        </MenuItem>
+        {Array.from({ length: splitFormCount }, (_, formIndex) => (
+          <MenuItem
+            dense
+            key={`split-move-form-${formIndex + 1}`}
+            selected={assignedFormIndex === formIndex}
+            onClick={() => handleMoveSplitItem(formIndex)}
+            sx={{ fontSize: 12, minWidth: 150 }}
+          >
+            New Form {formIndex + 1}
+          </MenuItem>
+        ))}
+      </Menu>
+    );
+  };
+
+  const renderSplitFormLegend = (formIndex) => (
+    <Box
+      component="legend"
+      sx={{
+        px: 0.8,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.4,
+        fontSize: 13,
+      }}
+    >
+      <Box component="span">New Form {formIndex + 1}</Box>
+      {splitTempReceiptNumbers[formIndex] && (
+        <Box component="span" sx={{ fontWeight: 700, color: '#0c243f' }}>
+          - {splitTempReceiptNumbers[formIndex]}
+        </Box>
+      )}
+      <IconButton
+        size="small"
+        aria-label={`Remove New Form ${formIndex + 1}`}
+        title={`Remove New Form ${formIndex + 1}`}
+        onClick={() => handleRemoveSplitForm(formIndex)}
+        sx={{ p: 0.1, color: '#A22' }}
+      >
+        <Iconify icon="mdi:close-circle" width={15} />
+      </IconButton>
+    </Box>
+  );
+
+  const renderSplitImagePreviewAction = (item, itemIndex) => {
+    const imageCount = item.images?.length || 0;
+
+    return (
+      <IconButton
+        size="small"
+        title={imageCount > 0 ? 'View uploaded images' : 'No images available'}
+        disabled={imageCount === 0}
+        onClick={() => handleOpenImages(item, itemIndex)}
+        sx={{ p: 0.2, position: 'relative' }}
+      >
+        <Iconify
+          icon="mdi:image-multiple"
+          width={16}
+          sx={{ color: imageCount > 0 ? '#0a4a8f' : '#9e9e9e' }}
+        />
+        {imageCount > 0 && (
+          <Box
+            component="span"
+            sx={{
+              position: 'absolute',
+              top: -5,
+              right: -6,
+              minWidth: 14,
+              height: 14,
+              px: 0.3,
+              borderRadius: '50%',
+              bgcolor: '#A22',
+              color: '#fff',
+              fontSize: 9,
+              lineHeight: '14px',
+              fontWeight: 700,
+            }}
+          >
+            {imageCount}
+          </Box>
+        )}
+      </IconButton>
+    );
   };
 
   const handleEditWarehouseReceipt = () => {
@@ -1526,24 +1992,20 @@ export default function WarehouseReceiptFormPage() {
         <Button
           variant="outlined"
           size="small"
-          onClick={() => {
-            setSplitDimensionMode('existing');
-            setSplitStep(1);
-          }}
+          onClick={handleSplitNoClick}
+          disabled={splitTempReceiptLoading}
           sx={{ height: 24, minWidth: 60, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
         >
-          No
+          {splitTempReceiptLoading ? <CircularProgress size={14} color="inherit" /> : 'No'}
         </Button>
         <Button
           variant="contained"
           size="small"
-          onClick={() => {
-            setSplitDimensionMode('recalculate');
-            setSplitStep(1);
-          }}
+          disabled={splitTempReceiptLoading}
+          onClick={handleSplitYesClick}
           sx={{ ...actionBtnSx, height: 24, minWidth: 60, fontSize: 11 }}
         >
-          Yes
+          {splitTempReceiptLoading ? <CircularProgress size={14} color="inherit" /> : 'Yes'}
         </Button>
       </Stack>
     </Stack>
@@ -1578,9 +2040,9 @@ export default function WarehouseReceiptFormPage() {
                 <TableCell>Item</TableCell>
                 <TableCell>Pieces</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Length</TableCell>
-                <TableCell>Width</TableCell>
-                <TableCell>Height</TableCell>
+                <TableCell>Length (in)</TableCell>
+                <TableCell>Width (in)</TableCell>
+                <TableCell>Height (in)</TableCell>
                 <TableCell>Weight (lbs)</TableCell>
                 <TableCell align="center">Actions</TableCell>
               </TableRow>
@@ -1613,12 +2075,9 @@ export default function WarehouseReceiptFormPage() {
           <Stack spacing={2} sx={{ flex: 1, minWidth: { xs: '100%', md: 0 } }}>
             {Array.from({ length: splitFormCount }, (_, formIndex) => (
               (() => {
-                const sourceItem = splitItems[formIndex] || splitItems[0] || {};
-                const sourceType = sourceItem.type || '';
-
                 return (
                   <Box key={`split-form-${formIndex + 1}`} component="fieldset" sx={{ border: '1px solid #777', borderRadius: 1, px: 1.6, py: 1.3, m: 0 }}>
-                    <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                    {renderSplitFormLegend(formIndex)}
                     <Stack direction="row" alignItems="center" spacing={1.2}>
                       <Iconify icon="mdi:cube-outline" width={16} />
                       <Typography sx={{ fontSize: 12 }}>Item 1</Typography>
@@ -1633,53 +2092,54 @@ export default function WarehouseReceiptFormPage() {
                         <TextField
                           variant="standard"
                           label={<Box component="span">Pieces <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                          defaultValue={sourceItem.pieces || ''}
+                          defaultValue=""
                           size="small"
-                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 } }}
                         />
                         <TextField
                           select
                           variant="standard"
                           label={<Box component="span">Type <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                          defaultValue={sourceType}
+                          defaultValue=""
                           size="small"
-                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& .MuiSelect-select': { fontSize: 12 } }}
+                          sx={{
+                            '& .MuiInputLabel-root': { fontSize: 12 },
+                            '& .MuiInputBase-root': { height: 31, alignItems: 'flex-end' },
+                            '& .MuiSelect-select': { fontSize: 12, py: 0.2 },
+                          }}
                         >
                           <MenuItem value="">Select</MenuItem>
-                          {sourceType && !['Skid', 'Box', 'Pallet'].includes(sourceType) && (
-                            <MenuItem value={sourceType}>{sourceType}</MenuItem>
-                          )}
                           <MenuItem value="Skid">Skid</MenuItem>
                           <MenuItem value="Box">Box</MenuItem>
                           <MenuItem value="Pallet">Pallet</MenuItem>
                         </TextField>
                         <TextField
                           variant="standard"
-                          label={<Box component="span">Length <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                          defaultValue={sourceItem.length || ''}
+                          label={<Box component="span">Length (in) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue=""
                           size="small"
-                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 } }}
                         />
                         <TextField
                           variant="standard"
-                          label={<Box component="span">Width <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                          defaultValue={sourceItem.width || ''}
+                          label={<Box component="span">Width (in) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue=""
                           size="small"
-                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 } }}
                         />
                         <TextField
                           variant="standard"
-                          label={<Box component="span">Height <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                          defaultValue={sourceItem.height || ''}
+                          label={<Box component="span">Height (in) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
+                          defaultValue=""
                           size="small"
-                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 } }}
                         />
                         <TextField
                           variant="standard"
                           label={<Box component="span">Weight(lbs) <Box component="span" sx={{ color: '#A22' }}>*</Box></Box>}
-                          defaultValue={sourceItem.weight || ''}
+                          defaultValue=""
                           size="small"
-                          sx={{ '& .MuiInputLabel-root': { fontSize: 10 }, '& input': { fontSize: 12 } }}
+                          sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 } }}
                         />
                         <Stack direction="row" alignItems="flex-end" spacing={1} sx={{ gridColumn: { xs: 'auto', sm: '3 / 5' }, justifyContent: 'flex-end' }}>
                           <IconButton size="small" sx={{ p: 0.3, color: '#111' }}>
@@ -1708,10 +2168,11 @@ export default function WarehouseReceiptFormPage() {
           <Button
             variant="contained"
             size="small"
-            onClick={() => setSplitFormCount((prev) => prev + 1)}
+            onClick={handleAddSplitForm}
+            disabled={splitTempReceiptLoading}
             sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
           >
-            Add New Form
+            {splitTempReceiptLoading ? 'Adding...' : 'Add New Form'}
           </Button>
         </Stack>
       </Box>
@@ -1784,9 +2245,9 @@ export default function WarehouseReceiptFormPage() {
                 <TableCell>Item</TableCell>
                 <TableCell>Pieces</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Length</TableCell>
-                <TableCell>Width</TableCell>
-                <TableCell>Height</TableCell>
+                <TableCell>Length (in)</TableCell>
+                <TableCell>Width (in)</TableCell>
+                <TableCell>Height (in)</TableCell>
                 <TableCell>Weight (lbs)</TableCell>
                 <TableCell align="center">Actions</TableCell>
               </TableRow>
@@ -1808,10 +2269,13 @@ export default function WarehouseReceiptFormPage() {
                   <TableCell>{item.weight || ''}</TableCell>
                   <TableCell align="center">
                     <Stack direction="row" spacing={0.7} justifyContent="center">
-                      <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
-                        <Iconify icon="mdi:truck-fast" width={16} />
-                      </IconButton>
-                      <IconButton size="small" sx={{ p: 0.2, color: '#111' }}>
+                      {renderSplitImagePreviewAction(item, index)}
+                      <IconButton
+                        size="small"
+                        title="Move item"
+                        onClick={(event) => handleOpenSplitMoveMenu(event, index)}
+                        sx={{ p: 0.2, color: '#111' }}
+                      >
                         <Iconify icon="mdi:dots-vertical" width={16} />
                       </IconButton>
                     </Stack>
@@ -1841,7 +2305,7 @@ export default function WarehouseReceiptFormPage() {
                     bgcolor: formItemIndexes.length ? '#fff' : '#fafafa',
                   }}
                 >
-                  <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                  {renderSplitFormLegend(formIndex)}
                   <Table
                     size="small"
                     sx={{
@@ -1855,9 +2319,9 @@ export default function WarehouseReceiptFormPage() {
                         <TableCell>Item</TableCell>
                         <TableCell>Pieces</TableCell>
                         <TableCell>Type</TableCell>
-                        <TableCell>Length</TableCell>
-                        <TableCell>Width</TableCell>
-                        <TableCell>Height</TableCell>
+                        <TableCell>Length (in)</TableCell>
+                        <TableCell>Width (in)</TableCell>
+                        <TableCell>Height (in)</TableCell>
                         <TableCell>Weight (lbs)</TableCell>
                         <TableCell align="center">Actions</TableCell>
                       </TableRow>
@@ -1882,10 +2346,13 @@ export default function WarehouseReceiptFormPage() {
                             <TableCell>{item.weight || ''}</TableCell>
                             <TableCell align="center">
                               <Stack direction="row" spacing={0.7} justifyContent="center">
-                                <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
-                                  <Iconify icon="mdi:truck-fast" width={16} />
-                                </IconButton>
-                                <IconButton size="small" onClick={() => handleRemoveFromSplitForm(formIndex, itemIndex)} sx={{ p: 0.2, color: '#111' }}>
+                                {renderSplitImagePreviewAction(item, itemIndex)}
+                                <IconButton
+                                  size="small"
+                                  title="Move item"
+                                  onClick={(event) => handleOpenSplitMoveMenu(event, itemIndex)}
+                                  sx={{ p: 0.2, color: '#111' }}
+                                >
                                   <Iconify icon="mdi:dots-vertical" width={16} />
                                 </IconButton>
                               </Stack>
@@ -1905,13 +2372,11 @@ export default function WarehouseReceiptFormPage() {
           <Button
             variant="contained"
             size="small"
-            onClick={() => {
-              setSplitFormCount((prev) => prev + 1);
-              setSplitExistingFormItems((prev) => [...prev, []]);
-            }}
+            onClick={handleAddSplitForm}
+            disabled={splitTempReceiptLoading}
             sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
           >
-            Add New Form
+            {splitTempReceiptLoading ? 'Adding...' : 'Add New Form'}
           </Button>
         </Stack>
       </Box>
@@ -1974,12 +2439,11 @@ export default function WarehouseReceiptFormPage() {
         <TableCell>{item.weight || ''}</TableCell>
         <TableCell align="center">
           <Stack direction="row" spacing={0.7} justifyContent="center">
-            <IconButton size="small" sx={{ p: 0.2, color: '#0c243f' }}>
-              <Iconify icon="mdi:truck-fast" width={16} />
-            </IconButton>
+            {renderSplitImagePreviewAction(item, itemIndex)}
             <IconButton
               size="small"
-              onClick={showRemove ? () => handleRemoveFromSplitForm(formIndex, itemIndex) : undefined}
+              title="Move item"
+              onClick={(event) => handleOpenSplitMoveMenu(event, itemIndex)}
               sx={{ p: 0.2, color: '#111' }}
             >
               <Iconify icon="mdi:dots-vertical" width={16} />
@@ -2014,9 +2478,9 @@ export default function WarehouseReceiptFormPage() {
                   <TableCell>Item</TableCell>
                   <TableCell>Pieces</TableCell>
                   <TableCell>Type</TableCell>
-                  <TableCell>Length</TableCell>
-                  <TableCell>Width</TableCell>
-                  <TableCell>Height</TableCell>
+                  <TableCell>Length (in)</TableCell>
+                  <TableCell>Width (in)</TableCell>
+                  <TableCell>Height (in)</TableCell>
                   <TableCell>Weight (lbs)</TableCell>
                   <TableCell align="center">Actions</TableCell>
                 </TableRow>
@@ -2049,16 +2513,16 @@ export default function WarehouseReceiptFormPage() {
                     bgcolor: formItemIndexes.length ? '#fff' : '#fafafa',
                   }}
                 >
-                  <Box component="legend" sx={{ px: 0.8, fontSize: 13 }}>New Form {formIndex + 1}</Box>
+                  {renderSplitFormLegend(formIndex)}
                   <Table size="small" sx={assignmentTableSx}>
                     <TableHead>
                       <TableRow>
                         <TableCell>Item</TableCell>
                         <TableCell>Pieces</TableCell>
                         <TableCell>Type</TableCell>
-                        <TableCell>Length</TableCell>
-                        <TableCell>Width</TableCell>
-                        <TableCell>Height</TableCell>
+                        <TableCell>Length (in)</TableCell>
+                        <TableCell>Width (in)</TableCell>
+                        <TableCell>Height (in)</TableCell>
                         <TableCell>Weight (lbs)</TableCell>
                         <TableCell align="center">Actions</TableCell>
                       </TableRow>
@@ -2080,24 +2544,73 @@ export default function WarehouseReceiptFormPage() {
           <Button
             variant="contained"
             size="small"
-            onClick={() => {
-              setSplitFormCount((prev) => prev + 1);
-              setSplitExistingFormItems((prev) => [...prev, []]);
-            }}
+            onClick={handleAddSplitForm}
+            disabled={splitTempReceiptLoading}
             sx={{ ...actionBtnSx, height: 26, minWidth: 110, fontSize: 11 }}
           >
-            Add New Form
+            {splitTempReceiptLoading ? 'Adding...' : 'Add New Form'}
           </Button>
         </Stack>
       </Box>
     );
   };
 
-  const renderSplitFormInfoStep = () => (
-    <Box sx={{ mt: 3 }}>
-      {splitDimensionMode === 'existing' && renderSplitNewFormAssignmentPanel()}
-      <Tabs
-        value={Math.min(activeSplitFormTab, splitFormCount - 1)}
+  const renderSplitFormInfoStep = () => {
+    const splitTabValue = Math.min(activeSplitFormTab, Math.max(splitFormCount - 1, 0));
+    const splitReceiptNumber = splitTempReceiptNumbers[splitTabValue] || activeForm.receiptNumber;
+    const splitFormItems = splitDimensionMode === 'existing'
+      ? (splitExistingFormItems[splitTabValue] || [])
+          .map((itemIndex) => ({ item: activeForm.items[itemIndex], originalIndex: itemIndex }))
+          .filter(({ item }) => item)
+      : activeForm.items.map((item, index) => ({ item, originalIndex: index }));
+    const splitPiecesInland = splitFormItems.reduce((sum, { item }) => sum + Number(item.pieces || 0), 0);
+    const splitWeightInland = splitFormItems.reduce((sum, { item }) => sum + Number(item.weight || 0), 0);
+    const splitTotalWeight = splitFormItems.reduce(
+      (sum, { item }) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
+      0
+    );
+    const splitTotalCbm = splitFormItems.reduce((sum, { item }) => sum + calculateItemCbm(item), 0);
+    const isSplitGeneratedForm = Boolean(splitTempReceiptNumbers[splitTabValue]);
+    const splitDetails = isSplitGeneratedForm ? ensureSplitFormDetails(splitTabValue, splitFormDetails) : null;
+    const splitRow = isSplitGeneratedForm ? splitDetails.row : row;
+    const splitFreightInfo = isSplitGeneratedForm
+      ? { ...createFreightInfo(), ...(splitDetails.freightInfo || {}) }
+      : activeFreightInfo;
+    const updateSplitRowField = (field, value) => {
+      if (isSplitGeneratedForm) {
+        updateSplitFormRowField(splitTabValue, field, value);
+        return;
+      }
+
+      updateActiveRowField(field, value);
+    };
+    const updateSplitFreight = (updater) => {
+      if (isSplitGeneratedForm) {
+        updateSplitFormFreightInfo(splitTabValue, updater);
+        return;
+      }
+
+      updateActiveFreightInfo(updater);
+    };
+    const addSplitTagValue = (value, listField, inputField) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue) return;
+
+      updateSplitFreight((info) => ({
+        [listField]: [...info[listField], trimmedValue],
+        [inputField]: '',
+      }));
+    };
+    const removeSplitTagValue = (index, listField) => {
+      updateSplitFreight((info) => ({
+        [listField]: info[listField].filter((_, valueIndex) => valueIndex !== index),
+      }));
+    };
+
+    return (
+      <Box sx={{ mt: 3 }}>
+        <Tabs
+        value={splitTabValue}
         onChange={(event, value) => setActiveSplitFormTab(value)}
         variant="scrollable"
         scrollButtons="auto"
@@ -2119,7 +2632,7 @@ export default function WarehouseReceiptFormPage() {
               px: 1,
               mr: 0.5,
               fontSize: 12,
-              fontWeight: Math.min(activeSplitFormTab, splitFormCount - 1) === formIndex ? 700 : 400,
+              fontWeight: splitTabValue === formIndex ? 700 : 400,
               color: '#333',
               '&.Mui-selected': { color: '#111' },
             }}
@@ -2153,7 +2666,7 @@ export default function WarehouseReceiptFormPage() {
               }}
             >
               <Stack>
-                <ReceiptInfoRow label="Receipt No" value={activeForm.receiptNumber} />
+                <ReceiptInfoRow label="Receipt No" value={splitReceiptNumber} />
                 <ReceiptInfoRow label="Date" value={formatDate()} />
                 <ReceiptInfoRow
                   label="Received By"
@@ -2172,7 +2685,7 @@ export default function WarehouseReceiptFormPage() {
                   error={receiptInfoErrors[activeForm.id]?.location}
                   onChange={(value) => updateActiveFormField('location', value)}
                 />
-                <ReceiptInfoRow label="Label Count" value={String(activeForm.items.length).padStart(2, '0')} />
+                <ReceiptInfoRow label="Label Count" value={String(splitFormItems.length).padStart(2, '0')} />
               </Stack>
             </Box>
           </Stack>
@@ -2247,43 +2760,43 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField label="PRO No" value={getRowValue(row, 'proNumber', '')} required />
                   <DisplayField
                     label="Invoice No"
-                    value={getRowValue(row, ['invoiceNo', 'invoiceNumber'], '')}
+                    value={getRowValue(splitRow, ['invoiceNo', 'invoiceNumber'], '')}
                     editable
                     maxLength={50}
-                    onChange={(value) => updateActiveRowField('invoiceNo', value)}
+                    onChange={(value) => updateSplitRowField('invoiceNo', value)}
                   />
                   <DisplayField
                     label="PO No"
-                    value={getRowValue(row, ['poNumber', 'poNo'], '')}
+                    value={getRowValue(splitRow, ['poNumber', 'poNo'], '')}
                     editable
                     maxLength={50}
-                    onChange={(value) => updateActiveRowField('poNumber', value)}
+                    onChange={(value) => updateSplitRowField('poNumber', value)}
                   />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
                   <DisplayField
                     label="Customer Ref No"
-                    value={getRowValue(row, ['customerRefNo', 'customerReference'], '')}
+                    value={getRowValue(splitRow, ['customerRefNo', 'customerReference'], '')}
                     width={{ xs: '100%', sm: '25%' }}
                     editable
                     maxLength={50}
-                    onChange={(value) => updateActiveRowField('customerRefNo', value)}
+                    onChange={(value) => updateSplitRowField('customerRefNo', value)}
                   />
                   <DisplayField
                     label="Package ID"
-                    value={getRowValue(row, ['packageId', 'packageNumber'], '')}
+                    value={getRowValue(splitRow, ['packageId', 'packageNumber'], '')}
                     width={{ xs: '100%', sm: '25%' }}
                     editable
-                    onChange={(value) => updateActiveRowField('packageId', value)}
+                    onChange={(value) => updateSplitRowField('packageId', value)}
                   />
                   <Box sx={{ flex: 1 }} />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                  <DisplayField label="Pieces" value={piecesInland} required />
-                  <DisplayField label="Weight" value={weightInland} required />
-                  <DisplayField label="RE Weight" value={totalWeight} required />
-                  <DisplayField label="CBM (m3)" value={formatMeasurement(totalCbm)} required />
+                  <DisplayField label="Pieces" value={splitPiecesInland} required />
+                  <DisplayField label="Weight" value={splitWeightInland} required />
+                  <DisplayField label="RE Weight" value={splitTotalWeight} required />
+                  <DisplayField label="CBM (m3)" value={formatMeasurement(splitTotalCbm)} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
@@ -2295,7 +2808,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                    {['Item', 'Pieces', 'Type', 'Length (in)', 'Width (in)', 'Height (in)', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
                       <TableCell
                         key={head}
                         sx={{
@@ -2321,8 +2834,8 @@ export default function WarehouseReceiptFormPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {activeForm.items.map((item, index) => (
-                    <TableRow key={item.id || index}>
+                  {splitFormItems.map(({ item, originalIndex }, index) => (
+                    <TableRow key={`${item.id || originalIndex}-${index}`}>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{String(index + 1).padStart(2, '0')}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.pieces}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.type}</TableCell>
@@ -2349,7 +2862,7 @@ export default function WarehouseReceiptFormPage() {
                           size="small"
                           title="View uploaded images"
                           disabled={(item.images?.length || 0) === 0}
-                          onClick={() => handleOpenImages(item, index)}
+                          onClick={() => handleOpenImages(item, originalIndex)}
                           sx={{ p: 0.2, position: 'relative' }}
                         >
                           <Iconify
@@ -2395,10 +2908,10 @@ export default function WarehouseReceiptFormPage() {
                         key={label}
                         control={
                           <Checkbox
-                            checked={Boolean(activeFreightInfo.conditions[label])}
+                            checked={Boolean(splitFreightInfo.conditions[label])}
                             disabled={isMobileReceiptForm}
                             onChange={(event) =>
-                              updateActiveFreightInfo((info) => ({
+                              updateSplitFreight((info) => ({
                                 conditions: { ...info.conditions, [label]: event.target.checked },
                               }))
                             }
@@ -2415,10 +2928,10 @@ export default function WarehouseReceiptFormPage() {
                       <FormControlLabel
                         control={
                           <Checkbox
-                            checked={activeFreightInfo.badFreightCondition}
+                            checked={splitFreightInfo.badFreightCondition}
                             disabled={isMobileReceiptForm}
                             onChange={(event) =>
-                              updateActiveFreightInfo({
+                              updateSplitFreight({
                                 badFreightCondition: event.target.checked,
                                 ...(event.target.checked ? {} : { freightConditionImages: [] }),
                               })
@@ -2429,12 +2942,12 @@ export default function WarehouseReceiptFormPage() {
                         }
                         label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
                       />
-                      {activeFreightInfo.badFreightCondition && (
+                      {splitFreightInfo.badFreightCondition && (
                         <>
                           <IconButton
                             size="small"
                             title="Capture freight condition image"
-                            onClick={handleOpenFreightCamera}
+                            onClick={() => handleOpenFreightCamera(isSplitGeneratedForm ? splitTabValue : null)}
                             disabled={isMobileReceiptForm}
                             sx={{ bgcolor: '#A22', color: '#fff', width: 30, height: 30, borderRadius: 1, '&:hover': { bgcolor: '#8b1c1c' } }}
                           >
@@ -2443,7 +2956,7 @@ export default function WarehouseReceiptFormPage() {
                           <IconButton
                             size="small"
                             title="Upload freight condition image"
-                            onClick={handleOpenFreightUpload}
+                            onClick={() => handleOpenFreightUpload(isSplitGeneratedForm ? splitTabValue : null)}
                             disabled={isMobileReceiptForm}
                             sx={{ bgcolor: '#A22', color: '#fff', width: 30, height: 30, borderRadius: 1, '&:hover': { bgcolor: '#8b1c1c' } }}
                           >
@@ -2452,12 +2965,41 @@ export default function WarehouseReceiptFormPage() {
                         </>
                       )}
                     </Stack>
+                    {splitFreightInfo.badFreightCondition && splitFreightInfo.freightConditionImages.length > 0 && (
+                      <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 0.5 }}>
+                        {splitFreightInfo.freightConditionImages.map((file, index) => (
+                          <WarehouseImage
+                            key={`${getImageName(file, index)}-${index}`}
+                            file={file}
+                            imageType="badFreight"
+                            alt={getImageName(file, index)}
+                            onClick={() =>
+                              setImageDialog({
+                                open: true,
+                                images: splitFreightInfo.freightConditionImages,
+                                itemLabel: 'Bad Freight Condition',
+                                imageType: 'badFreight',
+                                splitFormIndex: isSplitGeneratedForm ? splitTabValue : null,
+                              })
+                            }
+                            sx={{
+                              width: 54,
+                              height: 54,
+                              objectFit: 'cover',
+                              border: '1px solid #d0d0d0',
+                              borderRadius: 1,
+                              cursor: 'pointer',
+                            }}
+                          />
+                        ))}
+                      </Stack>
+                    )}
                     <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Freight Condition</Typography>
                     <TextField
                       multiline
                       rows={4}
-                      value={activeFreightInfo.freightConditionDescription}
-                      onChange={(event) => updateActiveFreightInfo({ freightConditionDescription: event.target.value })}
+                      value={splitFreightInfo.freightConditionDescription}
+                      onChange={(event) => updateSplitFreight({ freightConditionDescription: event.target.value })}
                       size="small"
                       sx={{ '& textarea': { fontSize: 12 } }}
                     />
@@ -2475,20 +3017,20 @@ export default function WarehouseReceiptFormPage() {
                     <FormControlLabel
                       control={
                         <Checkbox
-                          checked={activeFreightInfo.hazMat}
-                          onChange={(event) => updateActiveFreightInfo({ hazMat: event.target.checked })}
+                          checked={splitFreightInfo.hazMat}
+                          onChange={(event) => updateSplitFreight({ hazMat: event.target.checked })}
                           size="small"
                           sx={{ p: 0.4 }}
                         />
                       }
                       label={<Typography sx={{ fontSize: 12 }}>Haz Mat</Typography>}
                     />
-                    {activeFreightInfo.hazMat && (
+                    {splitFreightInfo.hazMat && (
                       <FormControlLabel
                         control={
                           <Checkbox
-                            checked={activeFreightInfo.originalDgd}
-                            onChange={(event) => updateActiveFreightInfo({ originalDgd: event.target.checked })}
+                            checked={splitFreightInfo.originalDgd}
+                            onChange={(event) => updateSplitFreight({ originalDgd: event.target.checked })}
                             size="small"
                             sx={{ p: 0.4 }}
                           />
@@ -2497,23 +3039,23 @@ export default function WarehouseReceiptFormPage() {
                       />
                     )}
                   </Stack>
-                  {activeFreightInfo.hazMat && (
+                  {splitFreightInfo.hazMat && (
                     <>
                       <TagInputBox
                         label="UN Number"
-                        values={activeFreightInfo.unNumbers}
-                        inputValue={activeFreightInfo.unNumberInput}
-                        onInputChange={(value) => updateActiveFreightInfo({ unNumberInput: value })}
-                        onAdd={(value) => addTagValue(value, 'unNumbers', 'unNumberInput')}
-                        onRemove={(index) => removeTagValue(index, 'unNumbers')}
+                        values={splitFreightInfo.unNumbers}
+                        inputValue={splitFreightInfo.unNumberInput}
+                        onInputChange={(value) => updateSplitFreight({ unNumberInput: value })}
+                        onAdd={(value) => addSplitTagValue(value, 'unNumbers', 'unNumberInput')}
+                        onRemove={(index) => removeSplitTagValue(index, 'unNumbers')}
                       />
                       <TagInputBox
                         label="Hazmat Class"
-                        values={activeFreightInfo.hazmatClasses}
-                        inputValue={activeFreightInfo.hazmatClassInput}
-                        onInputChange={(value) => updateActiveFreightInfo({ hazmatClassInput: value })}
-                        onAdd={(value) => addTagValue(value, 'hazmatClasses', 'hazmatClassInput')}
-                        onRemove={(index) => removeTagValue(index, 'hazmatClasses')}
+                        values={splitFreightInfo.hazmatClasses}
+                        inputValue={splitFreightInfo.hazmatClassInput}
+                        onInputChange={(value) => updateSplitFreight({ hazmatClassInput: value })}
+                        onAdd={(value) => addSplitTagValue(value, 'hazmatClasses', 'hazmatClassInput')}
+                        onRemove={(index) => removeSplitTagValue(index, 'hazmatClasses')}
                       />
                     </>
                   )}
@@ -2521,17 +3063,17 @@ export default function WarehouseReceiptFormPage() {
                 <Stack sx={{ flex: 1, minWidth: 0 }} spacing={1}>
                   <DisplayField
                     label="Proper Shipping Name"
-                    value={activeFreightInfo.properShippingName}
+                    value={splitFreightInfo.properShippingName}
                     editable
-                    onChange={(value) => updateActiveFreightInfo({ properShippingName: value })}
+                    onChange={(value) => updateSplitFreight({ properShippingName: value })}
                   />
                   <Typography sx={{ fontSize: 12 }}>Description</Typography>
                   <TextField
                     multiline
                     rows={6}
                     size="small"
-                    value={activeFreightInfo.hazardousDescription}
-                    onChange={(event) => updateActiveFreightInfo({ hazardousDescription: event.target.value })}
+                    value={splitFreightInfo.hazardousDescription}
+                    onChange={(event) => updateSplitFreight({ hazardousDescription: event.target.value })}
                     sx={{ '& textarea': { fontSize: 12 } }}
                   />
                 </Stack>
@@ -2543,9 +3085,9 @@ export default function WarehouseReceiptFormPage() {
             <Stack sx={{ flex: 1, minWidth: 0 }}>
               <DisplayField
                 label="Destination"
-                value={getRowValue(row, ['destination', 'finalDestination'], '')}
+                value={getRowValue(splitRow, ['destination', 'finalDestination'], '')}
                 editable
-                onChange={(value) => updateActiveRowField('destination', value)}
+                onChange={(value) => updateSplitRowField('destination', value)}
               />
             </Stack>
             <Stack sx={{ flex: 1, minWidth: 0 }} spacing={0.3}>
@@ -2554,8 +3096,8 @@ export default function WarehouseReceiptFormPage() {
                 multiline
                 rows={6}
                 size="small"
-                value={activeFreightInfo.notes}
-                onChange={(event) => updateActiveFreightInfo({ notes: event.target.value })}
+                value={splitFreightInfo.notes}
+                onChange={(event) => updateSplitFreight({ notes: event.target.value })}
                 sx={{ '& textarea': { fontSize: 12 } }}
               />
             </Stack>
@@ -2563,7 +3105,8 @@ export default function WarehouseReceiptFormPage() {
         </Box>
       </Box>
     </Box>
-  );
+    );
+  };
 
   const renderViewSummary = () => {
     if (!isWarehouseReceiptView || !viewReceiptSummary) return null;
@@ -2902,7 +3445,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length', 'Width', 'Height', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                    {['Item', 'Pieces', 'Type', 'Length (in)', 'Width (in)', 'Height (in)', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
                       <TableCell
                         key={head}
                         sx={{
@@ -3608,12 +4151,15 @@ export default function WarehouseReceiptFormPage() {
       <Dialog
         open={splitDialogOpen}
         onClose={handleCloseSplitDialog}
-        maxWidth="lg"
+        maxWidth="xl"
         fullWidth
         PaperProps={{
           sx: {
             borderRadius: 1,
-            minHeight: splitStep === 1 ? 545 : 430,
+            width: { xs: 'calc(100vw - 24px)', md: 'calc(100vw - 56px)' },
+            maxWidth: 1500,
+            height: splitStep === 0 ? 560 : splitStep === 1 ? 720 : 780,
+            maxHeight: '92vh',
           },
         }}
       >
@@ -3653,7 +4199,8 @@ export default function WarehouseReceiptFormPage() {
                 <Button
                   variant="outlined"
                   size="small"
-                  onClick={() => setSplitStep((prev) => Math.max(prev - 1, 0))}
+                  onClick={handleSplitBackClick}
+                  disabled={splitSubmitLoading}
                   sx={{ height: 24, minWidth: 58, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
                 >
                   Back
@@ -3661,6 +4208,7 @@ export default function WarehouseReceiptFormPage() {
                 <Button
                   variant="contained"
                   size="small"
+                  disabled={splitTempReceiptLoading || splitSubmitLoading || (splitDimensionMode === 'existing' && splitFormCount === 0)}
                   onClick={() => {
                     if (splitStep === 1) {
                       setActiveSplitFormTab(0);
@@ -3668,11 +4216,11 @@ export default function WarehouseReceiptFormPage() {
                       return;
                     }
 
-                    handleViewAction('Submit split action is not available yet');
+                    handleSplitSubmit();
                   }}
                   sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
                 >
-                  {splitStep === 2 ? 'Submit' : 'Next'}
+                  {splitSubmitLoading ? 'Submitting...' : splitStep === 2 ? 'Submit' : 'Next'}
                 </Button>
               </Stack>
             )}
@@ -3680,7 +4228,32 @@ export default function WarehouseReceiptFormPage() {
           {splitStep === 0 && renderSplitStartStep()}
           {splitStep === 1 && (splitDimensionMode === 'existing' ? renderSplitExistingFreightStep() : renderSplitFreightStep())}
           {splitStep === 2 && renderSplitFormInfoStep()}
+          {renderSplitMoveMenu()}
         </DialogContent>
+        <Dialog open={splitBackConfirmOpen} onClose={handleCancelSplitBackConfirm} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Confirmation</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ fontSize: 13 }}>Are you sure? Data will be lost.</Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 2 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleCancelSplitBackConfirm}
+              sx={{ height: 28, minWidth: 64, color: '#111', borderColor: '#777', textTransform: 'none', fontSize: 12 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleConfirmSplitBack}
+              sx={{ ...actionBtnSx, height: 28, minWidth: 64, fontSize: 12 }}
+            >
+              OK
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Dialog>
       <Dialog
         open={statusHistoryDialogOpen}
