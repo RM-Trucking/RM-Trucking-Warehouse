@@ -639,19 +639,80 @@ const getDropdownOptionLabel = (option) => {
   );
 };
 
-const SPLIT_MAIL_LIST_ROWS = [
-  { id: 1, sno: '01', type: 'Station', emailId: 'Department1@ventanaserra.com' },
-  { id: 2, sno: '02', type: 'Department', emailId: 'Department2@ventanaserra.com' },
-  { id: 3, sno: '03', type: 'Personal', emailId: 'Department1@ventanaserra.com' },
-  { id: 4, sno: '04', type: 'Personal', emailId: 'Department2@ventanaserra.com' },
-  { id: 5, sno: '05', type: 'Department', emailId: 'Department1@ventanaserra.com' },
-  { id: 6, sno: '06', type: 'Personal', emailId: 'Department2@ventanaserra.com' },
-  { id: 7, sno: '07', type: 'Department', emailId: 'Department1@ventanaserra.com' },
-  { id: 8, sno: '08', type: 'Department', emailId: 'Department2@ventanaserra.com' },
-  { id: 9, sno: '09', type: 'Department', emailId: 'Department1@ventanaserra.com' },
-];
+const getMailEmailValue = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value !== 'object') return String(value).trim();
 
-const INITIAL_SPLIT_MAIL_SELECTED_IDS = [1, 2, 3, 5];
+  return String(
+    value.emailId ||
+      value.emailID ||
+      value.email ||
+      value.emailAddress ||
+      value.customerEmail ||
+      value.entryEmail ||
+      value.toEmail ||
+      ''
+  ).trim();
+};
+
+const getMailTypeValue = (value) => {
+  if (!value || typeof value !== 'object') return '';
+  return value.type || value.emailType || value.contactType || value.customerEmailType || value.entryType || '';
+};
+
+const getMailEmailKey = (value) => getMailEmailValue(value).toLowerCase();
+
+const getUniqueMailEmails = (value) =>
+  normalizeEmailList(value)
+    .map(getMailEmailValue)
+    .filter(Boolean)
+    .filter((email, index, emails) =>
+      emails.findIndex((currentEmail) => currentEmail.toLowerCase() === email.toLowerCase()) === index
+    );
+
+const normalizeTempEmailList = (value) => {
+  if (Array.isArray(value)) return getUniqueMailEmails(value);
+  if (!value) return [];
+
+  return String(value)
+    .split(/[\s,;]+/)
+    .map((email) => email.trim())
+    .filter(Boolean)
+    .filter((email, index, emails) =>
+      emails.findIndex((currentEmail) => currentEmail.toLowerCase() === email.toLowerCase()) === index
+    );
+};
+
+const getCustomerEmailRows = (value) =>
+  normalizeEmailList(value)
+    .map((emailEntry, index) => {
+      const emailId = getMailEmailValue(emailEntry);
+
+      if (!emailId) return null;
+
+      return {
+        id: `${getMailEmailKey(emailEntry)}-${index}`,
+        sno: String(index + 1).padStart(2, '0'),
+        type: getMailTypeValue(emailEntry),
+        emailId,
+      };
+    })
+    .filter(Boolean);
+
+const mergeCustomerAndSelectedEmailRows = (customerEmailRows, selectedEmails) => {
+  const existingEmailKeys = new Set(customerEmailRows.map((row) => row.emailId.toLowerCase()));
+  const extraSelectedRows = selectedEmails
+    .filter((email) => !existingEmailKeys.has(email.toLowerCase()))
+    .map((email, index) => ({
+      id: `selected-${email.toLowerCase()}-${index}`,
+      sno: String(customerEmailRows.length + index + 1).padStart(2, '0'),
+      type: 'To Email',
+      emailId: email,
+    }));
+
+  return [...customerEmailRows, ...extraSelectedRows];
+};
 
 function Section({ title, children, sx }) {
   return (
@@ -723,7 +784,7 @@ function HazmatPill({ label, onRemove, disabled = false }) {
   );
 }
 
-function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove, disabled = false }) {
+function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove, disabled = false, framed = true }) {
   const handleKeyDown = (event) => {
     if (disabled) return;
     if (event.key === 'Enter' || event.key === ',') {
@@ -734,13 +795,13 @@ function TagInputBox({ label, values, inputValue, onInputChange, onAdd, onRemove
 
   return (
     <Box>
-      <Typography sx={{ fontSize: 12, mb: 0.6 }}>{label}</Typography>
+      {label && <Typography sx={{ fontSize: 12, mb: 0.6 }}>{label}</Typography>}
       <Box
         sx={{
           minHeight: 64,
-          border: '1px solid #8f8f8f',
-          borderRadius: 1,
-          p: 1,
+          border: framed ? '1px solid #8f8f8f' : 0,
+          borderRadius: framed ? 1 : 0,
+          p: framed ? 1 : 0,
           display: 'flex',
           alignItems: 'flex-start',
           flexWrap: 'wrap',
@@ -1033,7 +1094,7 @@ export default function WarehouseReceiptFormPage() {
   const [customerSearchValue, setCustomerSearchValue] = useState('');
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [successDialog, setSuccessDialog] = useState({ open: false, message: '', receiptNumbers: [] });
+  const [successDialog, setSuccessDialog] = useState({ open: false, message: '', receiptNumbers: [], source: '' });
   const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
@@ -1043,7 +1104,10 @@ export default function WarehouseReceiptFormPage() {
   const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
-  const [selectedSplitMailIds, setSelectedSplitMailIds] = useState(INITIAL_SPLIT_MAIL_SELECTED_IDS);
+  const [splitMailFormIndex, setSplitMailFormIndex] = useState(null);
+  const [selectedSplitMailEmails, setSelectedSplitMailEmails] = useState([]);
+  const [splitTempEmails, setSplitTempEmails] = useState([]);
+  const [splitTempEmailInput, setSplitTempEmailInput] = useState('');
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [splitBackConfirmOpen, setSplitBackConfirmOpen] = useState(false);
   const [splitStep, setSplitStep] = useState(0);
@@ -1718,6 +1782,7 @@ export default function WarehouseReceiptFormPage() {
           cubicMeter,
           proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
           toEmails: normalizeEmailList(getRowValue(formRow, 'toEmails', [])),
+          tempEmails: normalizeTempEmailList(getRowValue(formRow, 'tempEmails', [])),
           invoiceNumber: toLimitedValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], ''), 50),
           poNumber: toLimitedValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], ''), 50),
           customerRefNumber: toLimitedValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], ''), 50),
@@ -1856,6 +1921,7 @@ export default function WarehouseReceiptFormPage() {
       open: true,
       message: response?.message || 'Warehouse receipts submitted successfully',
       receiptNumbers: getReceiptNumbersFromResponse(response),
+      source: '',
     });
   };
 
@@ -2059,6 +2125,7 @@ export default function WarehouseReceiptFormPage() {
         open: true,
         message: response?.message || 'Split warehouse receipts submitted successfully',
         receiptNumbers: getReceiptNumbersFromResponse(response),
+        source: 'split',
       });
     } finally {
       setSplitSubmitLoading(false);
@@ -2066,8 +2133,17 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const handleSuccessDialogOk = () => {
-    setSuccessDialog({ open: false, message: '', receiptNumbers: [] });
+    const successSource = successDialog.source;
+
+    setSuccessDialog({ open: false, message: '', receiptNumbers: [], source: '' });
+
+    if (successSource === 'split') {
+      navigate(PATH_DASHBOARD.warehouseReceiptDashboard);
+      return;
+    }
+
     dispatch(clearWarehouseCheckInDraft(state?.draftKey));
+
     if (isWarehouseReceiptEdit) {
       navigate(PATH_DASHBOARD.warehouseReceiptDashboard);
       return;
@@ -2159,14 +2235,69 @@ export default function WarehouseReceiptFormPage() {
     setReceiptNoteText('');
   };
 
-  const handleToggleSplitMail = (id) => {
-    setSelectedSplitMailIds((prev) =>
-      prev.includes(id) ? prev.filter((selectedId) => selectedId !== id) : [...prev, id]
+  const handleOpenSplitMailDialog = (formIndex, row) => {
+    const splitDetailsRow = ensureSplitFormDetails(formIndex, splitFormDetails).row;
+    const sourceRow = {
+      ...row,
+      ...splitDetailsRow,
+    };
+
+    setSplitMailFormIndex(formIndex);
+    setSelectedSplitMailEmails(getUniqueMailEmails(getRowValue(sourceRow, 'toEmails', [])));
+    setSplitTempEmails(normalizeTempEmailList(getRowValue(sourceRow, 'tempEmails', [])));
+    setSplitTempEmailInput('');
+    setSplitMailDialogOpen(true);
+  };
+
+  const handleCloseSplitMailDialog = () => {
+    setSplitMailDialogOpen(false);
+    setSplitMailFormIndex(null);
+    setSplitTempEmails([]);
+    setSplitTempEmailInput('');
+  };
+
+  const isSplitMailSelected = (email) => {
+    const emailKey = getMailEmailValue(email).toLowerCase();
+    return selectedSplitMailEmails.some((selectedEmail) => selectedEmail.toLowerCase() === emailKey);
+  };
+
+  const handleToggleSplitMail = (email) => {
+    const emailValue = getMailEmailValue(email);
+    if (!emailValue) return;
+
+    setSelectedSplitMailEmails((prev) =>
+      prev.some((selectedEmail) => selectedEmail.toLowerCase() === emailValue.toLowerCase())
+        ? prev.filter((selectedEmail) => selectedEmail.toLowerCase() !== emailValue.toLowerCase())
+        : [...prev, emailValue]
     );
   };
 
-  const handleRemoveSplitMailAddress = (id) => {
-    setSelectedSplitMailIds((prev) => prev.filter((selectedId) => selectedId !== id));
+  const handleAddSplitTempEmail = (value) => {
+    const emailValues = normalizeTempEmailList(value);
+    if (!emailValues.length) return;
+
+    setSplitTempEmails((prev) =>
+      normalizeTempEmailList([...prev, ...emailValues])
+    );
+    setSplitTempEmailInput('');
+  };
+
+  const handleRemoveSplitTempEmail = (index) => {
+    setSplitTempEmails((prev) => prev.filter((_, emailIndex) => emailIndex !== index));
+  };
+
+  const handleSendSplitMail = () => {
+    const nextTempEmails = normalizeTempEmailList([
+      ...splitTempEmails,
+      ...normalizeTempEmailList(splitTempEmailInput),
+    ]);
+
+    if (Number.isInteger(splitMailFormIndex)) {
+      updateSplitFormRowField(splitMailFormIndex, 'toEmails', selectedSplitMailEmails);
+      updateSplitFormRowField(splitMailFormIndex, 'tempEmails', nextTempEmails);
+    }
+
+    handleCloseSplitMailDialog();
   };
 
   const handleOpenSplitDialog = () => {
@@ -3799,7 +3930,7 @@ export default function WarehouseReceiptFormPage() {
                   variant="contained"
                   size="small"
                   startIcon={<Iconify icon="mdi:email" width={14} />}
-                  onClick={() => setSplitMailDialogOpen(true)}
+                  onClick={() => handleOpenSplitMailDialog(splitTabValue, splitRow)}
                   sx={{ ...actionBtnSx, height: 24, minWidth: 68, fontSize: 11 }}
                 >
                   Mail
@@ -4270,6 +4401,13 @@ export default function WarehouseReceiptFormPage() {
       </Box>
     );
   };
+
+  const splitMailRow =
+    Number.isInteger(splitMailFormIndex)
+      ? ensureSplitFormDetails(splitMailFormIndex, splitFormDetails).row
+      : {};
+  const splitCustomerEmailRows = getCustomerEmailRows(getRowValue(splitMailRow, 'customerEmails', []));
+  const splitMailRows = mergeCustomerAndSelectedEmailRows(splitCustomerEmailRows, selectedSplitMailEmails);
 
   return (
     <Box sx={{ bgcolor: '#dcdcdc', minHeight: '100vh', width: '100%', overflowX: 'hidden', boxSizing: 'border-box' }}>
@@ -5749,7 +5887,7 @@ export default function WarehouseReceiptFormPage() {
       </Dialog>
       <Dialog
         open={splitMailDialogOpen}
-        onClose={() => setSplitMailDialogOpen(false)}
+        onClose={handleCloseSplitMailDialog}
         maxWidth="lg"
         fullWidth
         PaperProps={{
@@ -5766,7 +5904,7 @@ export default function WarehouseReceiptFormPage() {
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => setSplitMailDialogOpen(false)}
+                onClick={handleCloseSplitMailDialog}
                 sx={{ height: 24, minWidth: 70, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}
               >
                 Cancel
@@ -5774,13 +5912,10 @@ export default function WarehouseReceiptFormPage() {
               <Button
                 variant="contained"
                 size="small"
-                onClick={() => {
-                  setSplitMailDialogOpen(false);
-                  handleViewAction('Mail sent successfully');
-                }}
-                sx={{ ...actionBtnSx, height: 24, minWidth: 58, fontSize: 11 }}
+                onClick={handleSendSplitMail}
+                sx={{ ...actionBtnSx, height: 24, minWidth: 70, fontSize: 11 }}
               >
-                Send
+                Confirm
               </Button>
             </Stack>
           </Stack>
@@ -5803,52 +5938,42 @@ export default function WarehouseReceiptFormPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {SPLIT_MAIL_LIST_ROWS.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <Checkbox
-                      size="small"
-                      checked={selectedSplitMailIds.includes(row.id)}
-                      onChange={() => handleToggleSplitMail(row.id)}
-                      sx={{ p: 0.2, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
-                    />
+              {splitMailRows.length ? (
+                splitMailRows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <Checkbox
+                        size="small"
+                        checked={isSplitMailSelected(row.emailId)}
+                        onChange={() => handleToggleSplitMail(row.emailId)}
+                        sx={{ p: 0.2, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
+                      />
+                    </TableCell>
+                    <TableCell>{row.sno}</TableCell>
+                    <TableCell>{row.type}</TableCell>
+                    <TableCell>{row.emailId}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 3, color: '#555' }}>
+                    No emails found
                   </TableCell>
-                  <TableCell>{row.sno}</TableCell>
-                  <TableCell>{row.type}</TableCell>
-                  <TableCell>{row.emailId}</TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
 
           <Box component="fieldset" sx={{ mt: 3, border: '1px solid #777', borderRadius: 1, px: 1.2, py: 1.2, minHeight: 64 }}>
             <Box component="legend" sx={{ px: 0.7, fontSize: 12, fontWeight: 700 }}>Email Addresses</Box>
-            <Stack direction="row" flexWrap="wrap" gap={0.8}>
-              {SPLIT_MAIL_LIST_ROWS.filter((row) => selectedSplitMailIds.includes(row.id)).map((row, index) => (
-                <Box
-                  key={`${row.id}-${index}`}
-                  sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    bgcolor: '#d8ecfb',
-                    borderRadius: 3,
-                    px: 1,
-                    py: 0.4,
-                    fontSize: 11,
-                  }}
-                >
-                  {index % 2 === 0 ? 'user6050599@example.com' : '50599@example.com'}
-                  <IconButton
-                    size="small"
-                    onClick={() => handleRemoveSplitMailAddress(row.id)}
-                    sx={{ p: 0, color: '#111' }}
-                  >
-                    <Iconify icon="mdi:close-circle" width={14} />
-                  </IconButton>
-                </Box>
-              ))}
-            </Stack>
+            <TagInputBox
+              values={splitTempEmails}
+              inputValue={splitTempEmailInput}
+              onInputChange={setSplitTempEmailInput}
+              onAdd={handleAddSplitTempEmail}
+              onRemove={handleRemoveSplitTempEmail}
+              framed={false}
+            />
           </Box>
         </DialogContent>
       </Dialog>
