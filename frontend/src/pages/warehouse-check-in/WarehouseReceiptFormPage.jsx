@@ -1099,6 +1099,7 @@ export default function WarehouseReceiptFormPage() {
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
+  const [ratesNoticeOpen, setRatesNoticeOpen] = useState(false);
   const [ratesFlatRateChecked, setRatesFlatRateChecked] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
   const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
@@ -1214,6 +1215,13 @@ export default function WarehouseReceiptFormPage() {
   useEffect(() => {
     dispatch(fetchCargoApiDropdown());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!ratesNoticeOpen) return undefined;
+
+    const timer = window.setTimeout(() => setRatesNoticeOpen(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [ratesNoticeOpen]);
 
   // useEffect(() => {
   //   if (!freightCameraOpen || !freightCameraStreamRef.current || !freightCameraVideoRef.current) return;
@@ -2696,7 +2704,24 @@ export default function WarehouseReceiptFormPage() {
     });
   };
 
+  const hasActiveRateInformation = () => {
+    const rateInformation = activeForm?.row?.rateInformation ?? viewReceiptSummary?.rateInformation;
+    if (!rateInformation) return false;
+    if (typeof rateInformation !== 'object') return true;
+    return Object.keys(rateInformation).length > 0;
+  };
+
   const getActiveRateInformation = () => activeForm?.row?.rateInformation || viewReceiptSummary?.rateInformation || {};
+
+  const handleOpenRatesDialog = () => {
+    if (!hasActiveRateInformation()) {
+      setRatesNoticeOpen(true);
+      return;
+    }
+
+    setRatesNoticeOpen(false);
+    setRatesDialogOpen(true);
+  };
 
   const getRateDisplayValue = (value) => {
     if (value === undefined || value === null || value === '') return '';
@@ -4356,15 +4381,36 @@ export default function WarehouseReceiptFormPage() {
                   >
                     Print Labels
                   </Button>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => setRatesDialogOpen(true)}
-                    disabled={isArchivedReceipt}
-                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
-                  >
-                    Rates
-                  </Button>
+                  <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                    {ratesNoticeOpen && (
+                      <Alert
+                        severity="warning"
+                        sx={{
+                          position: 'absolute',
+                          right: 0,
+                          bottom: 'calc(100% + 8px)',
+                          width: { xs: 'min(280px, calc(100vw - 32px))', sm: 270 },
+                          py: 0.25,
+                          px: 0.8,
+                          zIndex: 3,
+                          boxShadow: 2,
+                          '& .MuiAlert-icon': { fontSize: 16, mr: 0.6, py: 0.2 },
+                          '& .MuiAlert-message': { fontSize: 11, py: 0.2 },
+                        }}
+                      >
+                        Please set rate on the station to see the rates
+                      </Alert>
+                    )}
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleOpenRatesDialog}
+                      disabled={isArchivedReceipt}
+                      sx={{ ...actionBtnSx, height: 26, width: '100%', fontSize: 12 }}
+                    >
+                      Rates
+                    </Button>
+                  </Box>
                 </Stack>
               </Box>
             </Box>
