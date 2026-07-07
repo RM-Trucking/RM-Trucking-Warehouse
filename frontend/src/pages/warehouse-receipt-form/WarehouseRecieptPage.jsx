@@ -631,6 +631,8 @@ export default function WarehouseRecieptPage() {
           receiptNumber: row.receiptNumber,
           status: row.status,
           noteThreadId: receipt.noteThreadId,
+          rateInformation: receipt.rateInformation,
+          hasFlatRate: receipt.hasFlatRate,
         },
         receipts: [
           {

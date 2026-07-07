@@ -215,8 +215,10 @@ const calculateItemCbm = (item) =>
   INCH_TO_METER;
 
 const formatMeasurement = (value) => {
-  if (!value) return 0;
-  return Number.isInteger(value) ? value : Number(value.toFixed(3));
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
 };
 
 const normalizeEmailList = (value) => {
@@ -433,6 +435,8 @@ const buildWarehouseReceiptViewState = (row = {}, warehouseReceiptGridState) => 
       receiptNumber: row.receiptNumber,
       status: row.status,
       noteThreadId: receipt.noteThreadId,
+      rateInformation: receipt.rateInformation,
+      hasFlatRate: receipt.hasFlatRate,
     },
     receipts: [
       {
@@ -1100,7 +1104,6 @@ export default function WarehouseReceiptFormPage() {
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [ratesNoticeOpen, setRatesNoticeOpen] = useState(false);
-  const [ratesFlatRateChecked, setRatesFlatRateChecked] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
   const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
@@ -2713,6 +2716,9 @@ export default function WarehouseReceiptFormPage() {
 
   const getActiveRateInformation = () => activeForm?.row?.rateInformation || viewReceiptSummary?.rateInformation || {};
 
+  const getActiveHasFlatRate = () =>
+    isYes(activeForm?.row?.hasFlatRate ?? viewReceiptSummary?.hasFlatRate ?? getActiveRateInformation().hasFlatRate);
+
   const handleOpenRatesDialog = () => {
     if (!hasActiveRateInformation()) {
       setRatesNoticeOpen(true);
@@ -2728,44 +2734,46 @@ export default function WarehouseReceiptFormPage() {
     return formatMeasurement(value);
   };
 
-  const getRateDialogRows = () =>
-    (activeForm?.items || []).map((item) => {
-      const rateInformation = getActiveRateInformation();
-      const dimFactor = Number(rateInformation.dimFactor);
-      const hasDimFactor = Number.isFinite(dimFactor) && dimFactor > 0;
-      const hasPieces = item.pieces !== undefined && item.pieces !== null && item.pieces !== '';
-      const hasLength = item.length !== undefined && item.length !== null && item.length !== '';
-      const hasWidth = item.width !== undefined && item.width !== null && item.width !== '';
-      const hasHeight = item.height !== undefined && item.height !== null && item.height !== '';
-      const piecesValue = Number(item.pieces);
-      const pieces = item.pieces === undefined || item.pieces === null || item.pieces === '' ? '' : String(item.pieces).padStart(2, '0');
-      const length = hasLength ? Number(formatDecimal10_2Input(item.length)) : '';
-      const width = hasWidth ? Number(formatDecimal10_2Input(item.width)) : '';
-      const height = hasHeight ? Number(formatDecimal10_2Input(item.height)) : '';
-      const canCalculateDimWeight = hasDimFactor && hasPieces && hasLength && hasWidth && hasHeight;
-      const dimWeight = canCalculateDimWeight ? formatMeasurement((piecesValue * length * width * height) / dimFactor) : '';
-      const actualWeight = item.weight === undefined || item.weight === null || item.weight === '' ? '' : Number(item.weight);
+  const getRateDialogRows = () => {
+    const rateInformation = getActiveRateInformation();
+    const freightBreakdown = Array.isArray(rateInformation.freightBreakdown) ? rateInformation.freightBreakdown : [];
+    const sourceRows = freightBreakdown.length
+      ? freightBreakdown
+      : Array.isArray(activeForm?.row?.freightInformation)
+        ? activeForm.row.freightInformation
+        : [];
+    const hasValue = (value) => value !== undefined && value !== null && value !== '';
+    const dimFactor = hasValue(rateInformation.dimFactor) ? getRateDisplayValue(rateInformation.dimFactor) : '';
+
+    return sourceRows.map((item) => {
+      const pieces = hasValue(item.pieces) ? item.pieces : '';
+      const type = item.type || '';
+      const length = hasValue(item.length) ? getRateDisplayValue(item.length) : '';
+      const width = hasValue(item.width) ? getRateDisplayValue(item.width) : '';
+      const height = hasValue(item.height) ? getRateDisplayValue(item.height) : '';
+      const dimensionalWeight = hasValue(item.dimensionalWeight) ? getRateDisplayValue(item.dimensionalWeight) : '';
+      const actualWeightValue = item.actualWeight ?? item.weight;
+      const actualWeight = hasValue(actualWeightValue) ? getRateDisplayValue(actualWeightValue) : '';
+      const hasDimensionalFormula = [pieces, length, width, height, dimFactor, dimensionalWeight].every(hasValue);
 
       return {
         pieces,
-        type: item.type || '',
-        formula: canCalculateDimWeight ? `${piecesValue} x ${length} x ${width} x ${height} / ${dimFactor} = ${dimWeight}` : '',
-        dimWeight,
+        type,
+        formula: hasDimensionalFormula
+          ? `${pieces} x ${length} x ${width} x ${height} / ${dimFactor} = ${dimensionalWeight}`
+          : '',
+        dimensionalWeight,
         actualWeight,
       };
     });
+  };
 
   const getRatesTotal = () => {
     const rateInformation = getActiveRateInformation();
-    const rateRows = getRateDialogRows();
-    const calculatedDimWeightTotal = rateRows.reduce((sum, row) => sum + Number(row.dimWeight || 0), 0);
-    const calculatedActualWeightTotal = rateRows.reduce((sum, row) => sum + Number(row.actualWeight || 0), 0);
-    const dimWeightTotal = rateInformation.totalDimensionalWeight ?? (calculatedDimWeightTotal ? calculatedDimWeightTotal : '');
-    const actualWeightTotal = rateInformation.totalActualWeight ?? (calculatedActualWeightTotal ? calculatedActualWeightTotal : '');
 
     return {
-      dimWeightTotal: getRateDisplayValue(dimWeightTotal),
-      actualWeightTotal: getRateDisplayValue(actualWeightTotal),
+      dimWeightTotal: getRateDisplayValue(rateInformation.totalDimensionalWeight),
+      actualWeightTotal: getRateDisplayValue(rateInformation.totalActualWeight),
       estimatedCost: getRateDisplayValue(rateInformation.finalRate),
     };
   };
@@ -5498,15 +5506,7 @@ export default function WarehouseReceiptFormPage() {
                 onClick={() => setRatesDialogOpen(false)}
                 sx={{ height: 28, minWidth: 74, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 12 }}
               >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => handleViewAction('Ready for Approval action is not available yet')}
-                sx={{ ...actionBtnSx, height: 28, minWidth: 142, fontSize: 12 }}
-              >
-                Ready for Approval
+                Close
               </Button>
             </Stack>
           </Stack>
@@ -5518,6 +5518,7 @@ export default function WarehouseReceiptFormPage() {
             const hasBaseRate = rateInformation.baseRate !== undefined && rateInformation.baseRate !== null && rateInformation.baseRate !== '';
             const hasMinRate = rateInformation.minRate !== undefined && rateInformation.minRate !== null && rateInformation.minRate !== '';
             const hasMaxRate = rateInformation.maxRate !== undefined && rateInformation.maxRate !== null && rateInformation.maxRate !== '';
+            const hasFlatRate = getActiveHasFlatRate();
 
             return (
               <>
@@ -5541,10 +5542,15 @@ export default function WarehouseReceiptFormPage() {
             <FormControlLabel
               control={
                 <Checkbox
-                  checked={ratesFlatRateChecked}
-                  onChange={(event) => setRatesFlatRateChecked(event.target.checked)}
+                  checked={hasFlatRate}
+                  disabled
                   size="small"
-                  sx={{ p: 0.35, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
+                  sx={{
+                    p: 0.35,
+                    color: '#102a63',
+                    '&.Mui-checked': { color: '#102a63' },
+                    '&.Mui-disabled': { color: hasFlatRate ? '#102a63' : 'rgba(0, 0, 0, 0.26)' },
+                  }}
                 />
               }
               label={<Typography sx={{ fontSize: 14 }}>Flat Rate</Typography>}
@@ -5558,9 +5564,9 @@ export default function WarehouseReceiptFormPage() {
               InputProps={{ readOnly: true }}
               sx={{
                 flex: 0.75,
-                display: { xs: ratesFlatRateChecked ? 'block' : 'none', md: 'block' },
-                visibility: { md: ratesFlatRateChecked ? 'visible' : 'hidden' },
-                pointerEvents: ratesFlatRateChecked ? 'auto' : 'none',
+                display: { xs: hasFlatRate ? 'block' : 'none', md: 'block' },
+                visibility: { md: hasFlatRate ? 'visible' : 'hidden' },
+                pointerEvents: 'none',
                 '& .MuiInputLabel-root': { fontSize: 14 },
                 '& input': { fontSize: 14 },
               }}
@@ -5573,9 +5579,9 @@ export default function WarehouseReceiptFormPage() {
               InputProps={{ readOnly: true }}
               sx={{
                 flex: 1,
-                display: { xs: ratesFlatRateChecked ? 'block' : 'none', md: 'block' },
-                visibility: { md: ratesFlatRateChecked ? 'visible' : 'hidden' },
-                pointerEvents: ratesFlatRateChecked ? 'auto' : 'none',
+                display: { xs: hasFlatRate ? 'block' : 'none', md: 'block' },
+                visibility: { md: hasFlatRate ? 'visible' : 'hidden' },
+                pointerEvents: 'none',
                 '& .MuiInputLabel-root': { fontSize: 14 },
                 '& input': { fontSize: 14 },
               }}
