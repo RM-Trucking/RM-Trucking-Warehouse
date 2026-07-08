@@ -23,6 +23,8 @@ const initialState = {
   auditLogs: [],
   auditLogsLoading: false,
   auditLogsError: null,
+  updateReceiptLoading: false,
+  updateReceiptError: null,
 };
 
 const formatDate = (value) => {
@@ -83,6 +85,33 @@ const getNoteRowsFromResponse = (responseData) => {
   return [];
 };
 
+const getSpreadsheetFilename = (contentDisposition) => {
+  const headerValue = String(contentDisposition || '');
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  const filenameMatch = headerValue.match(/filename="?([^";]+)"?/i);
+  const filename = utf8Match?.[1] || filenameMatch?.[1] || '';
+
+  if (!filename) return 'warehouse-receipts.xlsx';
+
+  try {
+    return decodeURIComponent(filename);
+  } catch (error) {
+    return filename;
+  }
+};
+
+const downloadBlob = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
 const slice = createSlice({
   name: 'warehouseReceipt',
   initialState,
@@ -124,6 +153,35 @@ const slice = createSlice({
             }
           : row
       );
+    },
+    startUpdateWarehouseReceipt(state) {
+      state.updateReceiptLoading = true;
+      state.updateReceiptError = null;
+    },
+    updateWarehouseReceiptSuccess(state, action) {
+      state.updateReceiptLoading = false;
+      state.updateReceiptError = null;
+      const updatedReceipt = action.payload?.receipt;
+      const receiptId = action.payload?.receiptId || updatedReceipt?.receiptId;
+
+      if (!receiptId) return;
+
+      state.receipts = state.receipts.map((row) =>
+        String(row.receiptId || row.id) === String(receiptId)
+          ? {
+              ...row,
+              ...(updatedReceipt ? toGridRow({ ...(row.rawData || {}), ...updatedReceipt }) : {}),
+              rawData: {
+                ...(row.rawData || {}),
+                ...(updatedReceipt || {}),
+              },
+            }
+          : row
+      );
+    },
+    updateWarehouseReceiptError(state, action) {
+      state.updateReceiptLoading = false;
+      state.updateReceiptError = action.payload?.message || action.payload || 'Failed to update warehouse receipt';
     },
     startCustomerLoading(state) {
       state.customerLoading = true;
@@ -245,6 +303,46 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
   };
 }
 
+export function exportWarehouseReceiptSpreadsheet({ status = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
+  return async () => {
+    try {
+      const params = new URLSearchParams();
+
+      if (status) {
+        params.set('status', status);
+      }
+
+      if (receiptNumber) {
+        params.set('receiptNumber', receiptNumber);
+      }
+
+      params.set('accounting', accounting ? 'true' : 'false');
+
+      Object.entries(filters || {}).forEach(([key, value]) => {
+        const cleanValue = String(value ?? '').trim();
+        if (cleanValue) {
+          params.set(key, cleanValue);
+        }
+      });
+
+      const response = await axios.get(`/warehouse-receipt/export-spreadsheet?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const filename = getSpreadsheetFilename(response.headers?.['content-disposition']);
+
+      downloadBlob(response.data, filename);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to export warehouse receipt spreadsheet';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
 export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
   return async () => {
     if (!receiptId) {
@@ -268,6 +366,36 @@ export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
         error.message ||
         'Failed to update warehouse receipt location';
 
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function updateWarehouseReceipt({ receiptId, payload } = {}) {
+  return async () => {
+    if (!receiptId) {
+      return { error: true, message: 'Receipt ID is required to update warehouse receipt' };
+    }
+
+    dispatch(slice.actions.startUpdateWarehouseReceipt());
+
+    try {
+      const response = await axios.put(`/warehouse-receipt/${encodeURIComponent(receiptId)}`, payload);
+      const responseReceipt = response.data?.data?.receipt || response.data?.data || response.data?.receipt || null;
+
+      dispatch(slice.actions.updateWarehouseReceiptSuccess({
+        receiptId,
+        receipt: responseReceipt,
+      }));
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update warehouse receipt';
+
+      dispatch(slice.actions.updateWarehouseReceiptError(errorMessage));
       return { error: true, message: errorMessage };
     }
   };

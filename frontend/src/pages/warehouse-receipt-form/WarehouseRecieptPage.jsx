@@ -27,6 +27,7 @@ import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
+  exportWarehouseReceiptSpreadsheet,
   getWarehouseReceipts,
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
@@ -189,6 +190,8 @@ export default function WarehouseRecieptPage() {
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [comingSoonMessageOpen, setComingSoonMessageOpen] = useState(false);
+  const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [selectedStatus, setSelectedStatus] = useState(gridState.selectedStatus || '');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [receiptFilters, setReceiptFilters] = useState(gridState.receiptFilters || gridState.appliedReceiptFilters || emptyReceiptFilters);
@@ -595,6 +598,24 @@ export default function WarehouseRecieptPage() {
     setLocationMessageOpen(true);
   };
 
+  const handleExportSpreadsheet = async () => {
+    setExportingSpreadsheet(true);
+    setExportError('');
+
+    const response = await dispatch(exportWarehouseReceiptSpreadsheet({
+      status: requestStatus,
+      receiptNumber: requestReceiptNumber,
+      accounting: activeTab === 'Accounting',
+      filters: requestFilters,
+    }));
+
+    setExportingSpreadsheet(false);
+
+    if (response?.error || response?.success === false) {
+      setExportError(response?.message || 'Failed to export warehouse receipt spreadsheet');
+    }
+  };
+
   const getWarehouseReceiptGridState = () => ({
     selectedStatus,
     searchValue,
@@ -610,6 +631,7 @@ export default function WarehouseRecieptPage() {
     const freightItems = Array.isArray(receipt.freightInformation)
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
+          freightId: item.freightId,
           pieces: item.pieces,
           type: item.type,
           length: item.length,
@@ -631,6 +653,8 @@ export default function WarehouseRecieptPage() {
           receiptNumber: row.receiptNumber,
           status: row.status,
           noteThreadId: receipt.noteThreadId,
+          rateInformation: receipt.rateInformation,
+          hasFlatRate: receipt.hasFlatRate,
         },
         receipts: [
           {
@@ -724,15 +748,21 @@ export default function WarehouseRecieptPage() {
         </IconButton>
         <IconButton
           size="small"
-          onClick={() => setComingSoonMessageOpen(true)}
+          onClick={handleExportSpreadsheet}
+          disabled={exportingSpreadsheet}
           sx={{
-            bgcolor: '#e5e5e5',
-            color: '#9a9a9a',
+            bgcolor: '#eef6ef',
+            color: '#1f7a3a',
             borderRadius: 0.8,
-            '&:hover': { bgcolor: '#dedede' },
+            '&:hover': { bgcolor: '#dceedd' },
+            '&.Mui-disabled': { bgcolor: '#e5e5e5', color: '#9a9a9a' },
           }}
         >
-          <Iconify icon="mdi:table" width={18} sx={{ color: '#9a9a9a' }} />
+          {exportingSpreadsheet ? (
+            <CircularProgress size={16} color="inherit" />
+          ) : (
+            <Iconify icon="mdi:file-excel" width={18} sx={{ color: 'inherit' }} />
+          )}
         </IconButton>
       </Box>
 
@@ -1140,6 +1170,13 @@ export default function WarehouseRecieptPage() {
         autoHideDuration={2000}
         onClose={() => setComingSoonMessageOpen(false)}
         message="This feature will be available soon"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={Boolean(exportError)}
+        autoHideDuration={3000}
+        onClose={() => setExportError('')}
+        message={exportError}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>

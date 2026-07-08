@@ -51,6 +51,7 @@ import {
   getWarehouseReceiptAuditLogs,
   getWarehouseReceiptNotes,
   postWarehouseReceiptNote,
+  updateWarehouseReceipt,
 } from '../../redux/slices/warehouseReceipt';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { HOST_API_KEY } from '../../config';
@@ -215,8 +216,10 @@ const calculateItemCbm = (item) =>
   INCH_TO_METER;
 
 const formatMeasurement = (value) => {
-  if (!value) return 0;
-  return Number.isInteger(value) ? value : Number(value.toFixed(3));
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
 };
 
 const normalizeEmailList = (value) => {
@@ -413,6 +416,7 @@ const buildWarehouseReceiptViewState = (row = {}, warehouseReceiptGridState) => 
   const freightItems = Array.isArray(receipt.freightInformation)
     ? receipt.freightInformation.map((item, index) => ({
         id: item.freightId || index + 1,
+        freightId: item.freightId,
         pieces: item.pieces,
         type: item.type,
         length: item.length,
@@ -433,6 +437,8 @@ const buildWarehouseReceiptViewState = (row = {}, warehouseReceiptGridState) => 
       receiptNumber: row.receiptNumber,
       status: row.status,
       noteThreadId: receipt.noteThreadId,
+      rateInformation: receipt.rateInformation,
+      hasFlatRate: receipt.hasFlatRate,
     },
     receipts: [
       {
@@ -896,6 +902,10 @@ const getUploadImageUrl = (imageName, imageType = 'freight') => {
   const cleanImageName = String(imageName || '').trim();
   if (!cleanImageName) return '';
   if (isDirectImageSource(cleanImageName)) return cleanImageName;
+  if (cleanImageName.startsWith('base64,')) {
+    const base64Value = cleanImageName.slice('base64,'.length);
+    return base64Value ? `data:${getBase64ImageMimeType(base64Value)};base64,${base64Value}` : '';
+  }
   if (looksLikeBase64Image(cleanImageName)) return `data:${getBase64ImageMimeType(cleanImageName)};base64,${cleanImageName}`;
 
   const cleanPath = cleanImageName.replace(/^\/+/, '');
@@ -913,6 +923,7 @@ const getImageUrl = (file, imageType = 'freight') => {
   }
   if (file instanceof File) return URL.createObjectURL(file);
   if (file.url) return getUploadImageUrl(file.url, imageType);
+  if (file.imageUrl) return getUploadImageUrl(file.imageUrl, imageType);
   if (file.preview) return getUploadImageUrl(file.preview, imageType);
   if (file.base64) return getImageUrl(file.base64, imageType);
   if (file.image) return getImageUrl(file.image, imageType);
@@ -922,6 +933,7 @@ const getImageUrl = (file, imageType = 'freight') => {
   if (file.path) return getUploadImageUrl(file.path, imageType);
   if (file.filePath) return getUploadImageUrl(file.filePath, imageType);
   if (file.imagePath) return getUploadImageUrl(file.imagePath, imageType);
+  if (file.uploadPath) return getUploadImageUrl(file.uploadPath, imageType);
   if (file.name) return getUploadImageUrl(file.name, imageType);
   return '';
 };
@@ -932,7 +944,7 @@ const getImageName = (file, index) => {
     if (looksLikeBase64Image(file) || file.startsWith('data:image/')) return `Cargo API Image ${index + 1}`;
     return file.split('/').pop() || `Image ${index + 1}`;
   }
-  return file.name || file.filename || file.fileName || file.imageName || file.path?.split('/').pop() || file.filePath?.split('/').pop() || file.imagePath?.split('/').pop() || `Image ${index + 1}`;
+  return file.name || file.filename || file.fileName || file.imageName || file.imageUrl?.split('/').pop() || file.path?.split('/').pop() || file.filePath?.split('/').pop() || file.imagePath?.split('/').pop() || file.uploadPath?.split('/').pop() || `Image ${index + 1}`;
 };
 
 const getCargoApiImageValue = (image) => {
@@ -945,6 +957,7 @@ const getCargoApiImageValue = (image) => {
     image.image ||
     image.data ||
     image.url ||
+    image.imageUrl ||
     image.preview ||
     image.fileName ||
     image.filename ||
@@ -952,6 +965,7 @@ const getCargoApiImageValue = (image) => {
     image.path ||
     image.filePath ||
     image.imagePath ||
+    image.uploadPath ||
     ''
   );
 };
@@ -965,9 +979,11 @@ const getFreightDetailImageName = (image) => {
     : image.fileName ||
       image.filename ||
       image.imageName ||
+      image.imageUrl ||
       image.path ||
       image.filePath ||
       image.imagePath ||
+      image.uploadPath ||
       image.url ||
       image.preview ||
       '';
@@ -982,6 +998,13 @@ const getFreightDetailImageNames = (images = []) => {
   if (!Array.isArray(images)) return [];
   return images.map(getFreightDetailImageName).filter(Boolean);
 };
+
+const getReceiptImageRemovePath = (image) => {
+  const imageName = getFreightDetailImageName(image);
+  return looksLikeBase64Image(imageName) ? '' : imageName;
+};
+
+const isPersistedReceiptImage = (image) => Boolean(getReceiptImageRemovePath(image));
 
 function WarehouseImage({ file, imageType = 'freight', alt = '', sx, ...props }) {
   const sourceUrl = getImageUrl(file, imageType);
@@ -1045,6 +1068,7 @@ export default function WarehouseReceiptFormPage() {
     receiptNotesLoading,
     receiptNotesSaving,
     receiptNotesError,
+    updateReceiptLoading,
   } = useSelector((reduxState) => reduxState.warehouseReceiptdata);
   const isMobileReceiptForm = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const isSelectingCustomerRef = useRef(false);
@@ -1099,7 +1123,7 @@ export default function WarehouseReceiptFormPage() {
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
-  const [ratesFlatRateChecked, setRatesFlatRateChecked] = useState(false);
+  const [ratesNoticeOpen, setRatesNoticeOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
   const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
@@ -1215,6 +1239,13 @@ export default function WarehouseReceiptFormPage() {
     dispatch(fetchCargoApiDropdown());
   }, [dispatch]);
 
+  useEffect(() => {
+    if (!ratesNoticeOpen) return undefined;
+
+    const timer = window.setTimeout(() => setRatesNoticeOpen(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [ratesNoticeOpen]);
+
   // useEffect(() => {
   //   if (!freightCameraOpen || !freightCameraStreamRef.current || !freightCameraVideoRef.current) return;
 
@@ -1271,6 +1302,66 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
+  const handleRemoveActiveFreightItem = (itemId) => {
+    setReceiptForms((prev) =>
+      prev.map((form) => {
+        if (form.id !== activeTab) return form;
+
+        const itemToRemove = (form.items || []).find((item) => String(item.id) === String(itemId));
+        const freightId = toNumberOrNull(itemToRemove?.freightId);
+        const nextItems = (form.items || []).filter((item) => String(item.id) !== String(itemId));
+
+        return {
+          ...form,
+          items: nextItems.length ? nextItems : form.items,
+          removeFreightIds: freightId
+            ? [...new Set([...(form.removeFreightIds || []), freightId])]
+            : form.removeFreightIds || [],
+        };
+      })
+    );
+  };
+
+  const handleAddActiveFreightItem = () => {
+    setReceiptForms((prev) =>
+      prev.map((form) => {
+        if (form.id !== activeTab) return form;
+
+        const nextId = (form.items || []).length
+          ? Math.max(...(form.items || []).map((item) => Number(item.id) || 0)) + 1
+          : 1;
+
+        return {
+          ...form,
+          items: [
+            ...(form.items || []),
+            { id: nextId, freightId: 0, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
+          ],
+        };
+      })
+    );
+  };
+
+  const updateActiveFreightItemField = (itemId, field, value) => {
+    setReceiptForms((prev) =>
+      prev.map((form) =>
+        form.id === activeTab
+          ? {
+              ...form,
+              items: (form.items || []).map((item) =>
+                String(item.id) === String(itemId)
+                  ? {
+                      ...item,
+                      [field]: DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value,
+                    }
+                  : item
+              ),
+            }
+          : form
+      )
+    );
+  };
+
   const handleCustomerChange = (newValue) => {
     updateActiveFormField('customerSelection', newValue);
 
@@ -1288,7 +1379,15 @@ export default function WarehouseReceiptFormPage() {
       imageType: 'freight',
       splitFormIndex: null,
       splitItemContext: null,
+      itemId: item.id,
     });
+  };
+
+  const handleOpenActiveItemUpload = (item) => {
+    setSplitItemUploadContext({ formIndex: null, itemId: item.id, target: 'active' });
+    setSplitItemStagedFiles(item.images || []);
+    setSplitItemDraggingFiles(false);
+    setSplitItemUploadDialogOpen(true);
   };
 
   const downloadImageFromUrl = async (imageUrl, filename) => {
@@ -1352,7 +1451,37 @@ export default function WarehouseReceiptFormPage() {
       return;
     }
 
-    if (imageDialog.itemLabel !== 'Bad Freight Condition') return;
+    if (imageDialog.itemLabel !== 'Bad Freight Condition') {
+      const removedImage = imageDialog.images[index];
+      const removePath = getReceiptImageRemovePath(removedImage);
+      const nextImages = imageDialog.images.filter((_, imageIndex) => imageIndex !== index);
+
+      setReceiptForms((prev) =>
+        prev.map((form) => {
+          if (form.id !== activeTab) return form;
+
+          return {
+            ...form,
+            items: (form.items || []).map((item) => {
+              if (String(item.id) !== String(imageDialog.itemId)) return item;
+
+              return {
+                ...item,
+                images: nextImages,
+                removeImagePaths: removePath
+                  ? [...new Set([...(item.removeImagePaths || []), removePath])]
+                  : item.removeImagePaths || [],
+              };
+            }),
+          };
+        })
+      );
+      setImageDialog((prev) => ({ ...prev, images: nextImages }));
+      return;
+    }
+
+    const removedBadFreightImage = imageDialog.images[index];
+    const badFreightRemovePath = getReceiptImageRemovePath(removedBadFreightImage);
 
     if (Number.isInteger(imageDialog.splitFormIndex)) {
       updateSplitFormFreightInfo(imageDialog.splitFormIndex, (info) => ({
@@ -1361,6 +1490,9 @@ export default function WarehouseReceiptFormPage() {
     } else {
       updateActiveFreightInfo((info) => ({
         freightConditionImages: info.freightConditionImages.filter((_, imageIndex) => imageIndex !== index),
+        removeBadFreightImagePaths: badFreightRemovePath
+          ? [...new Set([...(info.removeBadFreightImagePaths || []), badFreightRemovePath])]
+          : info.removeBadFreightImagePaths || [],
       }));
     }
 
@@ -1606,9 +1738,42 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const handleUploadSplitItemImages = () => {
-    const { formIndex, itemId } = splitItemUploadContext;
+    const { formIndex, itemId, target } = splitItemUploadContext;
 
-    if (Number.isInteger(formIndex) && itemId !== null && itemId !== undefined) {
+    if (target === 'active' && itemId !== null && itemId !== undefined) {
+      setReceiptForms((prev) =>
+        prev.map((form) =>
+          form.id === activeTab
+            ? {
+                ...form,
+                items: (form.items || []).map((item) =>
+                  String(item.id) === String(itemId)
+                    ? {
+                        ...item,
+                        images: splitItemStagedFiles,
+                        removeImagePaths: [
+                          ...new Set([
+                            ...(item.removeImagePaths || []),
+                            ...(item.images || [])
+                              .filter(isPersistedReceiptImage)
+                              .filter((image) => {
+                                const imagePath = getReceiptImageRemovePath(image);
+                                return !splitItemStagedFiles.some(
+                                  (stagedImage) => getReceiptImageRemovePath(stagedImage) === imagePath
+                                );
+                              })
+                              .map(getReceiptImageRemovePath)
+                              .filter(Boolean),
+                          ]),
+                        ],
+                      }
+                    : item
+                ),
+              }
+            : form
+        )
+      );
+    } else if (Number.isInteger(formIndex) && itemId !== null && itemId !== undefined) {
       updateSplitRecalculateItem(formIndex, itemId, 'images', splitItemStagedFiles);
     }
 
@@ -1819,6 +1984,135 @@ export default function WarehouseReceiptFormPage() {
 
   const buildReceiptPayload = () => buildReceiptBatchPayload(receiptForms);
 
+  const formatReceiptStatusForApi = (value) =>
+    String(value || 'ON_HAND')
+      .trim()
+      .toUpperCase()
+      .replace(/-/g, '_')
+      .replace(/\s+/g, '_');
+
+  const buildWarehouseReceiptUpdatePayload = (form = activeForm) => {
+    const formRow = form.row || {};
+    const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
+    const customerSelection = form.customerSelection || {};
+    const freightDetails = (form.items || []).map((item) => {
+      const existingImages = getFreightDetailImageNames((item.images || []).filter(isPersistedReceiptImage));
+
+      return {
+        freightId: toNumberOrNull(item.freightId) || 0,
+        pieces: toNumberOrNull(item.pieces),
+        type: toValueOrNull(item.type),
+        length: toDecimal10_2NumberOrNull(item.length),
+        width: toDecimal10_2NumberOrNull(item.width),
+        height: toDecimal10_2NumberOrNull(item.height),
+        weight: toDecimal10_2NumberOrNull(item.weight),
+        cubicMeter: formatMeasurement(calculateItemCbm(item)),
+        images: existingImages,
+        removeImagePaths: item.removeImagePaths || [],
+      };
+    });
+    const piecesInland = freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
+    const weightInland = freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+    const reWeight = freightDetails.reduce(
+      (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
+      0
+    );
+    const cubicMeter = formatMeasurement(
+      freightDetails.reduce((sum, item) => sum + Number(item.cubicMeter || 0), 0)
+    );
+
+    return {
+      location: toValueOrNull(form.location),
+      receivedBy: toLimitedValueOrNull(form.receivedBy, 100),
+      shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
+      customerId: toNumberOrNull(customerSelection.customerId || formRow.customerId),
+      stationId: toNumberOrNull(customerSelection.stationId || formRow.stationId),
+      verificationId: toNumberOrNull(formRow.verificationId),
+      carrierId: toNumberOrNull(formRow.carrierId),
+      piecesInland,
+      weightInland,
+      reWeight,
+      proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
+      invoiceNumber: toLimitedValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], ''), 50),
+      poNumber: toLimitedValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], ''), 50),
+      customerRefNumber: toLimitedValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], ''), 50),
+      freightCondition: freightInfo.badFreightCondition ? 'Y' : 'N',
+      documents: toYesNo(freightInfo.conditions.Document),
+      handlingDescription: toValueOrNull(freightInfo.freightConditionDescription || freightInfo.notes),
+      destination: toValueOrNull(getRowValue(formRow, ['destination', 'finalDestination'], '')),
+      originalDgd: freightInfo.hazMat ? toYesNo(freightInfo.originalDgd) : 'N',
+      unNumber: freightInfo.hazMat ? freightInfo.unNumbers.filter(Boolean) : [],
+      class: freightInfo.hazMat ? freightInfo.hazmatClasses.filter(Boolean) : [],
+      packageId: toValueOrNull(getRowValue(formRow, ['packageId', 'packageNumber'], '')),
+      properShippingName: toValueOrNull(freightInfo.properShippingName),
+      hazardousDescription: toValueOrNull(freightInfo.hazardousDescription),
+      notes: toValueOrNull(freightInfo.notes),
+      status: formatReceiptStatusForApi(getRowValue(formRow, 'status', 'ON_HAND')),
+      receiptType: toValueOrNull(getRowValue(formRow, 'receiptType', 'Regular')) || 'Regular',
+      bandedSkid: toYesNo(freightInfo.conditions['Banded Skid']),
+      shrinkWrappedSkid: toYesNo(freightInfo.conditions['Shrink Wrapped Skid']),
+      shtIppcSkid: toYesNo(freightInfo.conditions['SHT / IPPC Skid'] || freightInfo.conditions['SHPT / PPC Skid']),
+      plasticSkid: toYesNo(freightInfo.conditions['Plastic Skid']),
+      hazMat: toYesNo(freightInfo.hazMat),
+      labelCount: form.items?.length || 0,
+      toEmails: normalizeEmailList(getRowValue(formRow, 'toEmails', [])),
+      cubicMeter,
+      freightDetails,
+      removeFreightIds: form.removeFreightIds || [],
+      badFreightImages: getFreightDetailImageNames(freightInfo.freightConditionImages.filter(isPersistedReceiptImage)),
+      removeBadFreightImagePaths: freightInfo.removeBadFreightImagePaths || [],
+    };
+  };
+
+  const hasNewWarehouseReceiptUpdateImages = (form = activeForm) => {
+    const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
+
+    return (
+      (form.items || []).some((item) => (item.images || []).some((image) => !isPersistedReceiptImage(image))) ||
+      freightInfo.freightConditionImages.some((image) => !isPersistedReceiptImage(image))
+    );
+  };
+
+  const buildWarehouseReceiptUpdateFormData = async (form = activeForm) => {
+    const payload = buildWarehouseReceiptUpdatePayload(form);
+    const formData = new FormData();
+
+    formData.append('receipt', JSON.stringify(payload));
+
+    await Promise.all([
+      ...(form.items || []).flatMap((item, freightIndex) =>
+        (item.images || [])
+          .filter((image) => !isPersistedReceiptImage(image))
+          .map(async (image, imageIndex) => {
+            const fieldName = `freight-${freightIndex}-${imageIndex}`;
+            const imageValue = await getSubmittedImageValue(image);
+
+            if (imageValue) {
+              formData.append(fieldName, imageValue);
+            }
+          })
+      ),
+      ...({ ...createFreightInfo(), ...(form.freightInfo || {}) }.freightConditionImages || [])
+        .filter((image) => !isPersistedReceiptImage(image))
+        .map(async (image, imageIndex) => {
+          const fieldName = `bad-freight-image-${imageIndex}`;
+          const renamedImage = await toRenamedImageFile(image, fieldName);
+
+          if (renamedImage instanceof File || renamedImage instanceof Blob) {
+            formData.append(fieldName, renamedImage);
+            return;
+          }
+
+          const imageValue = await getSubmittedImageValue(image);
+          if (imageValue) {
+            formData.append(fieldName, imageValue);
+          }
+        }),
+    ]);
+
+    return formData;
+  };
+
   const hasReceiptImages = (forms = receiptForms) =>
     forms.some((form) => {
       const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
@@ -1904,6 +2198,31 @@ export default function WarehouseReceiptFormPage() {
 
   const handleSubmit = async () => {
     if (!validateReceiptInfo()) return;
+
+    if (isWarehouseReceiptEdit) {
+      const receiptId = getRowValue(activeForm?.row, 'receiptId', '');
+      const payload = hasNewWarehouseReceiptUpdateImages(activeForm)
+        ? await buildWarehouseReceiptUpdateFormData(activeForm)
+        : buildWarehouseReceiptUpdatePayload(activeForm);
+      const response = await dispatch(updateWarehouseReceipt({ receiptId, payload }));
+
+      if (response?.error || response?.success === false) {
+        setSnackbar({
+          open: true,
+          message: response?.message || 'Failed to update warehouse receipt',
+          severity: 'error',
+        });
+        return;
+      }
+
+      setSuccessDialog({
+        open: true,
+        message: response?.message || 'Warehouse receipt updated successfully',
+        receiptNumbers: getReceiptNumbersFromResponse(response),
+        source: 'edit',
+      });
+      return;
+    }
 
     const payload = hasReceiptImages() ? await buildReceiptFormData() : buildReceiptPayload();
     const response = await dispatch(submitWarehouseReceiptBatch(payload));
@@ -2696,51 +3015,73 @@ export default function WarehouseReceiptFormPage() {
     });
   };
 
+  const hasActiveRateInformation = () => {
+    const rateInformation = activeForm?.row?.rateInformation ?? viewReceiptSummary?.rateInformation;
+    if (!rateInformation) return false;
+    if (typeof rateInformation !== 'object') return true;
+    return Object.keys(rateInformation).length > 0;
+  };
+
   const getActiveRateInformation = () => activeForm?.row?.rateInformation || viewReceiptSummary?.rateInformation || {};
+
+  const getActiveHasFlatRate = () =>
+    isYes(activeForm?.row?.hasFlatRate ?? viewReceiptSummary?.hasFlatRate ?? getActiveRateInformation().hasFlatRate);
+
+  const handleOpenRatesDialog = () => {
+    if (!hasActiveRateInformation()) {
+      setRatesNoticeOpen(true);
+      return;
+    }
+
+    setRatesNoticeOpen(false);
+    setRatesDialogOpen(true);
+  };
 
   const getRateDisplayValue = (value) => {
     if (value === undefined || value === null || value === '') return '';
     return formatMeasurement(value);
   };
 
-  const getRateDialogRows = () =>
-    (activeForm?.items || []).map((item) => {
-      const rateInformation = getActiveRateInformation();
-      const dimFactor = Number(rateInformation.dimFactor);
-      const hasDimFactor = Number.isFinite(dimFactor) && dimFactor > 0;
-      const hasPieces = item.pieces !== undefined && item.pieces !== null && item.pieces !== '';
-      const hasLength = item.length !== undefined && item.length !== null && item.length !== '';
-      const hasWidth = item.width !== undefined && item.width !== null && item.width !== '';
-      const hasHeight = item.height !== undefined && item.height !== null && item.height !== '';
-      const piecesValue = Number(item.pieces);
-      const pieces = item.pieces === undefined || item.pieces === null || item.pieces === '' ? '' : String(item.pieces).padStart(2, '0');
-      const length = hasLength ? Number(formatDecimal10_2Input(item.length)) : '';
-      const width = hasWidth ? Number(formatDecimal10_2Input(item.width)) : '';
-      const height = hasHeight ? Number(formatDecimal10_2Input(item.height)) : '';
-      const canCalculateDimWeight = hasDimFactor && hasPieces && hasLength && hasWidth && hasHeight;
-      const dimWeight = canCalculateDimWeight ? formatMeasurement((piecesValue * length * width * height) / dimFactor) : '';
-      const actualWeight = item.weight === undefined || item.weight === null || item.weight === '' ? '' : Number(item.weight);
+  const getRateDialogRows = () => {
+    const rateInformation = getActiveRateInformation();
+    const freightBreakdown = Array.isArray(rateInformation.freightBreakdown) ? rateInformation.freightBreakdown : [];
+    const sourceRows = freightBreakdown.length
+      ? freightBreakdown
+      : Array.isArray(activeForm?.row?.freightInformation)
+        ? activeForm.row.freightInformation
+        : [];
+    const hasValue = (value) => value !== undefined && value !== null && value !== '';
+    const dimFactor = hasValue(rateInformation.dimFactor) ? getRateDisplayValue(rateInformation.dimFactor) : '';
+
+    return sourceRows.map((item) => {
+      const pieces = hasValue(item.pieces) ? item.pieces : '';
+      const type = item.type || '';
+      const length = hasValue(item.length) ? getRateDisplayValue(item.length) : '';
+      const width = hasValue(item.width) ? getRateDisplayValue(item.width) : '';
+      const height = hasValue(item.height) ? getRateDisplayValue(item.height) : '';
+      const dimensionalWeight = hasValue(item.dimensionalWeight) ? getRateDisplayValue(item.dimensionalWeight) : '';
+      const actualWeightValue = item.actualWeight ?? item.weight;
+      const actualWeight = hasValue(actualWeightValue) ? getRateDisplayValue(actualWeightValue) : '';
+      const hasDimensionalFormula = [pieces, length, width, height, dimFactor, dimensionalWeight].every(hasValue);
 
       return {
         pieces,
-        type: item.type || '',
-        formula: canCalculateDimWeight ? `${piecesValue} x ${length} x ${width} x ${height} / ${dimFactor} = ${dimWeight}` : '',
-        dimWeight,
+        type,
+        formula: hasDimensionalFormula
+          ? `${pieces} x ${length} x ${width} x ${height} / ${dimFactor} = ${dimensionalWeight}`
+          : '',
+        dimensionalWeight,
         actualWeight,
       };
     });
+  };
 
   const getRatesTotal = () => {
     const rateInformation = getActiveRateInformation();
-    const rateRows = getRateDialogRows();
-    const calculatedDimWeightTotal = rateRows.reduce((sum, row) => sum + Number(row.dimWeight || 0), 0);
-    const calculatedActualWeightTotal = rateRows.reduce((sum, row) => sum + Number(row.actualWeight || 0), 0);
-    const dimWeightTotal = rateInformation.totalDimensionalWeight ?? (calculatedDimWeightTotal ? calculatedDimWeightTotal : '');
-    const actualWeightTotal = rateInformation.totalActualWeight ?? (calculatedActualWeightTotal ? calculatedActualWeightTotal : '');
 
     return {
-      dimWeightTotal: getRateDisplayValue(dimWeightTotal),
-      actualWeightTotal: getRateDisplayValue(actualWeightTotal),
+      dimWeightTotal: getRateDisplayValue(rateInformation.totalDimensionalWeight),
+      actualWeightTotal: getRateDisplayValue(rateInformation.totalActualWeight),
       estimatedCost: getRateDisplayValue(rateInformation.finalRate),
     };
   };
@@ -4010,7 +4351,7 @@ export default function WarehouseReceiptFormPage() {
                                 zIndex: 2,
                                 bgcolor: '#d9d9d9',
                                 textAlign: 'center',
-                                width: 72,
+                                width: isWarehouseReceiptEdit ? 116 : 72,
                               }
                             : {}),
                         }}
@@ -4024,12 +4365,55 @@ export default function WarehouseReceiptFormPage() {
                   {splitFormItems.map(({ item, originalIndex }, index) => (
                     <TableRow key={`${item.id || originalIndex}-${index}`}>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{String(index + 1).padStart(2, '0')}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.pieces}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.type}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.length}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.width}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.height}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.weight}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                        {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
+                          <TextField
+                            variant="standard"
+                            value={item.pieces || ''}
+                            onChange={(event) => updateActiveFreightItemField(item.id, 'pieces', event.target.value.replace(/\D/g, '').slice(0, 5))}
+                            size="small"
+                            inputProps={{ inputMode: 'numeric' }}
+                            sx={{ minWidth: 48, '& input': { fontSize: 12, py: 0.2 } }}
+                          />
+                        ) : item.pieces}
+                      </TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                        {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
+                          <TextField
+                            select
+                            variant="standard"
+                            value={item.type || ''}
+                            onChange={(event) => updateActiveFreightItemField(item.id, 'type', event.target.value)}
+                            size="small"
+                            sx={{ minWidth: 82, '& .MuiSelect-select': { fontSize: 12, py: 0.2 } }}
+                          >
+                            {FREIGHT_TYPE_OPTIONS.map((option) => (
+                              <MenuItem key={option} value={option}>
+                                {option}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        ) : item.type}
+                      </TableCell>
+                      {[
+                        { field: 'length', value: item.length },
+                        { field: 'width', value: item.width },
+                        { field: 'height', value: item.height },
+                        { field: 'weight', value: item.weight },
+                      ].map(({ field, value }) => (
+                        <TableCell key={field} sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
+                            <TextField
+                              variant="standard"
+                              value={value || ''}
+                              onChange={(event) => updateActiveFreightItemField(item.id, field, event.target.value)}
+                              size="small"
+                              inputProps={{ inputMode: 'decimal' }}
+                              sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 } }}
+                            />
+                          ) : value}
+                        </TableCell>
+                      ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
                         {formatMeasurement(calculateItemCbm(item))}
                       </TableCell>
@@ -4079,6 +4463,16 @@ export default function WarehouseReceiptFormPage() {
                             </Box>
                           )}
                         </IconButton>
+                        {isWarehouseReceiptEdit && isReceiptDetailsEditable && activeForm.items.length > 1 && (
+                          <IconButton
+                            size="small"
+                            title="Delete item"
+                            onClick={() => handleRemoveActiveFreightItem(item.id)}
+                            sx={{ p: 0.2, color: '#A22' }}
+                          >
+                            <Iconify icon="mdi:delete" width={18} />
+                          </IconButton>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -4356,15 +4750,36 @@ export default function WarehouseReceiptFormPage() {
                   >
                     Print Labels
                   </Button>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => setRatesDialogOpen(true)}
-                    disabled={isArchivedReceipt}
-                    sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
-                  >
-                    Rates
-                  </Button>
+                  <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                    {ratesNoticeOpen && (
+                      <Alert
+                        severity="warning"
+                        sx={{
+                          position: 'absolute',
+                          right: 0,
+                          bottom: 'calc(100% + 8px)',
+                          width: { xs: 'min(280px, calc(100vw - 32px))', sm: 270 },
+                          py: 0.25,
+                          px: 0.8,
+                          zIndex: 3,
+                          boxShadow: 2,
+                          '& .MuiAlert-icon': { fontSize: 16, mr: 0.6, py: 0.2 },
+                          '& .MuiAlert-message': { fontSize: 11, py: 0.2 },
+                        }}
+                      >
+                        Please set rate on the station to see the rates
+                      </Alert>
+                    )}
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleOpenRatesDialog}
+                      disabled={isArchivedReceipt}
+                      sx={{ ...actionBtnSx, height: 26, width: '100%', fontSize: 12 }}
+                    >
+                      Rates
+                    </Button>
+                  </Box>
                 </Stack>
               </Box>
             </Box>
@@ -4434,11 +4849,11 @@ export default function WarehouseReceiptFormPage() {
             <Button
               variant="contained"
               size="small"
-              disabled={warehouseReceiptBatch.loading}
+              disabled={updateReceiptLoading}
               onClick={handleSubmit}
               sx={{ ...actionBtnSx, height: 24, minWidth: 58 }}
             >
-              {warehouseReceiptBatch.loading ? 'Updating...' : 'Update'}
+              {updateReceiptLoading ? 'Updating...' : 'Update'}
             </Button>
           </Stack>
         ) : (
@@ -4658,7 +5073,7 @@ export default function WarehouseReceiptFormPage() {
                                 zIndex: 2,
                                 bgcolor: '#d9d9d9',
                                 textAlign: 'center',
-                                width: 72,
+                                width: isWarehouseReceiptEdit ? 116 : 72,
                               }
                             : {}),
                         }}
@@ -4672,12 +5087,55 @@ export default function WarehouseReceiptFormPage() {
                   {activeForm.items.map((item, index) => (
                     <TableRow key={item.id || index}>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{String(index + 1).padStart(2, '0')}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.pieces}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.type}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.length}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.width}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.height}</TableCell>
-                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{item.weight}</TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                        {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
+                          <TextField
+                            variant="standard"
+                            value={item.pieces || ''}
+                            onChange={(event) => updateActiveFreightItemField(item.id, 'pieces', event.target.value.replace(/\D/g, '').slice(0, 5))}
+                            size="small"
+                            inputProps={{ inputMode: 'numeric' }}
+                            sx={{ minWidth: 48, '& input': { fontSize: 12, py: 0.2 } }}
+                          />
+                        ) : item.pieces}
+                      </TableCell>
+                      <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                        {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
+                          <TextField
+                            select
+                            variant="standard"
+                            value={item.type || ''}
+                            onChange={(event) => updateActiveFreightItemField(item.id, 'type', event.target.value)}
+                            size="small"
+                            sx={{ minWidth: 82, '& .MuiSelect-select': { fontSize: 12, py: 0.2 } }}
+                          >
+                            {FREIGHT_TYPE_OPTIONS.map((option) => (
+                              <MenuItem key={option} value={option}>
+                                {option}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        ) : item.type}
+                      </TableCell>
+                      {[
+                        { field: 'length', value: item.length },
+                        { field: 'width', value: item.width },
+                        { field: 'height', value: item.height },
+                        { field: 'weight', value: item.weight },
+                      ].map(({ field, value }) => (
+                        <TableCell key={field} sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
+                            <TextField
+                              variant="standard"
+                              value={value || ''}
+                              onChange={(event) => updateActiveFreightItemField(item.id, field, event.target.value)}
+                              size="small"
+                              inputProps={{ inputMode: 'decimal' }}
+                              sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 } }}
+                            />
+                          ) : value}
+                        </TableCell>
+                      ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
                         {formatMeasurement(calculateItemCbm(item))}
                       </TableCell>
@@ -4690,48 +5148,82 @@ export default function WarehouseReceiptFormPage() {
                           zIndex: 1,
                           bgcolor: '#fff',
                           textAlign: 'center',
-                          width: 72,
+                          width: isWarehouseReceiptEdit ? 116 : 72,
                         }}
                       >
-                        <IconButton
-                          size="small"
-                          title="View uploaded images"
-                          disabled={(item.images?.length || 0) === 0}
-                          onClick={() => handleOpenImages(item, index)}
-                          sx={{ p: 0.2, position: 'relative' }}
-                        >
-                          <Iconify
-                            icon="mdi:image-multiple"
-                            width={20}
-                            sx={{ color: (item.images?.length || 0) > 0 ? '#0a4a8f' : '#9e9e9e' }}
-                          />
-                          {(item.images?.length || 0) > 0 && (
-                            <Box
-                              component="span"
-                              sx={{
-                                position: 'absolute',
-                                top: -5,
-                                right: -6,
-                                minWidth: 15,
-                                height: 15,
-                                px: 0.35,
-                                borderRadius: '50%',
-                                bgcolor: '#A22',
-                                color: '#fff',
-                                fontSize: 10,
-                                lineHeight: '15px',
-                                fontWeight: 700,
-                              }}
+                        <Stack direction="row" spacing={0.4} justifyContent="center" alignItems="center">
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
+                            <IconButton
+                              size="small"
+                              title="Upload image"
+                              onClick={() => handleOpenActiveItemUpload(item)}
+                              sx={{ p: 0.2, color: '#111' }}
                             >
-                              {item.images.length}
-                            </Box>
+                              <Iconify icon="mdi:image-plus" width={20} />
+                            </IconButton>
                           )}
-                        </IconButton>
+                          <IconButton
+                            size="small"
+                            title="View uploaded images"
+                            disabled={(item.images?.length || 0) === 0}
+                            onClick={() => handleOpenImages(item, index)}
+                            sx={{ p: 0.2, position: 'relative' }}
+                          >
+                            <Iconify
+                              icon="mdi:image-multiple"
+                              width={20}
+                              sx={{ color: (item.images?.length || 0) > 0 ? '#0a4a8f' : '#9e9e9e' }}
+                            />
+                            {(item.images?.length || 0) > 0 && (
+                              <Box
+                                component="span"
+                                sx={{
+                                  position: 'absolute',
+                                  top: -5,
+                                  right: -6,
+                                  minWidth: 15,
+                                  height: 15,
+                                  px: 0.35,
+                                  borderRadius: '50%',
+                                  bgcolor: '#A22',
+                                  color: '#fff',
+                                  fontSize: 10,
+                                  lineHeight: '15px',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {item.images.length}
+                              </Box>
+                            )}
+                          </IconButton>
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable && activeForm.items.length > 1 && (
+                            <IconButton
+                              size="small"
+                              title="Delete item"
+                              onClick={() => handleRemoveActiveFreightItem(item.id)}
+                              sx={{ p: 0.2, color: '#A22' }}
+                            >
+                              <Iconify icon="mdi:trash-can" width={20} />
+                            </IconButton>
+                          )}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
+                <Stack direction="row" justifyContent="flex-end" sx={{ p: 1 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleAddActiveFreightItem}
+                    sx={{ ...actionBtnSx, height: 26, minWidth: 86, fontSize: 11 }}
+                  >
+                    Add Items
+                  </Button>
+                </Stack>
+              )}
             </Box>
 
             <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -4782,9 +5274,19 @@ export default function WarehouseReceiptFormPage() {
                             checked={activeFreightInfo.badFreightCondition}
                             disabled={isMobileReceiptForm || !isReceiptDetailsEditable}
                             onChange={(event) =>
-                              updateActiveFreightInfo({
-                                badFreightCondition: event.target.checked,
-                                ...(event.target.checked ? {} : { freightConditionImages: [] }),
+                              updateActiveFreightInfo((info) => {
+                                const removePaths = event.target.checked
+                                  ? info.removeBadFreightImagePaths || []
+                                  : [
+                                      ...(info.removeBadFreightImagePaths || []),
+                                      ...info.freightConditionImages.map(getReceiptImageRemovePath).filter(Boolean),
+                                    ];
+
+                                return {
+                                  badFreightCondition: event.target.checked,
+                                  removeBadFreightImagePaths: [...new Set(removePaths)],
+                                  ...(event.target.checked ? {} : { freightConditionImages: [] }),
+                                };
                               })
                             }
                             size="small"
@@ -5210,7 +5712,7 @@ export default function WarehouseReceiptFormPage() {
                             cursor: 'zoom-in',
                           }}
                         />
-                      {imageDialog.itemLabel === 'Bad Freight Condition' && !isMobileReceiptForm && isReceiptDetailsEditable && (
+                      {!isMobileReceiptForm && isReceiptDetailsEditable && (
                         <IconButton
                           size="small"
                           title="Remove image"
@@ -5452,15 +5954,7 @@ export default function WarehouseReceiptFormPage() {
                 onClick={() => setRatesDialogOpen(false)}
                 sx={{ height: 28, minWidth: 74, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 12 }}
               >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => handleViewAction('Ready for Approval action is not available yet')}
-                sx={{ ...actionBtnSx, height: 28, minWidth: 142, fontSize: 12 }}
-              >
-                Ready for Approval
+                Close
               </Button>
             </Stack>
           </Stack>
@@ -5472,6 +5966,7 @@ export default function WarehouseReceiptFormPage() {
             const hasBaseRate = rateInformation.baseRate !== undefined && rateInformation.baseRate !== null && rateInformation.baseRate !== '';
             const hasMinRate = rateInformation.minRate !== undefined && rateInformation.minRate !== null && rateInformation.minRate !== '';
             const hasMaxRate = rateInformation.maxRate !== undefined && rateInformation.maxRate !== null && rateInformation.maxRate !== '';
+            const hasFlatRate = getActiveHasFlatRate();
 
             return (
               <>
@@ -5495,10 +5990,15 @@ export default function WarehouseReceiptFormPage() {
             <FormControlLabel
               control={
                 <Checkbox
-                  checked={ratesFlatRateChecked}
-                  onChange={(event) => setRatesFlatRateChecked(event.target.checked)}
+                  checked={hasFlatRate}
+                  disabled
                   size="small"
-                  sx={{ p: 0.35, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
+                  sx={{
+                    p: 0.35,
+                    color: '#102a63',
+                    '&.Mui-checked': { color: '#102a63' },
+                    '&.Mui-disabled': { color: hasFlatRate ? '#102a63' : 'rgba(0, 0, 0, 0.26)' },
+                  }}
                 />
               }
               label={<Typography sx={{ fontSize: 14 }}>Flat Rate</Typography>}
@@ -5512,9 +6012,9 @@ export default function WarehouseReceiptFormPage() {
               InputProps={{ readOnly: true }}
               sx={{
                 flex: 0.75,
-                display: { xs: ratesFlatRateChecked ? 'block' : 'none', md: 'block' },
-                visibility: { md: ratesFlatRateChecked ? 'visible' : 'hidden' },
-                pointerEvents: ratesFlatRateChecked ? 'auto' : 'none',
+                display: { xs: hasFlatRate ? 'block' : 'none', md: 'block' },
+                visibility: { md: hasFlatRate ? 'visible' : 'hidden' },
+                pointerEvents: 'none',
                 '& .MuiInputLabel-root': { fontSize: 14 },
                 '& input': { fontSize: 14 },
               }}
@@ -5527,9 +6027,9 @@ export default function WarehouseReceiptFormPage() {
               InputProps={{ readOnly: true }}
               sx={{
                 flex: 1,
-                display: { xs: ratesFlatRateChecked ? 'block' : 'none', md: 'block' },
-                visibility: { md: ratesFlatRateChecked ? 'visible' : 'hidden' },
-                pointerEvents: ratesFlatRateChecked ? 'auto' : 'none',
+                display: { xs: hasFlatRate ? 'block' : 'none', md: 'block' },
+                visibility: { md: hasFlatRate ? 'visible' : 'hidden' },
+                pointerEvents: 'none',
                 '& .MuiInputLabel-root': { fontSize: 14 },
                 '& input': { fontSize: 14 },
               }}
