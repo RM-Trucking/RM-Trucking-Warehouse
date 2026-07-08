@@ -85,6 +85,33 @@ const getNoteRowsFromResponse = (responseData) => {
   return [];
 };
 
+const getSpreadsheetFilename = (contentDisposition) => {
+  const headerValue = String(contentDisposition || '');
+  const utf8Match = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  const filenameMatch = headerValue.match(/filename="?([^";]+)"?/i);
+  const filename = utf8Match?.[1] || filenameMatch?.[1] || '';
+
+  if (!filename) return 'warehouse-receipts.xlsx';
+
+  try {
+    return decodeURIComponent(filename);
+  } catch (error) {
+    return filename;
+  }
+};
+
+const downloadBlob = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
 const slice = createSlice({
   name: 'warehouseReceipt',
   initialState,
@@ -272,6 +299,46 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
       }));
     } catch (error) {
       dispatch(slice.actions.hasError(error));
+    }
+  };
+}
+
+export function exportWarehouseReceiptSpreadsheet({ status = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
+  return async () => {
+    try {
+      const params = new URLSearchParams();
+
+      if (status) {
+        params.set('status', status);
+      }
+
+      if (receiptNumber) {
+        params.set('receiptNumber', receiptNumber);
+      }
+
+      params.set('accounting', accounting ? 'true' : 'false');
+
+      Object.entries(filters || {}).forEach(([key, value]) => {
+        const cleanValue = String(value ?? '').trim();
+        if (cleanValue) {
+          params.set(key, cleanValue);
+        }
+      });
+
+      const response = await axios.get(`/warehouse-receipt/export-spreadsheet?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const filename = getSpreadsheetFilename(response.headers?.['content-disposition']);
+
+      downloadBlob(response.data, filename);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to export warehouse receipt spreadsheet';
+
+      return { error: true, message: errorMessage };
     }
   };
 }
