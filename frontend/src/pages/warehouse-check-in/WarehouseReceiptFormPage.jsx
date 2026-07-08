@@ -206,7 +206,6 @@ const formatDecimal10_2Input = (value) => {
 };
 
 const toDecimal10_2NumberOrNull = (value) => toNumberOrNull(formatDecimal10_2Input(value));
-const INCH_TO_METER = 0.0254;
 
 const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.length)) *

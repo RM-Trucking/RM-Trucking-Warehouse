@@ -172,7 +172,6 @@ const toValueOrNull = (value) => {
 };
 
 const toYesNo = (value) => (value ? 'Y' : 'N');
-const INCH_TO_METER = 0.0254;
 
 const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.length)) *
