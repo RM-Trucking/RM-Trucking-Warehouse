@@ -96,7 +96,7 @@ if (process.env.BAD_FREIGHT_IMAGE_PATH)
 // CORS middleware
 app.use(cors({
     origin: '*', // You can restrict this to specific origins if needed
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
     exposedHeaders: ['X-Request-ID'],
 }));

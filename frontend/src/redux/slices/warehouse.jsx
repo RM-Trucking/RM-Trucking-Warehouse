@@ -349,11 +349,22 @@ export function createTempWarehouseReceipt(payload) {
 }
 
 // Submit Warehouse Receipt batch
-export function submitWarehouseReceiptBatch(payload) {
+export function submitWarehouseReceiptBatch(payload, options = {}) {
     return async () => {
         dispatch(slice.actions.startWarehouseReceiptBatch());
         try {
-            const response = await axios.post('/warehouse-receipt/batch', payload);
+            const params = new URLSearchParams();
+
+            if (options.split !== undefined) {
+                params.set('split', String(options.split));
+            }
+            if (options.parentReceiptId !== undefined && options.parentReceiptId !== null && options.parentReceiptId !== '') {
+                params.set('parentReceiptId', String(options.parentReceiptId));
+            }
+
+            const queryString = params.toString();
+            const url = queryString ? `/warehouse-receipt/batch?${queryString}` : '/warehouse-receipt/batch';
+            const response = await axios.post(url, payload);
             dispatch(slice.actions.warehouseReceiptBatchSuccess(response.data));
             return response.data;
         } catch (error) {

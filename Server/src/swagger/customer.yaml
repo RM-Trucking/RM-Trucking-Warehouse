@@ -65,3 +65,130 @@ paths:
                   message:
                     type: string
                     example: "Database connection error"
+  /api/maintenance/customer/customer-dropdown:
+    get:
+      tags:
+        - Customer
+      summary: Autocomplete customer dropdown
+      description: >
+        Provides a list of active customers for use in an autocomplete dropdown.
+        If a search value is provided, results are filtered by customer name
+        (case-insensitive substring match). If no search is provided, all active
+        customers are returned.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Search string used to filter customers by name
+      responses:
+        "200":
+          description: List of customers matching the search criteria
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomerDropdownResponse"
+              examples:
+                success:
+                  summary: Example autocomplete response
+                  value:
+                    success: true
+                    data:
+                      - id: 101
+                        name: "Acme Logistics"
+                      - id: 102
+                        name: "Beta Transport"
+        "400":
+          description: Invalid request or error fetching customers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+              examples:
+                error:
+                  summary: Example error response
+                  value:
+                    success: false
+                    message: "Failed to fetch dropdown data"
+
+  /api/maintenance/customer/station-dropdown:
+    get:
+      tags:
+        - Customer
+      summary: Autocomplete station dropdown
+      description: >
+        Provides a list of active customers for use in an autocomplete dropdown.
+        If a search value is provided, results are filtered by customer name
+        (case-insensitive substring match). If no search is provided, all active
+        customers are returned.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: customerId
+          required: true
+          schema:
+            type: number
+          description: Customer Id
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Search string used to filter customers by name
+      responses:
+        "200":
+          description: List of customers matching the search criteria
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomerDropdownResponse"
+              examples:
+                success:
+                  summary: Example autocomplete response
+                  value:
+                    success: true
+                    data:
+                      - id: 101
+                        name: "Acme Logistics"
+                      - id: 102
+                        name: "Beta Transport"
+        "400":
+          description: Invalid request or error fetching customers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+              examples:
+                error:
+                  summary: Example error response
+                  value:
+                    success: false
+                    message: "Failed to fetch dropdown data"

@@ -90,10 +90,22 @@ router.get("/:receiptId/summary", authenticateJWT, async (req: Request, res: Res
     if (conn) conn.close();
 });
 
+router.get("/:receiptId/audit-logs", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.getAuditLogsForReceipt(req, res, conn);
+    if (conn) conn.close();
+});
+
 // Update receipt
 router.put("/:receiptId", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     await warehouseReceiptController.updateWarehouseReceipt(req, res, conn);
+    if (conn) conn.close();
+});
+
+router.patch("/:receiptId/location", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.updateWarehouseReceiptLocation(req, res, conn);
     if (conn) conn.close();
 });
 

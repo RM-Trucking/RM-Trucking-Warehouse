@@ -66,20 +66,35 @@ export async function getWarehouseReceipt(req: Request, res: Response, conn: Con
 
 /**
  * LIST WAREHOUSE RECEIPTS WITH PAGINATION & FILTERS
- * Endpoint: GET /warehouse-receipt?page=1&pageSize=10&status=INITIATE&carrierId=1
+ * Endpoint: GET /warehouse-receipt?page=1&pageSize=10&status=INITIATE
  */
 export async function listWarehouseReceipts(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const pageSize = parseInt(req.query.pageSize as string) || 10;
         const status = req.query.status as string | undefined;
-        const carrierId = req.query.carrierId ? parseInt(req.query.carrierId as string) : undefined;
+        const receiptNumber = req.query.receiptNumber as string | undefined;
+        const filters = {
+            startDate: req.query.startDate as string | undefined,
+            endDate: req.query.endDate as string | undefined,
+            customerId: req.query.customerId ? parseInt(req.query.customerId as string) : undefined,
+            stationId: req.query.stationId ? parseInt(req.query.stationId as string) : undefined,
+            carrierId: req.query.carrierId ? parseInt(req.query.carrierId as string) : undefined,
+            location: req.query.location as string | undefined,
+            proNumber: req.query.proNumber as string | undefined,
+            verificationId: req.query.verificationId ? parseInt(req.query.verificationId as string) : undefined,
+            destination: req.query.destination as string | undefined,
+            packageId: req.query.packageId as string | undefined,
+            customerRefNumber: req.query.customerRefNumber as string | undefined
+        };
 
         const result = await warehouseReceiptService.listWarehouseReceiptsService(
             conn,
             page,
             pageSize,
-            { status, carrierId }
+            status,
+            receiptNumber,
+            filters
         );
 
         res.status(200).json({
@@ -87,13 +102,15 @@ export async function listWarehouseReceipts(req: Request, res: Response, conn: C
             data: result.data,
             pagination: {
                 page: result.page,
-                pageSize: result.pageSize
-            }
+                pageSize: result.pageSize,
+                total: result.total
+            },
+            countList: result.countList
         });
     } catch (error: any) {
         logger.error("Error listing warehouse receipts", error);
         console.log(error);
-        
+
         res.status(500).json({ success: false, message: error.message });
     }
 }
@@ -669,5 +686,44 @@ export async function getProHeaderDetails(req: Request, res: Response, conn: Con
         } else {
             res.status(500).json({ success: false, message: error.message });
         }
+    }
+}
+
+export async function getAuditLogsForReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
+        if (!receiptId) {
+            res.status(400).json({ success: false, message: "Receipt ID is required" });
+            return;
+        }
+        const auditLogs = await warehouseReceiptService.getAuditLogsForReceiptService(conn, Number(receiptId));
+        res.status(200).json({ success: true, data: auditLogs });
+    } catch (error: any) {
+        logger.error("Error fetching audit logs for receipt", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+export async function updateWarehouseReceiptLocation(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
+        const { location } = req.body;
+        if (!receiptId) {
+            res.status(400).json({ success: false, message: "Receipt ID is required" });
+            return;
+        }
+        if (!location) {
+            res.status(400).json({ success: false, message: "Location is required" });
+            return;
+        }
+        await warehouseReceiptService.updateWarehouseReceiptLocationService(conn, Number(receiptId), location);
+        res.status(200).json({
+            success: true,
+            message: "Warehouse Receipt location updated successfully",
+        });
+    }
+    catch (error: any) {
+        logger.error("Error updating warehouse receipt location", error);
+        res.status(500).json({ success: false, message: error.message });
     }
 }

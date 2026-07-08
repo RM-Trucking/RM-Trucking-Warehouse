@@ -1,7 +1,7 @@
 import { Connection } from 'odbc';
 import * as customerDB from '../../database/maintanance';
 
-export async function getCustomerDropdownService(
+export async function getCustomerWithStationDropdownService(
     conn: Connection,
     search: string
 ): Promise<{
@@ -16,7 +16,7 @@ export async function getCustomerDropdownService(
     }[];
 }[]> {
     // Step 1: Get customer + station list
-    const stations = await customerDB.getCustomerDropdown(conn, search);
+    const stations = await customerDB.getCustomerWithStationDropdown(conn, search);
 
     // Step 2: For each station, fetch deduplicated emails
     const enrichedResult = await Promise.all(
@@ -33,3 +33,12 @@ export async function getCustomerDropdownService(
     return enrichedResult;
 }
 
+export async function getCustomerDropdown(conn: Connection, search: string): Promise<{ customerId: number, customerName: string }[]> {
+    const customers = await customerDB.getCustomerDropdown(conn, search)
+    return customers;
+}
+
+export async function getStationDropdown(conn: Connection, customerId: number, search: string): Promise<{ stationId: number, stationName: string }[]> {
+    const customers = await customerDB.getStationDropdown(conn, customerId, search)
+    return customers;
+}

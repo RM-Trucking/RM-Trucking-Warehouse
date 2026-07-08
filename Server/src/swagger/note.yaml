@@ -1,0 +1,103 @@
+openapi: 3.0.0
+info:
+  title: Note API
+  version: 1.0.0
+  description: API for managing notes linked to entities (Customer, Station, etc.)
+
+tags:
+  - name: Note
+    description: Operations related to notes
+
+paths:
+  /api/maintenance/note:
+    post:
+      tags: [Note]
+      summary: Add a new note message to a thread
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - noteThreadId
+                - messageText
+              properties:
+                noteThreadId:
+                  type: integer
+                  description: ID of the note thread
+                messageText:
+                  type: string
+                  description: Text content of the note message
+      responses:
+        "201":
+          description: Note message created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteMessageResponse"
+        "400":
+          description: Failed to create note message
+
+  /api/maintenance/note/{noteThreadId}:
+    get:
+      tags: [Note]
+      summary: Get all note messages for a thread
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noteThreadId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of note messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NoteMessageResponse"
+        "400":
+          description: Failed to fetch notes
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    NoteThread:
+      type: object
+      properties:
+        noteThreadId: { type: integer }
+        entityType: { type: string }
+        entityId: { type: integer }
+        createdBy: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    NoteMessage:
+      type: object
+      properties:
+        noteMessageId: { type: integer }
+        noteThreadId: { type: integer }
+        messageText: { type: string }
+        createdBy: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    NoteMessageRequest:
+      type: object
+      required:
+        - messageText
+      properties:
+        messageText: { type: string }
+
+    NoteMessageResponse:
+      allOf:
+        - $ref: "#/components/schemas/NoteMessage"

@@ -85,12 +85,12 @@ const FREIGHT_TYPE_OPTIONS = [
   "Tube",
 ];
 const REQUIRED_ITEM_FIELDS = [
-  { field: "pieces", label: "Pieces" },
-  { field: "type", label: "Type" },
-  { field: "length", label: "Length (inches)" },
-  { field: "width", label: "Width (inches)" },
-  { field: "height", label: "Height (inches)" },
-  { field: "weight", label: "Weight" },
+  { field: 'pieces', label: 'Pieces' },
+  { field: 'type', label: 'Type' },
+  { field: 'length', label: 'Length (in)' },
+  { field: 'width', label: 'Width (in)' },
+  { field: 'height', label: 'Height (in)' },
+  { field: 'weight', label: 'Weight' },
 ];
 const DECIMAL_ITEM_FIELDS = new Set(["length", "width", "height", "weight"]);
 const INCH_TO_METER = 0.0254;
@@ -171,15 +171,16 @@ const toValueOrNull = (value) => {
   return stringValue ? stringValue : null;
 };
 
-const toYesNo = (value) => (value ? "Y" : "N");
+const toYesNo = (value) => (value ? 'Y' : 'N');
+const INCH_TO_METER = 0.0254;
 
-const calculateItemCbm = (item) => {
-  const lengthMeters = Number(formatDecimal10_2Input(item.length)) * INCH_TO_METER;
-  const widthMeters = Number(formatDecimal10_2Input(item.width)) * INCH_TO_METER;
-  const heightMeters = Number(formatDecimal10_2Input(item.height)) * INCH_TO_METER;
-
-  return lengthMeters * widthMeters * heightMeters;
-};
+const calculateItemCbm = (item) =>
+  Number(formatDecimal10_2Input(item.length)) *
+  INCH_TO_METER *
+  Number(formatDecimal10_2Input(item.width)) *
+  INCH_TO_METER *
+  Number(formatDecimal10_2Input(item.height)) *
+  INCH_TO_METER;
 
 const formatMeasurement = (value) => {
   const number = Number(value);
@@ -3023,8 +3024,8 @@ export default function WarehouseCheckInPage({
   };
 
   const handleMobileRegularSuccessOk = () => {
-    setMobileRegularSuccessDialog({ open: false, message: "", entries: [] });
-    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    setMobileRegularSuccessDialog({ open: false, message: '', entries: [] });
+    dispatch(clearWarehouseCheckInDraft(draftKey));
     draftRestoredRef.current = false;
     resetCheckInState();
     dispatch(clearReceiptSearch());
@@ -3041,7 +3042,7 @@ export default function WarehouseCheckInPage({
   };
 
   const handleComplete = () => {
-    dispatch(clearWarehouseCheckInDraft({ draftKey }));
+    dispatch(clearWarehouseCheckInDraft(draftKey));
     draftRestoredRef.current = false;
     resetCheckInState();
     dispatch(clearReceiptSearch());
@@ -4193,71 +4194,31 @@ export default function WarehouseCheckInPage({
                                       </StyledTextField>
                                     </Stack>
 
-                                    {/* Length, Width, Height, Weight */}
-                                    {[
-                                      { label: "Length (inches)", field: "length" },
-                                      { label: "Width (inches)", field: "width" },
-                                      { label: "Height (inches)", field: "height" },
-                                      { label: "Weight(lbs)", field: "weight" },
-                                    ].map(({ label, field }) => (
-                                      <Stack
-                                        key={field}
-                                        spacing={0.3}
-                                        sx={{ flex: 1, minWidth: 70 }}
-                                      >
-                                        <Typography
-                                          sx={{ fontSize: 11, color: "#555" }}
-                                        >
-                                          {label}{" "}
-                                          <span style={{ color: "red" }}>
-                                            *
-                                          </span>
-                                        </Typography>
-                                        <StyledTextField
-                                          variant="standard"
-                                          size="small"
-                                          value={item[field]}
-                                          onChange={(e) => {
-                                            updateItem(
-                                              pr.key,
-                                              form.id,
-                                              item.id,
-                                              field,
-                                              e.target.value,
-                                            );
-                                            clearItemError(
-                                              pr.key,
-                                              form.id,
-                                              item.id,
-                                              field,
-                                              e.target.value,
-                                            );
-                                          }}
-                                          error={
-                                            !!receiptErrors[pr.key]?.items?.[
-                                              getItemErrorKey(
-                                                form.id,
-                                                item.id,
-                                                field,
-                                              )
-                                            ]
-                                          }
-                                          helperText={
-                                            receiptErrors[pr.key]?.items?.[
-                                              getItemErrorKey(
-                                                form.id,
-                                                item.id,
-                                                field,
-                                              )
-                                            ] || " "
-                                          }
-                                          inputProps={{
-                                            inputMode: "decimal",
-                                            style: { fontSize: 13 },
-                                          }}
-                                        />
-                                      </Stack>
-                                    ))}
+                                {/* Length, Width, Height, Weight */}
+                                {[
+                                  { label: 'Length (in)', field: 'length' },
+                                  { label: 'Width (in)', field: 'width' },
+                                  { label: 'Height (in)', field: 'height' },
+                                  { label: 'Weight(lbs)', field: 'weight' },
+                                ].map(({ label, field }) => (
+                                  <Stack key={field} spacing={0.3} sx={{ flex: 1, minWidth: 70 }}>
+                                    <Typography sx={{ fontSize: 11, color: '#555' }}>
+                                      {label} <span style={{ color: 'red' }}>*</span>
+                                    </Typography>
+                                    <StyledTextField
+                                      variant="standard"
+                                      size="small"
+                                      value={item[field]}
+                                      onChange={(e) => {
+                                        updateItem(pr.key, form.id, item.id, field, e.target.value);
+                                        clearItemError(pr.key, form.id, item.id, field, e.target.value);
+                                      }}
+                                      error={!!receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)]}
+                                      helperText={receiptErrors[pr.key]?.items?.[getItemErrorKey(form.id, item.id, field)] || ' '}
+                                      inputProps={{ inputMode: 'decimal', style: { fontSize: 13 } }}
+                                    />
+                                  </Stack>
+                                ))}
 
                                     {/* Action icons */}
                                     <Stack

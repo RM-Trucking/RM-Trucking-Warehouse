@@ -23,6 +23,8 @@ export const toUtcDate = (
     return new Date(normalized + "Z");
 };
 
+
+
 /**
  * FORMAT DATE FOR DB2
  * Converts JavaScript Date to DB2 compatible format (YYYY-MM-DD HH:MM:SS)

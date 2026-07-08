@@ -32,12 +32,14 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
 
     const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receiptId);
     const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receiptId);
+    const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId);
 
     return {
         ...receipt,
         freightInformation: freightWithImages,
         rate,
-        auditLogs
+        auditLogs,
+        customerEmails: emails,
     };
 }
 
@@ -62,12 +64,13 @@ export async function getWarehouseReceiptsByProService(conn: Connection, proNumb
 
             const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
             const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
-
+            const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId);
             return {
                 ...receipt,
                 freightInformation: freightWithImages,
                 rate,
-                auditLogs
+                auditLogs,
+                customerEmails: emails
             };
         })
     );
@@ -81,11 +84,26 @@ export async function listWarehouseReceiptsService(
     conn: Connection,
     page: number = 1,
     pageSize: number = 10,
-    filters?: { status?: string; carrierId?: number }
+    status?: string,
+    receiptNumber?: string,
+    filters?: {
+        startDate?: string;
+        endDate?: string;
+        customerId?: number;
+        stationId?: number;
+        carrierId?: number;
+        location?: string;
+        proNumber?: string;
+        verificationId?: number;
+        destination?: string;
+        packageId?: string;
+        customerRefNumber?: string;
+    }
 ) {
     const offset = (page - 1) * pageSize;
     let data = [];
-    data = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, filters);
+    const { data: receipts, total } = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, status, receiptNumber, filters);
+    data = receipts;
 
     data = await Promise.all(
         data.map(async (receipt) => {
@@ -169,7 +187,15 @@ export async function listWarehouseReceiptsService(
         })
     );
 
-    return { data, page, pageSize };
+    const pagination = {
+        page: page,
+        pageSize: pageSize,
+        total: total
+    }
+
+    const countList = await warehouseReceiptDB.getCountOfWarehouseReceipts(conn);
+
+    return { data, ...pagination, countList };
 }
 
 /**
@@ -355,7 +381,10 @@ export async function createTemporaryWarehouseReceiptService(conn: Connection, t
     };
     const receiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn, dataWithUser);
     const tempReceipt = await warehouseReceiptDB.getWarehouseReceiptTempByNumber(conn, receiptNumber);
-    return tempReceipt;
+    const emails = tempReceipt
+        ? await customerDB.getDepartmentAndPersonnelEmails(conn, tempReceipt.stationId)
+        : [];
+    return { ...tempReceipt, customerEmails: emails };
 }
 
 /**
@@ -865,6 +894,8 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         }
     }
 
+    const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, station.stationId);
+
     // Format response with required fields and enriched customer/carrier data
     return {
         proDetailId: proDetail.proDetailId,
@@ -885,7 +916,8 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         proNumber: proDetail.proNumber,
         proDate: proDetail.proDate,
         hazmat: proDetail.hazmat || 'N',
-        receiptNumber: receiptNumber
+        receiptNumber: receiptNumber,
+        customerEmails: emails,
     };
 }
 
@@ -997,4 +1029,13 @@ export async function printWarehouseReceiptLabelService(
         printerPort,
         printData
     };
+}
+
+export async function getAuditLogsForReceiptService(conn: Connection, receiptId: number) {
+    const auditLogs = await warehouseReceiptDB.getAuditLogsByReceiptId(conn, receiptId);
+    return auditLogs;
+}
+
+export async function updateWarehouseReceiptLocationService(conn: Connection, receiptId: number, location: string) {
+    await warehouseReceiptDB.updateWarehouseReceiptLocation(conn, receiptId, location);
 }

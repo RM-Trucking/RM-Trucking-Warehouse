@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
   Box,
@@ -27,6 +27,7 @@ import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
+  exportWarehouseReceiptSpreadsheet,
   getWarehouseReceipts,
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
@@ -73,6 +74,8 @@ const emptyReceiptFilters = {
   station: '',
   stationId: '',
   destination: '',
+  packageId: '',
+  customerRefNumber: '',
 };
 
 const actionIcons = [
@@ -162,6 +165,8 @@ const buildFreightInfoFromReceipt = (receipt = {}) => ({
 
 export default function WarehouseRecieptPage() {
   const navigate = useNavigate();
+  const { state } = useLocation();
+  const gridState = state?.warehouseReceiptGridState || {};
   const dispatch = useDispatch();
   const {
     receipts,
@@ -176,8 +181,8 @@ export default function WarehouseRecieptPage() {
   } = useSelector((state) => state.warehouseReceiptdata);
   const { carrierOptions, carrierLoading } = useSelector((state) => state.enroutedata);
   const [activeTab, setActiveTab] = useState('Active');
-  const [searchValue, setSearchValue] = useState('');
-  const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState('');
+  const [searchValue, setSearchValue] = useState(gridState.searchValue || '');
+  const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState(gridState.submittedReceiptNumber || '');
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
   const [locationOverrides, setLocationOverrides] = useState({});
   const [locationSaving, setLocationSaving] = useState(false);
@@ -185,12 +190,14 @@ export default function WarehouseRecieptPage() {
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [comingSoonMessageOpen, setComingSoonMessageOpen] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState(gridState.selectedStatus || '');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
-  const [receiptFilters, setReceiptFilters] = useState(emptyReceiptFilters);
-  const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(emptyReceiptFilters);
+  const [receiptFilters, setReceiptFilters] = useState(gridState.receiptFilters || gridState.appliedReceiptFilters || emptyReceiptFilters);
+  const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
+  const [paginationModel, setPaginationModel] = useState(gridState.paginationModel || { page: 0, pageSize: 10 });
 
   const activeFilterCount = Object.entries(appliedReceiptFilters)
     .filter(([key, value]) => !['carrier', 'customerId', 'stationId'].includes(key) && String(value || '').trim())
@@ -207,6 +214,8 @@ export default function WarehouseRecieptPage() {
     customerId: appliedReceiptFilters.customerId,
     stationId: appliedReceiptFilters.stationId,
     destination: appliedReceiptFilters.destination,
+    packageId: appliedReceiptFilters.packageId,
+    customerRefNumber: appliedReceiptFilters.customerRefNumber,
   };
 
   useEffect(() => {
@@ -233,6 +242,8 @@ export default function WarehouseRecieptPage() {
     requestFilters.customerId,
     requestFilters.stationId,
     requestFilters.destination,
+    requestFilters.packageId,
+    requestFilters.customerRefNumber,
   ]);
 
   useEffect(() => {
@@ -587,12 +598,40 @@ export default function WarehouseRecieptPage() {
     setLocationMessageOpen(true);
   };
 
+  const handleExportSpreadsheet = async () => {
+    setExportingSpreadsheet(true);
+    setExportError('');
+
+    const response = await dispatch(exportWarehouseReceiptSpreadsheet({
+      status: requestStatus,
+      receiptNumber: requestReceiptNumber,
+      accounting: activeTab === 'Accounting',
+      filters: requestFilters,
+    }));
+
+    setExportingSpreadsheet(false);
+
+    if (response?.error || response?.success === false) {
+      setExportError(response?.message || 'Failed to export warehouse receipt spreadsheet');
+    }
+  };
+
+  const getWarehouseReceiptGridState = () => ({
+    selectedStatus,
+    searchValue,
+    submittedReceiptNumber,
+    receiptFilters,
+    appliedReceiptFilters,
+    paginationModel,
+  });
+
   const handleViewReceipt = (row) => {
     const receipt = row.rawData || {};
     const freightInfo = buildFreightInfoFromReceipt(receipt);
     const freightItems = Array.isArray(receipt.freightInformation)
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
+          freightId: item.freightId,
           pieces: item.pieces,
           type: item.type,
           length: item.length,
@@ -608,11 +647,14 @@ export default function WarehouseRecieptPage() {
         title: 'Warehouse Receipt Form',
         draftKey: `warehouse-receipt-view-${row.receiptNumber}`,
         warehouseReceiptView: true,
+        warehouseReceiptGridState: getWarehouseReceiptGridState(),
         viewReceiptSummary: {
           receiptId: row.receiptId || row.id,
           receiptNumber: row.receiptNumber,
           status: row.status,
           noteThreadId: receipt.noteThreadId,
+          rateInformation: receipt.rateInformation,
+          hasFlatRate: receipt.hasFlatRate,
         },
         receipts: [
           {
@@ -661,7 +703,14 @@ export default function WarehouseRecieptPage() {
           size="small"
           placeholder="Search by Receipt Number"
           value={searchValue}
-          onChange={(event) => setSearchValue(event.target.value)}
+          onChange={(event) => setSearchValue(event.target.value.slice(0, 100))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              handleReceiptSearch();
+            }
+          }}
+          inputProps={{ maxLength: 100 }}
           sx={{
             width: 245,
             '& .MuiOutlinedInput-root': {
@@ -699,15 +748,21 @@ export default function WarehouseRecieptPage() {
         </IconButton>
         <IconButton
           size="small"
-          onClick={() => setComingSoonMessageOpen(true)}
+          onClick={handleExportSpreadsheet}
+          disabled={exportingSpreadsheet}
           sx={{
-            bgcolor: '#e5e5e5',
-            color: '#9a9a9a',
+            bgcolor: '#eef6ef',
+            color: '#1f7a3a',
             borderRadius: 0.8,
-            '&:hover': { bgcolor: '#dedede' },
+            '&:hover': { bgcolor: '#dceedd' },
+            '&.Mui-disabled': { bgcolor: '#e5e5e5', color: '#9a9a9a' },
           }}
         >
-          <Iconify icon="mdi:table" width={18} sx={{ color: '#9a9a9a' }} />
+          {exportingSpreadsheet ? (
+            <CircularProgress size={16} color="inherit" />
+          ) : (
+            <Iconify icon="mdi:file-excel" width={18} sx={{ color: 'inherit' }} />
+          )}
         </IconButton>
       </Box>
 
@@ -907,6 +962,20 @@ export default function WarehouseRecieptPage() {
               onChange={(event) => handleReceiptFilterChange('destination', event.target.value)}
               fullWidth
             />
+            <TextField
+              size="small"
+              placeholder="Search by Package ID"
+              value={receiptFilters.packageId}
+              onChange={(event) => handleReceiptFilterChange('packageId', event.target.value)}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              placeholder="Search by Customer Ref Number"
+              value={receiptFilters.customerRefNumber}
+              onChange={(event) => handleReceiptFilterChange('customerRefNumber', event.target.value)}
+              fullWidth
+            />
             <Autocomplete
               options={customerOptions}
               getOptionLabel={getCustomerOptionLabel}
@@ -1101,6 +1170,13 @@ export default function WarehouseRecieptPage() {
         autoHideDuration={2000}
         onClose={() => setComingSoonMessageOpen(false)}
         message="This feature will be available soon"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={Boolean(exportError)}
+        autoHideDuration={3000}
+        onClose={() => setExportError('')}
+        message={exportError}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>

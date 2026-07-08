@@ -1,6 +1,8 @@
 import { Connection } from "odbc";
 import { WarehouseReceipt, WarehouseReceiptTemp, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptFreightImage, WarehouseReceiptDocuments } from "../../entities/warehouse-receipt";
 import { SCHEMA } from "../../config/db2";
+import { getUserName } from "../maintanance";
+import { toUtcDate } from "../../utils/dateFormater";
 
 /**
  * WAREHOUSE RECEIPT TEMP
@@ -237,23 +239,109 @@ export async function getWarehouseReceiptsByCustomerStation(conn: Connection, cu
     }));
 }
 
-export async function listWarehouseReceipts(conn: Connection, limit: number, offset: number, filters?: { status?: string; carrierId?: number }): Promise<WarehouseReceipt[]> {
+export async function listWarehouseReceipts(
+    conn: Connection,
+    limit: number,
+    offset: number,
+    status?: string,
+    receiptNumber?: string,
+    filters?: {
+        startDate?: string;
+        endDate?: string;
+        customerId?: number;
+        stationId?: number;
+        carrierId?: number;
+        location?: string;
+        proNumber?: string;
+        verificationId?: number;
+        destination?: string;
+        packageId?: string;
+        customerRefNumber?: string;
+    },
+    filterLogic: "AND" | "OR" = "AND"
+): Promise<{ data: WarehouseReceipt[]; total: number }> {
     let query = `
-    SELECT "wr".* , "c"."carrierName", "cust"."customerName", "s"."stationName"
+    SELECT "wr".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
     FROM ${SCHEMA}."Warehouse_Receipt" "wr"
     LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wr"."carrierId" = "c"."carrierId"
     LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wr"."customerId" = "cust"."customerId"
     LEFT JOIN ${SCHEMA}."Station" "s" ON "wr"."stationId" = "s"."stationId"
     WHERE 1=1`;
-    const params: (string | number)[] = [];
+    const params: any[] = [];
 
-    if (filters?.status) {
+    // Common filters (always AND)
+    if (status) {
         query += ` AND "wr"."status" = ?`;
-        params.push(filters.status);
+        params.push(status);
     }
+
+    if (receiptNumber) {
+        query += ` AND "wr"."receiptNumber" LIKE ?`;
+        params.push(`%${receiptNumber}%`);
+    }
+
+    // Special filters (grouped with filterLogic)
+    const specialConditions: string[] = [];
+    const specialParams: any[] = [];
+
+    if (filters?.startDate) {
+        specialConditions.push(`"wr"."createdAt" >= CAST(? AS TIMESTAMP)`);
+        specialParams.push(filters.startDate);
+    }
+
+    if (filters?.endDate) {
+        specialConditions.push(`"wr"."createdAt" <= CAST(? AS TIMESTAMP)`);
+        specialParams.push(filters.endDate);
+    }
+
+    if (filters?.customerId) {
+        specialConditions.push(`"wr"."customerId" = ?`);
+        specialParams.push(filters.customerId);
+    }
+
+    if (filters?.stationId) {
+        specialConditions.push(`"wr"."stationId" = ?`);
+        specialParams.push(filters.stationId);
+    }
+
     if (filters?.carrierId) {
-        query += ` AND "wr"."carrierId" = ?`;
-        params.push(filters.carrierId);
+        specialConditions.push(`"wr"."carrierId" = ?`);
+        specialParams.push(filters.carrierId);
+    }
+
+    if (filters?.location) {
+        specialConditions.push(`"wr"."location" LIKE ?`);
+        specialParams.push(`%${filters.location}%`);
+    }
+
+    if (filters?.proNumber) {
+        specialConditions.push(`"wr"."proNumber" LIKE ?`);
+        specialParams.push(`%${filters.proNumber}%`);
+    }
+
+    if (filters?.verificationId) {
+        specialConditions.push(`"wr"."verificationId" = ?`);
+        specialParams.push(filters.verificationId);
+    }
+
+    if (filters?.destination) {
+        specialConditions.push(`"wr"."destination" LIKE ?`);
+        specialParams.push(`%${filters.destination}%`);
+    }
+
+    if (filters?.packageId) {
+        specialConditions.push(`"wr"."packageId" LIKE ?`);
+        specialParams.push(`%${filters.packageId}%`);
+    }
+
+    if (filters?.customerRefNumber) {
+        specialConditions.push(`"wr"."customerRefNumber" LIKE ?`);
+        specialParams.push(`%${filters.customerRefNumber}%`);
+    }
+
+    if (specialConditions.length > 0) {
+        query += ` AND (${specialConditions.join(` ${filterLogic} `)})`;
+        params.push(...specialParams);
     }
 
     query += ` ORDER BY "wr"."receiptNumber" DESC LIMIT ? OFFSET ?`;
@@ -261,7 +349,7 @@ export async function listWarehouseReceipts(conn: Connection, limit: number, off
 
     const result = await conn.query(query, params) as WarehouseReceipt[];
 
-    return result.map((row: any) => ({
+    const receipts = result.map((row: any) => ({
         ...row,
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
@@ -272,6 +360,108 @@ export async function listWarehouseReceipts(conn: Connection, limit: number, off
         unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
         class: row.class ? JSON.parse(row.class) : []
     }));
+
+    // Total query (same logic)
+    let totalQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wr"."carrierId" = "c"."carrierId"
+    LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wr"."customerId" = "cust"."customerId"
+    LEFT JOIN ${SCHEMA}."Station" "s" ON "wr"."stationId" = "s"."stationId"
+    WHERE 1=1`;
+    const totalParams: any[] = [];
+
+    if (status) {
+        totalQuery += ` AND "wr"."status" = ?`;
+        totalParams.push(status);
+    }
+
+    if (receiptNumber) {
+        totalQuery += ` AND "wr"."receiptNumber" LIKE ?`;
+        totalParams.push(`%${receiptNumber}%`);
+    }
+
+    if (specialConditions.length > 0) {
+        totalQuery += ` AND (${specialConditions.join(` ${filterLogic} `)})`;
+        totalParams.push(...specialParams);
+    }
+
+    const totalResult = await conn.query(totalQuery, totalParams) as { total: number }[];
+    const total = totalResult[0]?.total || 0;
+
+    return { data: receipts, total };
+}
+
+export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number }> {
+    let activeCountQuery = `
+    SELECT COUNT(*) as "total" 
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr" 
+    WHERE "wr"."accountOnHold" = 'N'`;
+    const params: any[] = [];
+
+    let accountingCountQuery = `
+    SELECT COUNT(*) as "total" 
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr" 
+    WHERE "wr"."accountOnHold" = 'Y'`;
+
+    let initiateCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'INITIATED'`;
+
+    let onHandCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'ON_HAND'`;
+
+    let preparedCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'PREPARED'`;
+
+    let scannedCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'SCANNED'`;
+
+    let shippedCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'SHIPPED'`;
+
+    let rejectedCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'REJECTED'`;
+
+    let archivedCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'ARCHIVED'`;
+
+
+
+    const activeCount = await conn.query(activeCountQuery, params) as { total: number }[];
+    const accountingCount = await conn.query(accountingCountQuery, params) as { total: number }[];
+    const initiateCount = await conn.query(initiateCountQuery, params) as { total: number }[];
+    const onHandCount = await conn.query(onHandCountQuery, params) as { total: number }[];
+    const preparedCount = await conn.query(preparedCountQuery, params) as { total: number }[];
+    const scannedCount = await conn.query(scannedCountQuery, params) as { total: number }[];
+    const shippedCount = await conn.query(shippedCountQuery, params) as { total: number }[];
+    const rejectedCount = await conn.query(rejectedCountQuery, params) as { total: number }[];
+    const archivedCount = await conn.query(archivedCountQuery, params) as { total: number }[];
+
+    return {
+        active: activeCount[0]?.total || 0,
+        accounting: accountingCount[0]?.total || 0,
+        initiate: initiateCount[0]?.total || 0,
+        onHand: onHandCount[0]?.total || 0,
+        prepared: preparedCount[0]?.total || 0,
+        scanned: scannedCount[0]?.total || 0,
+        shipped: shippedCount[0]?.total || 0,
+        rejected: rejectedCount[0]?.total || 0,
+        archived: archivedCount[0]?.total || 0
+    };
 }
 
 export async function updateWarehouseReceipt(conn: Connection, receiptId: number, updates: any): Promise<void> {
@@ -833,6 +1023,28 @@ export async function createAuditLog(conn: Connection, log: Omit<AuditLog, "audi
     return result[0].auditLogId;
 }
 
+export async function getAuditLogsByReceiptId(
+    conn: Connection,
+    receiptId: number | bigint
+): Promise<AuditLog[]> {
+    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Audit_Log" WHERE "receiptId" = ? ORDER BY "eventTime" DESC`;
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+
+    const logs = await Promise.all(
+        result.map(async (row: any) => ({
+            ...row,
+            auditLogId: row.auditLogId != null ? parseInt(row.auditLogId) : null,
+            receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+            receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+            userName: await getUserName(conn, row.userId),
+            createdAt: row.eventTime ? toUtcDate(row.eventTime) : null,
+        }))
+    );
+
+    return logs;
+}
+
+
 export async function getAuditLogsByReceipt(conn: Connection, receiptId: number | bigint): Promise<AuditLog[]> {
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Audit_Log" WHERE "receiptId" = ? ORDER BY "eventTime" DESC`;
     const result = await conn.query(query, [Number(receiptId)]) as any[];
@@ -1032,3 +1244,7 @@ export async function saveProDetail(
     return parseInt(result[0].proDetailId);
 }
 
+export async function updateWarehouseReceiptLocation(conn: Connection, receiptId: number, location: string): Promise<void> {
+    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET "location" = ? WHERE "receiptId" = ?`;
+    await conn.query(query, [location, Number(receiptId)]);
+}
