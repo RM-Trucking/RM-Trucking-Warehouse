@@ -610,6 +610,7 @@ export default function WarehouseRecieptPage() {
     const freightItems = Array.isArray(receipt.freightInformation)
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
+          freightId: item.freightId,
           pieces: item.pieces,
           type: item.type,
           length: item.length,

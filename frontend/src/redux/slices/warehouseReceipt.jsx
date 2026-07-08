@@ -23,6 +23,8 @@ const initialState = {
   auditLogs: [],
   auditLogsLoading: false,
   auditLogsError: null,
+  updateReceiptLoading: false,
+  updateReceiptError: null,
 };
 
 const formatDate = (value) => {
@@ -124,6 +126,35 @@ const slice = createSlice({
             }
           : row
       );
+    },
+    startUpdateWarehouseReceipt(state) {
+      state.updateReceiptLoading = true;
+      state.updateReceiptError = null;
+    },
+    updateWarehouseReceiptSuccess(state, action) {
+      state.updateReceiptLoading = false;
+      state.updateReceiptError = null;
+      const updatedReceipt = action.payload?.receipt;
+      const receiptId = action.payload?.receiptId || updatedReceipt?.receiptId;
+
+      if (!receiptId) return;
+
+      state.receipts = state.receipts.map((row) =>
+        String(row.receiptId || row.id) === String(receiptId)
+          ? {
+              ...row,
+              ...(updatedReceipt ? toGridRow({ ...(row.rawData || {}), ...updatedReceipt }) : {}),
+              rawData: {
+                ...(row.rawData || {}),
+                ...(updatedReceipt || {}),
+              },
+            }
+          : row
+      );
+    },
+    updateWarehouseReceiptError(state, action) {
+      state.updateReceiptLoading = false;
+      state.updateReceiptError = action.payload?.message || action.payload || 'Failed to update warehouse receipt';
     },
     startCustomerLoading(state) {
       state.customerLoading = true;
@@ -268,6 +299,36 @@ export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
         error.message ||
         'Failed to update warehouse receipt location';
 
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function updateWarehouseReceipt({ receiptId, payload } = {}) {
+  return async () => {
+    if (!receiptId) {
+      return { error: true, message: 'Receipt ID is required to update warehouse receipt' };
+    }
+
+    dispatch(slice.actions.startUpdateWarehouseReceipt());
+
+    try {
+      const response = await axios.put(`/warehouse-receipt/${encodeURIComponent(receiptId)}`, payload);
+      const responseReceipt = response.data?.data?.receipt || response.data?.data || response.data?.receipt || null;
+
+      dispatch(slice.actions.updateWarehouseReceiptSuccess({
+        receiptId,
+        receipt: responseReceipt,
+      }));
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update warehouse receipt';
+
+      dispatch(slice.actions.updateWarehouseReceiptError(errorMessage));
       return { error: true, message: errorMessage };
     }
   };
