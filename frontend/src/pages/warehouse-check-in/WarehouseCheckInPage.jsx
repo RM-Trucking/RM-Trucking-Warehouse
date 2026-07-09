@@ -5020,7 +5020,7 @@ export default function WarehouseCheckInPage({
       <Dialog
         open={barcodeScannerOpen}
         onClose={handleCloseParcelBarcodeScanner}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
       >
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
@@ -5043,7 +5043,7 @@ export default function WarehouseCheckInPage({
                 bgcolor: "#000",
                 borderRadius: 1,
                 overflow: "hidden",
-                minHeight: { xs: 260, sm: 360 },
+                minHeight: { xs: 320, sm: 460, md: 520 },
               }}
             >
               <Box
@@ -5054,7 +5054,7 @@ export default function WarehouseCheckInPage({
                 muted
                 sx={{
                   width: "100%",
-                  height: { xs: 260, sm: 360 },
+                  height: { xs: 320, sm: 460, md: 520 },
                   display: "block",
                   objectFit: "cover",
                 }}
@@ -5062,10 +5062,10 @@ export default function WarehouseCheckInPage({
               <Box
                 sx={{
                   position: "absolute",
-                  left: "12%",
-                  right: "12%",
-                  top: "34%",
-                  height: "32%",
+                  left: "6%",
+                  right: "6%",
+                  top: "24%",
+                  height: "46%",
                   border: "2px solid #fff",
                   borderRadius: 1,
                   boxShadow: "0 0 0 999px rgba(0,0,0,0.28)",
