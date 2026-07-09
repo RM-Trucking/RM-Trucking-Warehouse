@@ -100,7 +100,8 @@ const gridSx = {
 
 const isYes = (value) => String(value || '').toUpperCase() === 'Y';
 
-const isSendToTellSystemYes = (value) => ['Y', 'YES'].includes(String(value || '').trim().toUpperCase());
+const isSendToTellSystemYes = (value) =>
+  ['Y', 'YES', 'SUCCESS', 'SENT', 'TRUE'].includes(String(value || '').trim().toUpperCase());
 
 const statusPillColors = {
   'on-hand': '#4aa3d8',
@@ -343,7 +344,7 @@ export default function WarehouseRecieptPage() {
             ) : (
               <Tooltip title="Waiting to send the warehouse receipt to the Tell system." arrow>
                 <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <Iconify icon="mdi:clock-outline" width={18} sx={{ color: '#777' }} />
+                  <Iconify icon="mdi:clock-outline" width={18} sx={{ color: '#f59e0b' }} />
                 </Box>
               </Tooltip>
             )}

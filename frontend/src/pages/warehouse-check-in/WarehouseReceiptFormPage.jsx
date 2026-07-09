@@ -315,6 +315,39 @@ const getRowValue = (row, fields, fallback = '') => {
   return field ? row[field] : fallback;
 };
 
+const getNormalizedEmailAddress = (email) => {
+  if (typeof email === 'string') return email;
+  return email?.entryEmail || email?.email || '';
+};
+
+const normalizeSubmitEmailList = (value) =>
+  normalizeEmailList(value)
+    .map(getNormalizedEmailAddress)
+    .map((email) => String(email || '').trim())
+    .filter(Boolean);
+
+const mergeUniqueEmailLists = (...emailLists) => {
+  const seenEmails = new Set();
+
+  return emailLists
+    .flatMap((emailList) => normalizeSubmitEmailList(emailList))
+    .filter((email) => {
+      const emailKey = email.toLowerCase();
+      if (seenEmails.has(emailKey)) return false;
+      seenEmails.add(emailKey);
+      return true;
+    });
+};
+
+const hasStationDefaultEmails = (row = {}) =>
+  String(row.stationDefaultEmails?.hasDefaultEmails || '').trim().toUpperCase() === 'Y';
+
+const getStationDefaultEmailList = (row = {}) =>
+  hasStationDefaultEmails(row) ? normalizeSubmitEmailList(row.stationDefaultEmails?.emails || []) : [];
+
+const getSubmitToEmails = (row = {}) =>
+  mergeUniqueEmailLists(getRowValue(row, 'toEmails', []), getStationDefaultEmailList(row));
+
 const getCustomerOptionLabel = (option) => {
   if (!option) return '';
   if (typeof option === 'string') return option;
@@ -1946,7 +1979,7 @@ export default function WarehouseReceiptFormPage() {
           reWeight,
           cubicMeter,
           proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
-          toEmails: normalizeEmailList(getRowValue(formRow, 'toEmails', [])),
+          toEmails: getSubmitToEmails(formRow),
           tempEmails: normalizeTempEmailList(getRowValue(formRow, 'tempEmails', [])),
           invoiceNumber: toLimitedValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], ''), 50),
           poNumber: toLimitedValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], ''), 50),
@@ -2055,7 +2088,7 @@ export default function WarehouseReceiptFormPage() {
       plasticSkid: toYesNo(freightInfo.conditions['Plastic Skid']),
       hazMat: toYesNo(freightInfo.hazMat),
       labelCount: form.items?.length || 0,
-      toEmails: normalizeEmailList(getRowValue(formRow, 'toEmails', [])),
+      toEmails: getSubmitToEmails(formRow),
       cubicMeter,
       freightDetails,
       removeFreightIds: form.removeFreightIds || [],

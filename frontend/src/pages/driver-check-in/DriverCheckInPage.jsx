@@ -200,8 +200,6 @@ export default function DriverCheckInPage() {
   const [openMailList, setOpenMailList] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState({});
   const [currentFormEmails, setCurrentFormEmails] = useState([]);
-  const [confirmedEmailCount, setConfirmedEmailCount] = useState(0);
-  const [confirmedEmailIds, setConfirmedEmailIds] = useState({});
   const [currentGroupMailData, setCurrentGroupMailData] = useState(null);
   const [currentGroupId, setCurrentGroupId] = useState(null);
   const [confirmedEmailsByGroup, setConfirmedEmailsByGroup] = useState({});
@@ -304,7 +302,7 @@ const handleDriverNameFocus = () => {
     setCurrentGroupMailData(groupData);
     setCurrentGroupId(groupId);
     // Emails are already in the correct format: { entryId, entryType, entryEmail }
-    const emailsList = (groupData.emails || []).map((email, index) => ({
+    const emailsList = (groupData.emails || []).map((email) => ({
       entryId: email.entryId,
       entryType: email.entryType,
       entryEmail: email.entryEmail
@@ -312,8 +310,8 @@ const handleDriverNameFocus = () => {
     setCurrentFormEmails(emailsList);
 
     // Pre-populate selected emails from confirmed state for this group
-    const groupConfirmedEmails = confirmedEmailsByGroup[groupId] || {};
-    setSelectedEmails(groupConfirmedEmails);
+    const hasConfirmedEmails = Object.prototype.hasOwnProperty.call(confirmedEmailsByGroup, groupId);
+    setSelectedEmails(hasConfirmedEmails ? confirmedEmailsByGroup[groupId] : groupData.defaultSelectedEmails || {});
 
     setOpenMailList(true);
   };
@@ -323,7 +321,8 @@ const handleDriverNameFocus = () => {
   };
 
   const handleCancelMailList = () => {
-    setSelectedEmails(confirmedEmailIds);
+    const hasConfirmedEmails = Object.prototype.hasOwnProperty.call(confirmedEmailsByGroup, currentGroupId);
+    setSelectedEmails(hasConfirmedEmails ? confirmedEmailsByGroup[currentGroupId] : currentGroupMailData?.defaultSelectedEmails || {});
     setOpenMailList(false);
   };
 
@@ -340,8 +339,6 @@ const handleDriverNameFocus = () => {
       .map((email) => email.entryEmail);
 
     console.log('Sending driver check-in details to:', selectedEmailAddresses);
-    setConfirmedEmailCount(selectedEmailAddresses.length);
-    setConfirmedEmailIds(selectedEmails);
 
     // Save confirmed emails for this group
     if (currentGroupId) {
@@ -400,10 +397,8 @@ const handleDriverNameFocus = () => {
     });
     // Reset mail selection states
     setSelectedEmails({});
-    setConfirmedEmailIds({});
     setConfirmedEmailsByGroup({});
     setCurrentFormEmails([]);
-    setConfirmedEmailCount(0);
     dispatch(clearProVerification());
   };
 
@@ -572,7 +567,8 @@ const handleDriverNameFocus = () => {
               stationId: proData.stationId,
               customerName: proData.customerName,
               stationName: proData.stationName,
-              emails: normalizeEmails(proData.toEmails)
+              emails: normalizeEmails(proData.customerEmails),
+              toEmails: normalizeEmails(proData.toEmails)
             },
             pieces: proData.pieces?.toString() || '',
             weight: proData.weight?.toString() || '',
@@ -635,7 +631,8 @@ const handleDriverNameFocus = () => {
           stationId: rejectedProData.stationId,
           customerName: rejectedProData.customerName,
           stationName: rejectedProData.stationName,
-          emails: normalizeEmails(rejectedProData.toEmails)
+          emails: normalizeEmails(rejectedProData.customerEmails),
+          toEmails: normalizeEmails(rejectedProData.toEmails)
         },
         pieces: rejectedProData.pieces?.toString() || '',
         weight: rejectedProData.weight?.toString() || '',
@@ -781,12 +778,34 @@ const handleDriverNameFocus = () => {
     }).filter(Boolean);
   };
 
+  const buildDefaultSelectedEmails = (emails = [], toEmails = []) => {
+    const selectedEmailSet = new Set(
+      toEmails
+        .map((email) => (typeof email === 'string' ? email : email?.entryEmail || email?.email || ''))
+        .filter(Boolean)
+        .map((email) => String(email).trim().toLowerCase())
+    );
+
+    return emails.reduce((selectedMap, email) => {
+      const emailAddress = String(email.entryEmail || '').trim().toLowerCase();
+
+      if (emailAddress && selectedEmailSet.has(emailAddress)) {
+        selectedMap[email.entryId] = true;
+      }
+
+      return selectedMap;
+    }, {});
+  };
+
   const addEntry = (freightForwarder, pro, pieces, weight, shipper, proDetailId = 0) => {
     // Handle both object and string formats for backward compatibility
     const freightForwarderName = typeof freightForwarder === 'string'
       ? freightForwarder
       : (freightForwarder?.customerName || '');
     const stationName = typeof freightForwarder === 'object' ? (freightForwarder?.stationName || '') : '';
+    const groupEmails = typeof freightForwarder === 'object' ? (freightForwarder?.emails || []) : [];
+    const defaultSelectedEmails =
+      typeof freightForwarder === 'object' ? buildDefaultSelectedEmails(groupEmails, freightForwarder?.toEmails || []) : {};
 
     if (!freightForwarderName || !pro) return;
     const groupId = freightForwarderName.toUpperCase().replace(/\s+/g, "_");
@@ -812,7 +831,17 @@ const handleDriverNameFocus = () => {
 
       if (existing) {
         return prev.map((g) =>
-          g.id === groupId ? { ...g, entries: [...g.entries, newEntry] } : g,
+          g.id === groupId
+            ? {
+                ...g,
+                emails: g.emails?.length ? g.emails : groupEmails,
+                defaultSelectedEmails: {
+                  ...(g.defaultSelectedEmails || {}),
+                  ...defaultSelectedEmails,
+                },
+                entries: [...g.entries, newEntry],
+              }
+            : g,
         );
       }
       return [
@@ -821,7 +850,8 @@ const handleDriverNameFocus = () => {
           id: groupId,
           label: stationName ? `${freightForwarderName} | ${stationName}` : freightForwarderName,
           carrierId: selectedCarrier?.carrierId || null,
-          emails: typeof freightForwarder === 'object' ? (freightForwarder?.emails || []) : [],
+          emails: groupEmails,
+          defaultSelectedEmails,
           entries: [newEntry],
         },
       ];
@@ -1728,7 +1758,8 @@ const handleDriverNameFocus = () => {
                   size="small"
                   sx={{ color: "#A22" }}
                   onClick={() => handleOpenMailList({
-                    emails: group.emails || []
+                    emails: group.emails || [],
+                    defaultSelectedEmails: group.defaultSelectedEmails || {}
                   }, group.id)}
                 >
                   <Iconify icon="mdi:email-outline" width={20} />
