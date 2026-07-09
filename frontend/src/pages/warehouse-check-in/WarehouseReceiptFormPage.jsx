@@ -130,6 +130,38 @@ const FREIGHT_TYPE_OPTIONS = [
   'Tube',
 ];
 const DECIMAL_ITEM_FIELDS = new Set(['length', 'width', 'height', 'weight']);
+const REQUIRED_FREIGHT_ITEM_FIELDS = [
+  { field: 'pieces', label: 'Pieces' },
+  { field: 'type', label: 'Type' },
+  { field: 'length', label: 'Length' },
+  { field: 'width', label: 'Width' },
+  { field: 'height', label: 'Height' },
+  { field: 'weight', label: 'Weight' },
+];
+const REQUIRED_FREIGHT_ITEM_FIELD_SET = new Set(REQUIRED_FREIGHT_ITEM_FIELDS.map(({ field }) => field));
+const FREIGHT_ITEM_TABLE_HEADERS = [
+  { label: 'Item' },
+  { label: 'Pieces', field: 'pieces' },
+  { label: 'Type', field: 'type' },
+  { label: 'Length (in)', field: 'length' },
+  { label: 'Width (in)', field: 'width' },
+  { label: 'Height (in)', field: 'height' },
+  { label: 'Weight(lbs)', field: 'weight' },
+  { label: 'CBM(m3)' },
+  { label: 'Actions' },
+];
+const ROW_FIELD_ALIASES = {
+  invoiceNo: ['invoiceNo', 'invoiceNumber'],
+  invoiceNumber: ['invoiceNo', 'invoiceNumber'],
+  poNumber: ['poNumber', 'poNo'],
+  poNo: ['poNumber', 'poNo'],
+  customerRefNo: ['customerRefNo', 'customerReference'],
+  customerReference: ['customerRefNo', 'customerReference'],
+  packageId: ['packageId', 'packageNumber'],
+  packageNumber: ['packageId', 'packageNumber'],
+  destination: ['destination', 'finalDestination'],
+  finalDestination: ['destination', 'finalDestination'],
+};
 const INCH_TO_METER = 0.0254;
 
 const createFreightInfo = () => ({
@@ -259,6 +291,15 @@ const toLimitedValueOrNull = (value, maxLength) => {
 
 const toYesNo = (value) => (value ? 'Y' : 'N');
 
+const getRowFieldPatch = (field, value) =>
+  (ROW_FIELD_ALIASES[field] || [field]).reduce(
+    (patch, alias) => ({
+      ...patch,
+      [alias]: value,
+    }),
+    {}
+  );
+
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
     if (!file) {
@@ -370,6 +411,9 @@ const buildCustomerSelection = (row = {}) => {
     stationName: row.stationName || stationName || '',
   };
 };
+
+const hasValidCustomerSelection = (value) =>
+  Boolean(value?.customerId) && Boolean(value?.stationId);
 
 const isYes = (value) => String(value || '').toUpperCase() === 'Y';
 
@@ -774,7 +818,9 @@ function DisplayField({
   maxLength,
   onChange,
 }) {
-  const displayValue = maxLength ? String(value || '').slice(0, maxLength) : value || '';
+  const displayValue = maxLength
+    ? String(value ?? '').slice(0, maxLength)
+    : value ?? '';
 
   return (
     <Stack spacing={0.1} sx={{ width, minWidth: 0 }}>
@@ -882,7 +928,7 @@ function ReceiptInfoRow({ label, value, editable = false, required = false, erro
         {label} {required && <Box component="span" sx={{ color: '#A22' }}>*</Box>} :
       </Typography>
       <TextField
-        value={value || ''}
+        value={value ?? ''}
         onChange={(event) => {
           const nextValue = maxLength ? event.target.value.slice(0, maxLength) : event.target.value;
           onChange?.(nextValue);
@@ -1114,6 +1160,7 @@ export default function WarehouseReceiptFormPage() {
   const splitItemCameraVideoRef = useRef(null);
   const splitItemCameraStreamRef = useRef(null);
   const splitFreightImageFormIndexRef = useRef(null);
+  const editReceiptSnapshotRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
   const isWarehouseReceiptView = Boolean(state?.warehouseReceiptView);
   const isWarehouseReceiptEdit = Boolean(state?.warehouseReceiptEdit);
@@ -1152,6 +1199,7 @@ export default function WarehouseReceiptFormPage() {
   const [freightCameraOpen, setFreightCameraOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [successDialog, setSuccessDialog] = useState({ open: false, message: '', receiptNumbers: [], source: '' });
+  const [cancelEditConfirmOpen, setCancelEditConfirmOpen] = useState(false);
   const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
@@ -1231,6 +1279,22 @@ export default function WarehouseReceiptFormPage() {
   const isReceiptDetailsEditable = !isWarehouseReceiptView;
 
   useEffect(() => {
+    if (isWarehouseReceiptEdit) {
+      if (!editReceiptSnapshotRef.current) {
+        editReceiptSnapshotRef.current = {
+          receiptForms,
+          activeTab,
+          receiptInfoErrors,
+          receiptNoteText,
+        };
+      }
+      return;
+    }
+
+    editReceiptSnapshotRef.current = null;
+  }, [isWarehouseReceiptEdit]);
+
+  useEffect(() => {
     if (isSelectingCustomerRef.current) {
       isSelectingCustomerRef.current = false;
       return undefined;
@@ -1297,7 +1361,11 @@ export default function WarehouseReceiptFormPage() {
     setReceiptForms((prev) =>
       prev.map((form) => (form.id === activeTab ? { ...form, [field]: value } : form))
     );
-    if ((field === 'receivedBy' || field === 'location') && String(value || '').trim()) {
+    const shouldClearFieldError =
+      ((field === 'receivedBy' || field === 'location') && String(value || '').trim()) ||
+      (field === 'customerSelection' && hasValidCustomerSelection(value));
+
+    if (shouldClearFieldError) {
       setReceiptInfoErrors((prev) => ({
         ...prev,
         [activeTab]: {
@@ -1311,7 +1379,7 @@ export default function WarehouseReceiptFormPage() {
   const updateActiveRowField = (field, value) => {
     setReceiptForms((prev) =>
       prev.map((form) =>
-        form.id === activeTab ? { ...form, row: { ...form.row, [field]: value } } : form
+        form.id === activeTab ? { ...form, row: { ...form.row, ...getRowFieldPatch(field, value) } } : form
       )
     );
   };
@@ -1376,6 +1444,8 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const updateActiveFreightItemField = (itemId, field, value) => {
+    const nextValue = DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value;
+
     setReceiptForms((prev) =>
       prev.map((form) =>
         form.id === activeTab
@@ -1385,7 +1455,7 @@ export default function WarehouseReceiptFormPage() {
                 String(item.id) === String(itemId)
                   ? {
                       ...item,
-                      [field]: DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value,
+                      [field]: nextValue,
                     }
                   : item
               ),
@@ -1393,6 +1463,22 @@ export default function WarehouseReceiptFormPage() {
           : form
       )
     );
+    if (String(nextValue ?? '').trim()) {
+      const errorKey = `${itemId}-${field}`;
+      setReceiptInfoErrors((prev) => {
+        const formErrors = prev[activeTab] || {};
+        const itemErrors = { ...(formErrors.items || {}) };
+        delete itemErrors[errorKey];
+
+        return {
+          ...prev,
+          [activeTab]: {
+            ...formErrors,
+            items: itemErrors,
+          },
+        };
+      });
+    }
   };
 
   const handleCustomerChange = (newValue) => {
@@ -1967,8 +2053,8 @@ export default function WarehouseReceiptFormPage() {
           receivedBy: toLimitedValueOrNull(form.receivedBy, 100),
           location: toValueOrNull(form.location),
           shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
-          customerId: toNumberOrNull(customerSelection.customerId || formRow.customerId),
-          stationId: toNumberOrNull(customerSelection.stationId || formRow.stationId),
+          customerId: toNumberOrNull(customerSelection.customerId),
+          stationId: toNumberOrNull(customerSelection.stationId),
           verificationId,
           ...(hasNoVerificationId
             ? { driverName: toValueOrNull(getRowValue(formRow, ['driverName', 'driver'], '')) || '' }
@@ -1985,7 +2071,7 @@ export default function WarehouseReceiptFormPage() {
           poNumber: toLimitedValueOrNull(getRowValue(formRow, ['poNumber', 'poNo'], ''), 50),
           customerRefNumber: toLimitedValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], ''), 50),
           freightCondition: freightInfo.badFreightCondition ? 'Y' : null,
-          handlingDescription: toValueOrNull(freightInfo.freightConditionDescription || freightInfo.notes),
+          handlingDescription: toValueOrNull(freightInfo.freightConditionDescription),
           notes: toValueOrNull(freightInfo.notes),
           destination: toValueOrNull(getRowValue(formRow, ['destination', 'finalDestination'], '')),
           originalDgd: freightInfo.hazMat ? toYesNo(freightInfo.originalDgd) : null,
@@ -2058,8 +2144,8 @@ export default function WarehouseReceiptFormPage() {
       location: toValueOrNull(form.location),
       receivedBy: toLimitedValueOrNull(form.receivedBy, 100),
       shipper: toValueOrNull(getRowValue(formRow, ['shipper', 'shipperName'], '')),
-      customerId: toNumberOrNull(customerSelection.customerId || formRow.customerId),
-      stationId: toNumberOrNull(customerSelection.stationId || formRow.stationId),
+      customerId: toNumberOrNull(customerSelection.customerId),
+      stationId: toNumberOrNull(customerSelection.stationId),
       verificationId: toNumberOrNull(formRow.verificationId),
       carrierId: toNumberOrNull(formRow.carrierId),
       piecesInland,
@@ -2071,7 +2157,7 @@ export default function WarehouseReceiptFormPage() {
       customerRefNumber: toLimitedValueOrNull(getRowValue(formRow, ['customerRefNo', 'customerReference'], ''), 50),
       freightCondition: freightInfo.badFreightCondition ? 'Y' : 'N',
       documents: toYesNo(freightInfo.conditions.Document),
-      handlingDescription: toValueOrNull(freightInfo.freightConditionDescription || freightInfo.notes),
+      handlingDescription: toValueOrNull(freightInfo.freightConditionDescription),
       destination: toValueOrNull(getRowValue(formRow, ['destination', 'finalDestination'], '')),
       originalDgd: freightInfo.hazMat ? toYesNo(freightInfo.originalDgd) : 'N',
       unNumber: freightInfo.hazMat ? freightInfo.unNumbers.filter(Boolean) : [],
@@ -2166,7 +2252,7 @@ export default function WarehouseReceiptFormPage() {
     let firstInvalidFormId = '';
 
     receiptForms.forEach((form) => {
-      const formErrors = {};
+      const formErrors = { items: {} };
 
       if (!String(form.receivedBy || '').trim()) {
         formErrors.receivedBy = 'Received By is mandatory';
@@ -2174,8 +2260,24 @@ export default function WarehouseReceiptFormPage() {
       if (!String(form.location || '').trim()) {
         formErrors.location = 'Location is mandatory';
       }
+      if (!hasValidCustomerSelection(form.customerSelection)) {
+        formErrors.customerSelection = 'Customer is mandatory';
+      }
 
-      if (Object.keys(formErrors).length > 0) {
+      (form.items || []).forEach((item) => {
+        REQUIRED_FREIGHT_ITEM_FIELDS.forEach(({ field, label }) => {
+          if (!String(item[field] ?? '').trim()) {
+            formErrors.items[`${item.id}-${field}`] = `${label} is mandatory`;
+          }
+        });
+      });
+
+      if (
+        formErrors.receivedBy ||
+        formErrors.location ||
+        formErrors.customerSelection ||
+        Object.keys(formErrors.items).length > 0
+      ) {
         nextErrors[form.id] = formErrors;
         if (!firstInvalidFormId) firstInvalidFormId = form.id;
       }
@@ -2185,7 +2287,11 @@ export default function WarehouseReceiptFormPage() {
 
     if (firstInvalidFormId) {
       setActiveTab(firstInvalidFormId);
-      setSnackbar({ open: true, message: 'Please fill all mandatory fields before submitting', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: `Please fill all mandatory fields before ${isWarehouseReceiptEdit ? 'updating' : 'submitting'}`,
+        severity: 'error',
+      });
       return false;
     }
 
@@ -2890,7 +2996,7 @@ export default function WarehouseReceiptFormPage() {
         ...next[formIndex],
         row: {
           ...next[formIndex].row,
-          [field]: value,
+          ...getRowFieldPatch(field, value),
         },
       };
 
@@ -3025,6 +3131,13 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const handleEditWarehouseReceipt = () => {
+    editReceiptSnapshotRef.current = {
+      receiptForms,
+      activeTab,
+      receiptInfoErrors,
+      receiptNoteText,
+    };
+
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       replace: true,
       state: {
@@ -3037,6 +3150,30 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const handleCancelEditWarehouseReceipt = () => {
+    setCancelEditConfirmOpen(true);
+  };
+
+  const handleCloseCancelEditConfirm = () => {
+    setCancelEditConfirmOpen(false);
+  };
+
+  const handleConfirmCancelEditWarehouseReceipt = () => {
+    const snapshot = editReceiptSnapshotRef.current;
+
+    if (snapshot) {
+      setReceiptForms(snapshot.receiptForms);
+      setActiveTab(snapshot.activeTab || snapshot.receiptForms?.[0]?.id || '');
+      setReceiptInfoErrors(snapshot.receiptInfoErrors || {});
+      setReceiptNoteText(snapshot.receiptNoteText || '');
+    } else {
+      setReceiptForms(initialReceiptForms);
+      setActiveTab(initialReceiptForms[0]?.id || '');
+      setReceiptInfoErrors({});
+      setReceiptNoteText(initialReceiptForms[0]?.freightInfo?.notes || '');
+    }
+
+    setCancelEditConfirmOpen(false);
+
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
       replace: true,
       state: {
@@ -3580,7 +3717,6 @@ export default function WarehouseReceiptFormPage() {
                               onChange={(event) => updateSplitRecalculateItem(formIndex, item.id, 'pieces', event.target.value)}
                               size="small"
                               error={Boolean(getItemError('pieces'))}
-                              helperText={getItemError('pieces')}
                               sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 }, '& .MuiFormHelperText-root': { fontSize: 10, mx: 0 } }}
                             />
                             <TextField
@@ -3591,7 +3727,6 @@ export default function WarehouseReceiptFormPage() {
                               onChange={(event) => updateSplitRecalculateItem(formIndex, item.id, 'type', event.target.value)}
                               size="small"
                               error={Boolean(getItemError('type'))}
-                              helperText={getItemError('type')}
                               sx={{
                                 '& .MuiInputLabel-root': { fontSize: 12 },
                                 '& .MuiInputBase-root': { height: 31, alignItems: 'flex-end' },
@@ -3621,7 +3756,6 @@ export default function WarehouseReceiptFormPage() {
                                 size="small"
                                 inputProps={{ inputMode: 'decimal' }}
                                 error={Boolean(getItemError(field))}
-                                helperText={getItemError(field)}
                                 sx={{ '& .MuiInputLabel-root': { fontSize: 12 }, '& input': { fontSize: 12 }, '& .MuiFormHelperText-root': { fontSize: 10, mx: 0 } }}
                               />
                             ))}
@@ -4285,7 +4419,16 @@ export default function WarehouseReceiptFormPage() {
                       {...params}
                       variant="standard"
                       size="small"
-                      sx={fieldSx}
+                      error={Boolean(receiptInfoErrors[activeForm.id]?.customerSelection)}
+                      helperText={receiptInfoErrors[activeForm.id]?.customerSelection || ''}
+                      sx={{
+                        ...fieldSx,
+                        '& .MuiFormHelperText-root': {
+                          display: 'block',
+                          fontSize: 11,
+                          mt: 0.3,
+                        },
+                      }}
                       InputProps={{
                         ...params.InputProps,
                         endAdornment: (
@@ -4369,7 +4512,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length (in)', 'Width (in)', 'Height (in)', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                    {FREIGHT_ITEM_TABLE_HEADERS.map(({ label: head, field }) => (
                       <TableCell
                         key={head}
                         sx={{
@@ -4390,6 +4533,11 @@ export default function WarehouseReceiptFormPage() {
                         }}
                       >
                         {head}
+                        {REQUIRED_FREIGHT_ITEM_FIELD_SET.has(field) && (
+                          <Box component="span" sx={{ color: '#b01818', ml: 0.2 }}>
+                            *
+                          </Box>
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -5021,7 +5169,16 @@ export default function WarehouseReceiptFormPage() {
                       {...params}
                       variant="standard"
                       size="small"
-                      sx={fieldSx}
+                      error={Boolean(receiptInfoErrors[activeForm.id]?.customerSelection)}
+                      helperText={receiptInfoErrors[activeForm.id]?.customerSelection || ''}
+                      sx={{
+                        ...fieldSx,
+                        '& .MuiFormHelperText-root': {
+                          display: 'block',
+                          fontSize: 11,
+                          mt: 0.3,
+                        },
+                      }}
                       InputProps={{
                         ...params.InputProps,
                         endAdornment: (
@@ -5094,7 +5251,7 @@ export default function WarehouseReceiptFormPage() {
               <Table size="small" sx={{ minWidth: { xs: 720, lg: '100%' } }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#d9d9d9' }}>
-                    {['Item', 'Pieces', 'Type', 'Length (in)', 'Width (in)', 'Height (in)', 'Weight(lbs)', 'CBM(m3)', 'Actions'].map((head) => (
+                    {FREIGHT_ITEM_TABLE_HEADERS.map(({ label: head, field }) => (
                       <TableCell
                         key={head}
                         sx={{
@@ -5115,23 +5272,33 @@ export default function WarehouseReceiptFormPage() {
                         }}
                       >
                         {head}
+                        {REQUIRED_FREIGHT_ITEM_FIELD_SET.has(field) && (
+                          <Box component="span" sx={{ color: '#b01818', ml: 0.2 }}>
+                            *
+                          </Box>
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {activeForm.items.map((item, index) => (
+                  {activeForm.items.map((item, index) => {
+                    const getItemError = (field) =>
+                      receiptInfoErrors[activeForm.id]?.items?.[`${item.id}-${field}`] || '';
+
+                    return (
                     <TableRow key={item.id || index}>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>{String(index + 1).padStart(2, '0')}</TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
                         {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
                           <TextField
                             variant="standard"
-                            value={item.pieces || ''}
+                            value={item.pieces ?? ''}
                             onChange={(event) => updateActiveFreightItemField(item.id, 'pieces', event.target.value.replace(/\D/g, '').slice(0, 5))}
                             size="small"
+                            error={Boolean(getItemError('pieces'))}
                             inputProps={{ inputMode: 'numeric' }}
-                            sx={{ minWidth: 48, '& input': { fontSize: 12, py: 0.2 } }}
+                            sx={{ minWidth: 48, '& input': { fontSize: 12, py: 0.2 }, '& .MuiFormHelperText-root': { m: 0, fontSize: 10 } }}
                           />
                         ) : item.pieces}
                       </TableCell>
@@ -5140,10 +5307,11 @@ export default function WarehouseReceiptFormPage() {
                           <TextField
                             select
                             variant="standard"
-                            value={item.type || ''}
+                            value={item.type ?? ''}
                             onChange={(event) => updateActiveFreightItemField(item.id, 'type', event.target.value)}
                             size="small"
-                            sx={{ minWidth: 82, '& .MuiSelect-select': { fontSize: 12, py: 0.2 } }}
+                            error={Boolean(getItemError('type'))}
+                            sx={{ minWidth: 82, '& .MuiSelect-select': { fontSize: 12, py: 0.2 }, '& .MuiFormHelperText-root': { m: 0, fontSize: 10 } }}
                           >
                             {FREIGHT_TYPE_OPTIONS.map((option) => (
                               <MenuItem key={option} value={option}>
@@ -5163,11 +5331,12 @@ export default function WarehouseReceiptFormPage() {
                           {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
                             <TextField
                               variant="standard"
-                              value={value || ''}
+                              value={value ?? ''}
                               onChange={(event) => updateActiveFreightItemField(item.id, field, event.target.value)}
                               size="small"
+                              error={Boolean(getItemError(field))}
                               inputProps={{ inputMode: 'decimal' }}
-                              sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 } }}
+                              sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 }, '& .MuiFormHelperText-root': { m: 0, fontSize: 10 } }}
                             />
                           ) : value}
                         </TableCell>
@@ -5245,7 +5414,8 @@ export default function WarehouseReceiptFormPage() {
                         </Stack>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
               {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
@@ -6238,6 +6408,30 @@ export default function WarehouseReceiptFormPage() {
             </Button>
           </DialogActions>
         </Dialog>
+      </Dialog>
+      <Dialog open={cancelEditConfirmOpen} onClose={handleCloseCancelEditConfirm} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>Do you want to cancel?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: 13 }}>Any unsaved changes will lost</Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleCloseCancelEditConfirm}
+            sx={{ height: 28, minWidth: 64, color: '#111', borderColor: '#777', textTransform: 'none', fontSize: 12 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleConfirmCancelEditWarehouseReceipt}
+            sx={{ ...actionBtnSx, height: 28, minWidth: 64, fontSize: 12 }}
+          >
+            OK
+          </Button>
+        </DialogActions>
       </Dialog>
       <Dialog
         open={statusHistoryDialogOpen}
