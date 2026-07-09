@@ -206,6 +206,39 @@ const normalizeEmailList = (value) => {
   return [];
 };
 
+const mergeUniqueEmailLists = (...emailLists) => {
+  const seenEmails = new Set();
+
+  return emailLists
+    .flatMap((emailList) => normalizeEmailList(emailList))
+    .filter((email) => {
+      const emailKey = email.toLowerCase();
+      if (seenEmails.has(emailKey)) return false;
+      seenEmails.add(emailKey);
+      return true;
+    });
+};
+
+const hasStationDefaultEmails = (row = {}) =>
+  String(row.stationDefaultEmails?.hasDefaultEmails || "")
+    .trim()
+    .toUpperCase() === "Y";
+
+const getStationDefaultEmailList = (row = {}) =>
+  hasStationDefaultEmails(row)
+    ? normalizeEmailList(row.stationDefaultEmails?.emails || [])
+    : [];
+
+const getSubmitToEmails = (row = {}) =>
+  mergeUniqueEmailLists(
+    getRowValue(row, "toEmails", []),
+    getStationDefaultEmailList(row),
+  );
+
+const needsEmailSelection = (row = {}) =>
+  !hasStationDefaultEmails(row) &&
+  normalizeEmailList(getRowValue(row, "toEmails", [])).length === 0;
+
 const normalizeEmailRows = (emails) => {
   if (!Array.isArray(emails)) return [];
 
@@ -966,6 +999,9 @@ export default function WarehouseCheckInPage({
     emails: [],
     selectedEmails: {},
   });
+  const [emailSelectionAlertOpen, setEmailSelectionAlertOpen] =
+    useState(false);
+  const [mailAlertReceiptKey, setMailAlertReceiptKey] = useState("");
   const [regularMobileSubmitConfirmOpen, setRegularMobileSubmitConfirmOpen] =
     useState(false);
   const [commonFieldsConfirm, setCommonFieldsConfirm] = useState({
@@ -1037,6 +1073,8 @@ export default function WarehouseCheckInPage({
     setPrinterContext(null);
     setPrintLoading(false);
     setRegularMobileSubmitConfirmOpen(false);
+    setEmailSelectionAlertOpen(false);
+    setMailAlertReceiptKey("");
     setCommonFieldsConfirm({
       open: false,
       nextErrors: {},
@@ -1177,6 +1215,10 @@ export default function WarehouseCheckInPage({
       customerEmails:
         row.customerEmails || warehouseReceiptSearch.data.customerEmails || [],
       toEmails: row.toEmails || warehouseReceiptSearch.data.toEmails || [],
+      stationDefaultEmails:
+        row.stationDefaultEmails ||
+        warehouseReceiptSearch.data.stationDefaultEmails ||
+        null,
     };
     const formDefaults = {
       destination: getRowValue(
@@ -1203,6 +1245,12 @@ export default function WarehouseCheckInPage({
       },
     ]);
     setIsSearchDisabled(true);
+    if (needsEmailSelection(normalizedRow)) {
+      setEmailSelectionAlertOpen(true);
+      setMailAlertReceiptKey(key);
+    } else {
+      setMailAlertReceiptKey("");
+    }
     // Clear search results
     dispatch(clearReceiptSearch());
   };
@@ -1225,6 +1273,7 @@ export default function WarehouseCheckInPage({
       emails,
       selectedEmails,
     });
+    setMailAlertReceiptKey("");
   };
 
   const handleCloseMailList = () => {
@@ -1253,6 +1302,7 @@ export default function WarehouseCheckInPage({
       },
     }));
     setMailListDialog((prev) => ({ ...prev, open: false }));
+    setMailAlertReceiptKey("");
   };
 
   const removeReceipt = (key) => {
@@ -1975,7 +2025,7 @@ export default function WarehouseCheckInPage({
             proNumber: toValueOrNull(
               getRowValue(row, "proNumber", receipt?.proNumber || ""),
             ),
-            toEmails: normalizeEmailList(getRowValue(row, "toEmails", [])),
+            toEmails: getSubmitToEmails(row),
             invoiceNumber: toValueOrNull(
               getRowValue(row, ["invoiceNo", "invoiceNumber"], ""),
             ),
@@ -3160,6 +3210,7 @@ export default function WarehouseCheckInPage({
           handleParcelFormChange={handleParcelFormChange}
           handleParcelSubmit={handleParcelSubmit}
           proceededReceipts={proceededReceipts}
+          mailAlertReceiptKey={mailAlertReceiptKey}
           rejectedRowIds={rejectedRowIds}
           receiptErrors={receiptErrors}
           updateReceipt={updateReceipt}
@@ -3659,7 +3710,24 @@ export default function WarehouseCheckInPage({
                   <IconButton
                     size="small"
                     onClick={() => handleOpenMailList(pr)}
-                    sx={{ color: "#A22", p: 0.25 }}
+                    sx={{
+                      color: mailAlertReceiptKey === pr.key ? "#f59e0b" : "#A22",
+                      p: 0.25,
+                      bgcolor:
+                        mailAlertReceiptKey === pr.key
+                          ? "rgba(245, 158, 11, 0.16)"
+                          : "transparent",
+                      border:
+                        mailAlertReceiptKey === pr.key
+                          ? "1px solid #f59e0b"
+                          : "1px solid transparent",
+                      "&:hover": {
+                        bgcolor:
+                          mailAlertReceiptKey === pr.key
+                            ? "rgba(245, 158, 11, 0.24)"
+                            : "rgba(162, 34, 34, 0.08)",
+                      },
+                    }}
                   >
                     <Iconify icon="mdi:email-outline" width={20} />
                   </IconButton>
@@ -4511,6 +4579,31 @@ export default function WarehouseCheckInPage({
             sx={{ bgcolor: "#a22", "&:hover": { bgcolor: "#811" } }}
           >
             Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={emailSelectionAlertOpen}
+        onClose={() => setEmailSelectionAlertOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: 16 }}>
+          No Default Email Set
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ fontSize: 13 }}>
+            This Customer does not have a default email address configured. Please select an email address from the list.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => setEmailSelectionAlertOpen(false)}
+            sx={{ bgcolor: "#a22", "&:hover": { bgcolor: "#811" } }}
+          >
+            OK
           </Button>
         </DialogActions>
       </Dialog>

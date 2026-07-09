@@ -431,6 +431,7 @@ export default function WarehouseCheckInScanGunPage({
   handleParcelFormChange,
   handleParcelSubmit,
   proceededReceipts,
+  mailAlertReceiptKey = '',
   rejectedRowIds = [],
   receiptErrors,
   updateReceipt,
@@ -703,7 +704,24 @@ export default function WarehouseCheckInScanGunPage({
                     <IconButton
                       size="small"
                       onClick={() => handleOpenMailList(receipt)}
-                      sx={{ color: '#A22', p: 0.25 }}
+                      sx={{
+                        color: mailAlertReceiptKey === receipt.key ? '#f59e0b' : '#A22',
+                        p: 0.25,
+                        bgcolor:
+                          mailAlertReceiptKey === receipt.key
+                            ? 'rgba(245, 158, 11, 0.16)'
+                            : 'transparent',
+                        border:
+                          mailAlertReceiptKey === receipt.key
+                            ? '1px solid #f59e0b'
+                            : '1px solid transparent',
+                        '&:hover': {
+                          bgcolor:
+                            mailAlertReceiptKey === receipt.key
+                              ? 'rgba(245, 158, 11, 0.24)'
+                              : 'rgba(162, 34, 34, 0.08)',
+                        },
+                      }}
                     >
                       <Iconify icon="mdi:email-outline" width={20} />
                     </IconButton>
