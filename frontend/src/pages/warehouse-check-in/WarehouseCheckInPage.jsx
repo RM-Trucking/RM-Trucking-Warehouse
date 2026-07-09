@@ -982,6 +982,10 @@ export default function WarehouseCheckInPage({
   const [barcodeScannerStatus, setBarcodeScannerStatus] = useState("");
   const [barcodeScannerTarget, setBarcodeScannerTarget] =
     useState("parcelPro");
+  const [barcodeScannerContext, setBarcodeScannerContext] = useState({
+    receiptKey: "",
+    formId: null,
+  });
   const [packageDropdownAnchor, setPackageDropdownAnchor] = useState(null);
   const [packageDropdownContext, setPackageDropdownContext] = useState({
     key: null,
@@ -1065,6 +1069,7 @@ export default function WarehouseCheckInPage({
     setBarcodeScannerOpen(false);
     setBarcodeScannerStatus("");
     setBarcodeScannerTarget("parcelPro");
+    setBarcodeScannerContext({ receiptKey: "", formId: null });
     setPackageDropdownAnchor(null);
     setPackageDropdownContext({ key: null, formId: null, itemId: null });
     setCargoApiLoadingItems({});
@@ -2486,9 +2491,10 @@ export default function WarehouseCheckInPage({
     setBarcodeScannerOpen(false);
     setBarcodeScannerStatus("");
     setBarcodeScannerTarget("parcelPro");
+    setBarcodeScannerContext({ receiptKey: "", formId: null });
   }, [stopParcelBarcodeScanner]);
 
-  const handleOpenBarcodeScanner = async (target = "parcelPro") => {
+  const handleOpenBarcodeScanner = async (target = "parcelPro", context = {}) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setSnackbar({
         open: true,
@@ -2499,6 +2505,10 @@ export default function WarehouseCheckInPage({
     }
 
     setBarcodeScannerTarget(target);
+    setBarcodeScannerContext({
+      receiptKey: context.receiptKey || "",
+      formId: context.formId || null,
+    });
     setBarcodeScannerStatus("Point the camera at the QR or barcode");
     setBarcodeScannerOpen(true);
   };
@@ -2508,6 +2518,9 @@ export default function WarehouseCheckInPage({
 
   const handleOpenSearchIdBarcodeScanner = () =>
     handleOpenBarcodeScanner("searchId");
+
+  const handleOpenPackageIdBarcodeScanner = (receiptKey, formId) =>
+    handleOpenBarcodeScanner("packageId", { receiptKey, formId });
 
   useEffect(() => {
     if (!barcodeScannerOpen) return undefined;
@@ -2534,6 +2547,19 @@ export default function WarehouseCheckInPage({
             const nextValue = scannedValue.slice(0, 100);
             if (barcodeScannerTarget === "searchId") {
               handleSearchValueChange(nextValue);
+            } else if (barcodeScannerTarget === "packageId") {
+              updateFormField(
+                barcodeScannerContext.receiptKey,
+                barcodeScannerContext.formId,
+                "customerRefNoPackageId",
+                nextValue,
+              );
+              clearFormFieldError(
+                barcodeScannerContext.receiptKey,
+                barcodeScannerContext.formId,
+                "customerRefNoPackageId",
+                nextValue,
+              );
             } else {
               handleParcelFormChange("proNumber", nextValue);
             }
@@ -2542,7 +2568,9 @@ export default function WarehouseCheckInPage({
               message:
                 barcodeScannerTarget === "searchId"
                   ? "ID scanned"
-                  : "PRO number scanned",
+                  : barcodeScannerTarget === "packageId"
+                    ? "Package ID scanned"
+                    : "PRO number scanned",
               severity: "success",
             });
             handleCloseParcelBarcodeScanner();
@@ -2576,10 +2604,14 @@ export default function WarehouseCheckInPage({
     };
   }, [
     barcodeScannerOpen,
+    barcodeScannerContext.formId,
+    barcodeScannerContext.receiptKey,
     barcodeScannerTarget,
+    clearFormFieldError,
     handleCloseParcelBarcodeScanner,
     handleParcelFormChange,
     handleSearchValueChange,
+    updateFormField,
   ]);
 
   const validateParcelForm = () => {
@@ -3177,6 +3209,7 @@ export default function WarehouseCheckInPage({
       onSubmit={handleNext}
       submitLabel="Next"
       plain={showScanGunPage}
+      stickyHeader={!showScanGunPage}
     >
       {showScanGunPage ? (
         <WarehouseCheckInScanGunPage
@@ -4054,6 +4087,28 @@ export default function WarehouseCheckInPage({
                                           );
                                         }}
                                         helperText=" "
+                                        InputProps={{
+                                          endAdornment: (
+                                            <InputAdornment position="end">
+                                              <IconButton
+                                                size="small"
+                                                onClick={() =>
+                                                  handleOpenPackageIdBarcodeScanner(
+                                                    pr.key,
+                                                    form.id,
+                                                  )
+                                                }
+                                                title="Scan QR or barcode"
+                                                sx={{ color: "#A22", p: 0.5 }}
+                                              >
+                                                <Iconify
+                                                  icon="mdi:camera"
+                                                  width={18}
+                                                />
+                                              </IconButton>
+                                            </InputAdornment>
+                                          ),
+                                        }}
                                         inputProps={{ style: { fontSize: 13 } }}
                                       />
                                     </Stack>
@@ -5119,7 +5174,9 @@ export default function WarehouseCheckInPage({
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
           {barcodeScannerTarget === "searchId"
             ? "Scan ID Barcode"
-            : "Scan PRO Barcode"}
+            : barcodeScannerTarget === "packageId"
+              ? "Scan Package ID Barcode"
+              : "Scan PRO Barcode"}
           <IconButton
             onClick={handleCloseParcelBarcodeScanner}
             size="small"

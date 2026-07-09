@@ -4728,6 +4728,7 @@ export default function WarehouseReceiptFormPage() {
     const receiptNumber = viewReceiptSummary.receiptNumber || activeForm?.receiptNumber || '';
     const status = String(viewReceiptSummary.status || getRowValue(activeForm?.row, 'status', '') || '').toUpperCase();
     const isArchivedReceipt = status === 'ARCHIVED';
+    const disableViewHeaderActions = isArchivedReceipt || ['INITIATED', 'REJECTED'].includes(status);
 
     return (
       <Box sx={{ bgcolor: '#efefef', px: 2, pt: 1.2, pb: 1.4 }}>
@@ -4770,7 +4771,8 @@ export default function WarehouseReceiptFormPage() {
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    onClick={() => handleViewAction('This feature will be available soon')}
+                    disabled={disableViewHeaderActions}
                     sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print
@@ -4779,6 +4781,7 @@ export default function WarehouseReceiptFormPage() {
                     variant="contained"
                     size="small"
                     onClick={() => handleOpenPrinterDialog(receiptNumber)}
+                    disabled={disableViewHeaderActions}
                     sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
                     Print Labels
@@ -4807,7 +4810,7 @@ export default function WarehouseReceiptFormPage() {
                       variant="contained"
                       size="small"
                       onClick={handleOpenRatesDialog}
-                      disabled={isArchivedReceipt}
+                      disabled={disableViewHeaderActions}
                       sx={{ ...actionBtnSx, height: 26, width: '100%', fontSize: 12 }}
                     >
                       Rates
@@ -4823,7 +4826,7 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleOpenSplitDialog}
-              disabled={isArchivedReceipt}
+              disabled={disableViewHeaderActions}
               sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Split
@@ -4832,7 +4835,7 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleEditWarehouseReceipt}
-              disabled={isArchivedReceipt}
+              disabled={disableViewHeaderActions}
               sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Edit
