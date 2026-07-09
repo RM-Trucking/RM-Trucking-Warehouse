@@ -103,6 +103,21 @@ const isYes = (value) => String(value || '').toUpperCase() === 'Y';
 const isSendToTellSystemYes = (value) =>
   ['Y', 'YES', 'SUCCESS', 'SENT', 'TRUE'].includes(String(value || '').trim().toUpperCase());
 
+const hasAvailableRateInformation = (value) => {
+  if (!value) return false;
+  if (Array.isArray(value)) return value.length > 0;
+
+  if (typeof value === 'object') {
+    return Object.values(value).some((entry) => {
+      if (Array.isArray(entry)) return entry.length > 0;
+      if (entry && typeof entry === 'object') return Object.keys(entry).length > 0;
+      return entry !== null && entry !== undefined && entry !== '';
+    });
+  }
+
+  return true;
+};
+
 const statusPillColors = {
   'on-hand': '#4aa3d8',
   initiated: '#a87b4f',
@@ -323,6 +338,11 @@ export default function WarehouseRecieptPage() {
       flex: 1,
       renderCell: (params) => {
         const sentToTellSystem = isSendToTellSystemYes(params.row.sendToTellSystem);
+        const rateInformation = params.row.rawData?.rateInformation || params.row.rateInformation;
+        const hasRateInformation = hasAvailableRateInformation(rateInformation);
+        const hideReceiptStatusIcon = ['initiated', 'rejected'].includes(
+          String(params.row.status || '').trim().toLowerCase()
+        );
 
         return (
           <Stack direction="row" alignItems="center" spacing={0.6} sx={{ height: '100%' }}>
@@ -335,7 +355,13 @@ export default function WarehouseRecieptPage() {
             >
               <Iconify icon="mdi:content-copy" width={13} sx={{ color: '#9db9cf' }} />
             </IconButton>
-            {sentToTellSystem ? (
+            {!hideReceiptStatusIcon && (!hasRateInformation ? (
+              <Tooltip title="Rate not set for this Receipt" arrow>
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <Iconify icon="mdi:alert" width={16} sx={{ color: '#facc15' }} />
+                </Box>
+              </Tooltip>
+            ) : sentToTellSystem ? (
               <Tooltip title="Warehouse receipt sent to the Tell system." arrow>
                 <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
                   <Iconify icon="mdi:check-circle" width={14} sx={{ color: '#63b66e' }} />
@@ -347,7 +373,7 @@ export default function WarehouseRecieptPage() {
                   <Iconify icon="mdi:clock-outline" width={18} sx={{ color: '#f59e0b' }} />
                 </Box>
               </Tooltip>
-            )}
+            ))}
           </Stack>
         );
       },
