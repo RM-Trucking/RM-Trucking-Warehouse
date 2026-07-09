@@ -72,6 +72,19 @@ paths:
       description: "Process multiple warehouse receipts in a single batch transaction. Supports both JSON and multipart/form-data with images.\n\n**Send as JSON** for batch operations without images.\n\n**Send as multipart/form-data** for batch operations with image uploads:\n- Field: `batchData` (JSON string without images)\n- Files: Image files with field names: `freight-{receiptIndex}-{freightIndex}-{imageIndex}`\n  - Example: `freight-0-0-0` → receipts[0].freightDetails[0].images[0]\n  - Example: `freight-0-1-0` → receipts[0].freightDetails[1].images[0]\n\nArray structure: Each item must have `receipt` (object) and `freightDetails` (array).\n\n**System-managed fields** (auto-handled, do NOT provide in request):\n- createdAt, createdBy: auto-set on creation\n- updatedAt, updatedBy: auto-set on update\n- documentId: auto-generated on creation\n- entityId, noteThreadId: auto-created on creation\n\n**Required fields in payload:**\n- receiptId: required for UPDATE operations\n- receiptNumber: required for all operations (for reference/audit)\n- All updateable receipt fields and freightDetails array\n\n**UPDATE Operation** (receipt has receiptId):\n- Only updateable fields are applied to the receipt\n- All freight items are deleted and replaced with new ones from freightDetails\n- Automatically sets updatedBy to authenticated user\n- Automatically sets updatedAt to current timestamp\n\n**CREATE Operation** (receipt has no receiptId):\n- Creates new receipt with provided receipt data (including receiptNumber)\n- Creates freight items from freightDetails array\n- System fields are auto-generated and managed by backend\n\n**Image Upload**:\n- Optional: send images via multipart/form-data\n- Images stored in `uploads/freight-images/`\n- Supported formats: JPEG, PNG, GIF, WebP (Max 10MB per file)\n- Images linked to freight via freightId in Warehouse_Receipt_Freight_Images table\n- Response includes image paths and metadata for each freight item\n\nAll operations are atomic - either all succeed or all rollback."
       security:
         - bearerAuth: []
+      parameters:
+        - in: query
+          name: split
+          required: false
+          schema:
+            type: boolean
+          description: "Set to true or false to indicate whether this batch operation is a split operation."
+        - in: query
+          name: parentReceiptId
+          required: false
+          schema:
+            type: string
+          description: "Parent receipt number to associate with the batch receipts."
       requestBody:
         required: true
         content:
@@ -243,6 +256,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/document-upload:
+    post:
+      tags:
+        - Receipts
+      summary: Upload warehouse receipt documents
+      description: "Upload one or more supporting documents for a warehouse receipt. Each uploaded file is stored on disk and a record is created in Warehouse_Receipt_Documents for the specified receiptId."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - receiptId
+              properties:
+                receiptId:
+                  type: integer
+                  description: Warehouse receipt ID to associate the uploaded documents with.
+                  example: 100000001
+                documents:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: One or more document files to upload. Supports PDF, DOC, DOCX, TXT, JPG, and PNG files.
+      responses:
+        "201":
+          description: Documents uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Documents uploaded successfully"
+                  data:
+                    type: object
+                    properties:
+                      receiptId:
+                        type: integer
+                        example: 100000001
+                      documentIds:
+                        type: array
+                        items:
+                          type: integer
+                        example: [1, 2]
+                      count:
+                        type: integer
+                        example: 2
+        "400":
+          description: Missing receiptId or no files uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt:
     post:
       tags:
@@ -358,6 +445,11 @@ paths:
             type: integer
           description: Filter by receipt number
         - in: query
+          name: accounting
+          schema:
+            type: boolean
+          description: Filter by accounting status (true for accountOnHold = 'Y', false for accountOnHold = 'N')
+        - in: query
           name: startDate
           schema:
             type: string
@@ -438,6 +530,157 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/export-spreadsheet:
+    get:
+      tags:
+        - Receipts
+      summary: Export warehouse receipts to Excel spreadsheet
+      description: |
+        Export filtered warehouse receipts to an Excel (XLSX) file with the same filters and pagination options as the list endpoint.
+
+        **Features:**
+        - Exports receipts with all filterable fields
+        - Supports all the same pagination and filtering parameters as the list endpoint
+        - Returns file download with filename: `warehouse_receipts.xlsx`
+        - Excel file includes headers in bold and cell borders for readability
+
+        **Exported Columns:**
+        - Warehouse Receipt ID (receiptNumber)
+        - Customer Name (consignee)
+        - Carrier
+        - Location
+        - Pro Number
+        - Destination
+        - Created Date (formatted as locale string)
+        - Status
+        - ID Verification Number
+        - Package ID
+        - Customer Ref Number
+
+        **Response Type:**
+        Returns binary Excel file (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) instead of JSON.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum:
+              [
+                INITIATED,
+                ON_HAND,
+                PREPARED,
+                SCANNED,
+                SHIPPED,
+                REJECTED,
+                ARCHIVED,
+              ]
+          description: Filter by receipt status
+        - in: query
+          name: receiptNumber
+          schema:
+            type: integer
+          description: Filter by receipt number (exact match)
+        - in: query
+          name: accounting
+          schema:
+            type: boolean
+          description: Filter by accounting hold status (true = on hold, false = not on hold)
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+          description: Filter receipts created on or after this date (YYYY-MM-DD)
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+          description: Filter receipts created on or before this date (YYYY-MM-DD)
+        - in: query
+          name: customerId
+          schema:
+            type: integer
+          description: Filter by customer ID
+        - in: query
+          name: stationId
+          schema:
+            type: integer
+          description: Filter by station ID
+        - in: query
+          name: carrierId
+          schema:
+            type: integer
+          description: Filter by carrier ID
+        - in: query
+          name: location
+          schema:
+            type: string
+          description: Filter by location (partial match, case-insensitive)
+        - in: query
+          name: proNumber
+          schema:
+            type: string
+          description: Filter by PRO number (partial match, case-insensitive)
+        - in: query
+          name: verificationId
+          schema:
+            type: integer
+          description: Filter by ID verification ID
+        - in: query
+          name: destination
+          schema:
+            type: string
+          description: Filter by destination (partial match, case-insensitive)
+        - in: query
+          name: packageId
+          schema:
+            type: string
+          description: Filter by package ID (partial match, case-insensitive)
+        - in: query
+          name: customerRefNumber
+          schema:
+            type: string
+          description: Filter by customer reference number (partial match, case-insensitive)
+      responses:
+        "200":
+          description: Excel file with warehouse receipts exported successfully
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+              headers:
+                Content-Disposition:
+                  schema:
+                    type: string
+                    example: "attachment; filename=warehouse_receipts.xlsx"
+                Content-Type:
+                  schema:
+                    type: string
+                    example: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "400":
+          description: Invalid query parameters or filter values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error or no records found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "No Record Found"
+
   /api/warehouse-receipt/{id}:
     get:
       tags:
@@ -506,7 +749,10 @@ paths:
       tags:
         - Receipts
       summary: Update warehouse receipt
-      description: Update receipt details (location, status, weights, etc). When status changes, an audit log is automatically created to track the change.
+      description: |
+        Update receipt details, freight items, and image references.
+        Supports both JSON and multipart/form-data payloads for hybrid file + metadata updates.
+        When status changes, an audit log is automatically created to track the change.
       security:
         - bearerAuth: []
       parameters:
@@ -522,6 +768,56 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateReceiptRequest"
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                receipt:
+                  type: string
+                  description: |
+                    JSON string containing the receipt update payload.
+                    Recommended when sending files in multipart form.
+                  example: '{"location":"Warehouse B","status":"ON_HAND","piecesInland":20,"updatedBy":1,"freightDetails":[{"freightId":123,"pieces":10,"type":"Pallet","images":["path/to/image.jpg"]}],"removeFreightIds":[456]}'
+                freightDetails:
+                  type: string
+                  description: JSON string array for freight items. Each item may include freightId, pieces, type, dimensions, weight, cubicMeter, images, and removeImagePaths.
+                removeFreightIds:
+                  type: string
+                  description: JSON string array of freight IDs to delete from the receipt.
+                badFreightImages:
+                  type: string
+                  description: JSON string array of bad freight image path values to add.
+                removeBadFreightImagePaths:
+                  type: string
+                  description: JSON string array of bad freight image path values to remove.
+                file:
+                  type: string
+                  format: binary
+                  description: |
+                    Image files for freight or bad freight conditions.
+                    Supports BOTH traditional file uploads AND Base64 strings sent in request body fields.
+
+                    Traditional file upload field names:
+                    - freight-{freightIndex}-{imageIndex} (e.g., freight-0-0, freight-0-1 for freight item images)
+                    - bad-freight-image-{index} (e.g., bad-freight-image-0 for bad freight images)
+
+                    Base64 mode (like batch API): Send Base64 strings in body fields with matching names
+                    - Any body field with name matching above patterns and value starting with "data:image/" or "base64," will be automatically converted to a file
+                    - Example: body field "freight-0-0" = "data:image/jpeg;base64,..." → converted to file and attached
+                    - Example: body field "bad-freight-image-0" = "base64,..." → converted to file and attached
+
+                    Hybrid mode: Combine both file uploads and Base64 strings in the same request
+              encoding:
+                receipt:
+                  contentType: application/json
+                freightDetails:
+                  contentType: application/json
+                removeFreightIds:
+                  contentType: application/json
+                badFreightImages:
+                  contentType: application/json
+                removeBadFreightImagePaths:
+                  contentType: application/json
       responses:
         "200":
           description: Receipt updated successfully
@@ -537,7 +833,7 @@ paths:
                     type: string
                     example: "Receipt updated successfully"
                   data:
-                    $ref: "#/components/schemas/WarehouseReceipt"
+                    $ref: "#/components/schemas/WarehouseReceiptWithDetails"
         "404":
           description: Receipt not found
           content:
@@ -1067,6 +1363,192 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/rate-ready-for-approval:
+    post:
+      tags:
+        - Receipts
+      summary: Mark a warehouse receipt rate as ready for approval
+      description: "Update the receipt rate details and mark the receipt as ready for approval. The receipt ID is passed as a query parameter and the rate payload is sent in the request body."
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: receiptId
+          required: true
+          schema:
+            type: integer
+          description: Warehouse receipt ID to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseReceiptRateReadyForApprovalRequest"
+            example:
+              rateDetails:
+                rate: 125.5
+                dimFactor: 1.25
+                baseRate: 100
+                minRate: 90
+                maxRate: 150
+                hasFlatRate: "N"
+                notesForFlatRate: null
+      responses:
+        "200":
+          description: Warehouse receipt rate marked ready for approval successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Warehouse Receipt statuses updated successfully"
+        "400":
+          description: Invalid request - missing receiptId or rateDetails
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/rate-approve:
+    put:
+      tags:
+        - Receipts
+      summary: Approve warehouse receipt rate for one or more receipts
+      description: "Approve rate updates for one or more warehouse receipts. The request body must include an array of receipt IDs."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleWarehouseReceiptStatusRequest"
+            example:
+              receiptIds: [100000001, 100000002]
+      responses:
+        "200":
+          description: Warehouse receipt statuses updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Warehouse Receipt statuses updated successfully"
+        "400":
+          description: Invalid request - missing receiptIds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/account-hold:
+    put:
+      tags:
+        - Receipts
+      summary: Set account hold for one or more warehouse receipts
+      description: "Place one or more warehouse receipts on account hold. The request body must include an array of receipt IDs."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleWarehouseReceiptStatusRequest"
+            example:
+              receiptIds: [100000001, 100000002]
+      responses:
+        "200":
+          description: Warehouse receipt statuses updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Warehouse Receipt statuses updated successfully"
+        "400":
+          description: Invalid request - missing receiptIds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/account-hold-revert:
+    put:
+      tags:
+        - Receipts
+      summary: Revert account hold for one or more warehouse receipts
+      description: "Remove account hold from one or more warehouse receipts. The request body must include an array of receipt IDs."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevertWarehouseReceiptStatusRequest"
+            example:
+              receiptIds: [100000001, 100000002]
+      responses:
+        "200":
+          description: Warehouse receipt statuses updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Warehouse Receipt statuses updated successfully"
+        "400":
+          description: Invalid request - missing receiptIds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1571,15 +2053,72 @@ components:
         createdBy:
           type: integer
 
+    FreightUpdateItem:
+      type: object
+      properties:
+        freightId:
+          type: integer
+          nullable: true
+        pieces:
+          type: integer
+          example: 10
+        type:
+          type: string
+          example: "Pallet"
+        length:
+          type: number
+          nullable: true
+          example: 40
+        width:
+          type: number
+          nullable: true
+          example: 48
+        height:
+          type: number
+          nullable: true
+          example: 45
+        weight:
+          type: number
+          nullable: true
+          example: 200
+        cubicMeter:
+          type: number
+          nullable: true
+          example: 2.8
+        images:
+          type: array
+          items:
+            type: string
+          description: Existing image paths to keep or add when using JSON-only updates.
+        removeImagePaths:
+          type: array
+          items:
+            type: string
+          description: Image path values to remove from this freight item.
     UpdateReceiptRequest:
       type: object
       properties:
         location:
           type: string
           example: "Warehouse B, Zone 2"
-        labelCount:
+        receivedBy:
+          type: string
+          example: "Jane Doe"
+        shipper:
+          type: string
+          example: "XYZ Logistics"
+        customerId:
           type: integer
-          example: 5
+          example: 51
+        stationId:
+          type: integer
+          example: 93
+        verificationId:
+          type: integer
+          example: 100000021
+        carrierId:
+          type: integer
+          example: 52
         piecesInland:
           type: integer
           example: 50
@@ -1590,22 +2129,126 @@ components:
           type: integer
           nullable: true
           example: 5050
+        proNumber:
+          type: string
+          example: "PRO-2026-001"
+        invoiceNumber:
+          type: string
+          nullable: true
+        poNumber:
+          type: string
+          nullable: true
+        customerRefNumber:
+          type: string
+          nullable: true
+        freightCondition:
+          type: string
+          example: "Y"
         documents:
           type: string
           enum: ["Y", "N"]
           nullable: true
           example: "Y"
+        handlingDescription:
+          type: string
+          nullable: true
+        destination:
+          type: string
+          example: "Customer Final Destination"
+        originalDgd:
+          type: string
+          nullable: true
+          example: "Y"
+        unNumber:
+          type: array
+          items:
+            type: string
+        class:
+          type: array
+          items:
+            type: string
+        packageId:
+          type: string
+          nullable: true
+        properShippingName:
+          type: string
+          nullable: true
+        hazardousDescription:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            [
+              "INITIATED",
+              "ON_HAND",
+              "PREPARED",
+              "SCANNED",
+              "SHIPPED",
+              "REJECTED",
+              "ARCHIVED",
+            ]
+          example: "ON_HAND"
         receiptType:
           type: string
           nullable: true
           example: "Regular"
-        status:
+        bandedSkid:
           type: string
-          enum: [INITIATE, ON-HAND, REJECTED, HOLD]
-          example: "ON-HAND"
-        updatedBy:
+          enum: ["Y", "N"]
+          example: "Y"
+        shrinkWrappedSkid:
+          type: string
+          enum: ["Y", "N"]
+          example: "Y"
+        shtIppcSkid:
+          type: string
+          enum: ["Y", "N"]
+          example: "Y"
+        plasticSkid:
+          type: string
+          enum: ["Y", "N"]
+          example: "Y"
+        hazMat:
+          type: string
+          enum: ["Y", "N"]
+          example: "Y"
+        labelCount:
           type: integer
-          example: 1
+          example: 5
+        toEmails:
+          type: array
+          items:
+            type: string
+          description: Array of email addresses to send notifications to.
+        cubicMeter:
+          type: number
+          nullable: true
+          example: 2.8
+
+        freightDetails:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreightUpdateItem"
+          description: Array of freight items to add or update on the receipt.
+        removeFreightIds:
+          type: array
+          items:
+            type: integer
+          description: Freight IDs to delete from this receipt.
+        badFreightImages:
+          type: array
+          items:
+            type: string
+          description: Bad freight image paths to add to the receipt.
+        removeBadFreightImagePaths:
+          type: array
+          items:
+            type: string
+          description: Bad freight image paths to remove from the receipt.
 
     UpdateLocationRequest:
       type: object
@@ -1616,6 +2259,71 @@ components:
           type: string
           example: "Warehouse B, Zone 2"
           description: Storage location for the warehouse receipt
+
+    ToggleWarehouseReceiptStatusRequest:
+      type: object
+      required:
+        - receiptIds
+      properties:
+        receiptIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+          description: Array of warehouse receipt IDs to update
+          example: [100000001, 100000002]
+
+    RevertWarehouseReceiptStatusRequest:
+      type: object
+      required:
+        - receiptIds
+      properties:
+        receiptIds:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+          description: Array of warehouse receipt IDs to remove from account hold
+          example: [100000001, 100000002]
+
+    WarehouseReceiptRateReadyForApprovalRequest:
+      type: object
+      required:
+        - rateDetails
+      properties:
+        rateDetails:
+          type: object
+          required:
+            - rate
+            - dimFactor
+            - baseRate
+            - minRate
+            - maxRate
+            - hasFlatRate
+          properties:
+            rate:
+              type: number
+              example: 125.5
+            dimFactor:
+              type: number
+              example: 1.25
+            baseRate:
+              type: number
+              example: 100
+            minRate:
+              type: number
+              example: 90
+            maxRate:
+              type: number
+              example: 150
+            hasFlatRate:
+              type: string
+              enum: ["Y", "N"]
+              example: "N"
+            notesForFlatRate:
+              type: string
+              nullable: true
+              example: null
 
     PaginationInfo:
       type: object

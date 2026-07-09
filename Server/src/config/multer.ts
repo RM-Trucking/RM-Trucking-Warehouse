@@ -22,8 +22,8 @@ const MIME_TYPES = {
 
 // Upload limits
 const LIMITS = {
-    [FILE_TYPES.IMAGES]: { fileSize: 10 * 1024 * 1024, files: 100 },
-    [FILE_TYPES.DOCUMENTS]: { fileSize: 50 * 1024 * 1024, files: 50 }
+    [FILE_TYPES.IMAGES]: { fieldSize: 10 * 1024 * 1024, fileSize: 10 * 1024 * 1024, files: 1000 },
+    [FILE_TYPES.DOCUMENTS]: { fieldSize: 50 * 1024 * 1024, fileSize: 50 * 1024 * 1024, files: 50 }
 };
 
 // Helper to ensure directory exists
@@ -114,9 +114,8 @@ export function createCombinedWarehouseImageUploader() {
                 categoryPath = WAREHOUSE_IMAGE_CATEGORIES.FREIGHT.path;
             }
 
-            // Get optional subfolder (like receipt ID, shipment ID, etc.)
-            const subFolder = req.params.id || req.params.subFolder || req.query.subFolder || '';
-            const uploadPath = subFolder ? `${categoryPath}/${subFolder}` : categoryPath;
+            // Always upload to the main category directory (no per-id subfolders)
+            const uploadPath = categoryPath;
             const fullPath = ensureUploadDirExists(uploadPath);
             cb(null, fullPath);
         },
@@ -150,9 +149,8 @@ export function createModuleUploader(module: string, fileType: string) {
 
     const storage = multer.diskStorage({
         destination: (req: any, file: Express.Multer.File, cb: any) => {
-            // Get custom subfolder from request params/query if provided
-            const subFolder = req.params.subFolder || req.query.subFolder || '';
-            const uploadPath = subFolder ? `${baseDir}/${subFolder}` : baseDir;
+            // Upload directly to the base directory (do not create per-subfolder directories)
+            const uploadPath = baseDir;
             const fullPath = ensureUploadDirExists(uploadPath);
             cb(null, fullPath);
         },
@@ -180,6 +178,8 @@ export const uploaders = {
         // Image categories (single category)
         freightImages: createCombinedWarehouseImageUploader(),
         badFreightImages: createCombinedWarehouseImageUploader(),
+        //Document uploader for warehouse (if needed)
+        documents: createModuleUploader(UPLOAD_MODULES.WAREHOUSE, FILE_TYPES.DOCUMENTS)
 
     }
 };

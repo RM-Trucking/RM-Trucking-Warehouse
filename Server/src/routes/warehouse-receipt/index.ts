@@ -10,6 +10,8 @@ const router = Router();
  * WAREHOUSE RECEIPT ENDPOINTS
  */
 
+// ===== SPECIFIC POST ENDPOINTS (ACTION ROUTES) =====
+
 // Create temporary warehouse receipt
 router.post("/temp", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
@@ -29,6 +31,15 @@ router.post("/batch", authenticateJWT, uploaders.warehouse.combinedImages.any(),
     }
 });
 
+router.post("/document-upload", authenticateJWT, uploaders.warehouse.documents.any(), async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.uploadWarehouseReceiptDocuments(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 // Print label via ZPL
 router.post("/label-print", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
@@ -39,21 +50,45 @@ router.post("/label-print", authenticateJWT, async (req: Request, res: Response)
     }
 });
 
-
-// Create warehouse receipt with freight info
-router.post("/", authenticateJWT, async (req: Request, res: Response) => {
+router.post("/rate-ready-for-approval", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    await warehouseReceiptController.createWarehouseReceiptWithFreight(req, res, conn);
-    if (conn) conn.close();
+    try {
+        await warehouseReceiptController.warehouseReceiptRateReadyForApproval(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
 });
 
-// Get receipt with all details (freight, rate, audit logs)
-// Supports search by receiptId (default) or proNumber via ?searchBy=proNumber query parameter
-router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
+// ===== SPECIFIC PUT ENDPOINTS (ACTION ROUTES) =====
+
+router.put("/account-hold", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    await warehouseReceiptController.getWarehouseReceipt(req, res, conn);
-    if (conn) conn.close();
+    try {
+        await warehouseReceiptController.warehouseReceiptAccountHold(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
 });
+
+router.put("/account-hold-revert", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.warehouseReceiptAccountHoldRevert(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+router.put("/rate-approve", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.warehouseReceiptRateApprove(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+// ===== SPECIFIC GET ENDPOINTS (EXACT PATHS) =====
 
 // Get PRO header details for a given PRO number
 router.get("/pro-detail/:pro", authenticateJWT, async (req: Request, res: Response) => {
@@ -62,10 +97,10 @@ router.get("/pro-detail/:pro", authenticateJWT, async (req: Request, res: Respon
     if (conn) conn.close();
 });
 
-// List receipts with pagination and filters
-router.get("/", authenticateJWT, async (req: Request, res: Response) => {
+// Export receipts to spreadsheet
+router.get("/export-spreadsheet", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
-    await warehouseReceiptController.listWarehouseReceipts(req, res, conn);
+    await warehouseReceiptController.exportWarehouseReceiptsToSpreadsheet(req, res, conn);
     if (conn) conn.close();
 });
 
@@ -83,6 +118,8 @@ router.get("/customer-station", authenticateJWT, async (req: Request, res: Respo
     if (conn) conn.close();
 });
 
+// ===== SPECIFIC GET ENDPOINTS (WITH ID SUBPATHS) =====
+
 // Get receipt summary (status, totals, counts)
 router.get("/:receiptId/summary", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
@@ -96,8 +133,34 @@ router.get("/:receiptId/audit-logs", authenticateJWT, async (req: Request, res: 
     if (conn) conn.close();
 });
 
-// Update receipt
-router.put("/:receiptId", authenticateJWT, async (req: Request, res: Response) => {
+// ===== GENERIC GET ENDPOINTS (LIST & RETRIEVE) =====
+
+// List receipts with pagination and filters
+router.get("/", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.listWarehouseReceipts(req, res, conn);
+    if (conn) conn.close();
+});
+
+// Get receipt with all details (freight, rate, audit logs)
+// Supports search by receiptId (default) or proNumber via ?searchBy=proNumber query parameter
+router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.getWarehouseReceipt(req, res, conn);
+    if (conn) conn.close();
+});
+
+// ===== PUT/PATCH ENDPOINTS (UPDATE ROUTES) =====
+
+// Create warehouse receipt with freight info
+router.post("/", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.createWarehouseReceiptWithFreight(req, res, conn);
+    if (conn) conn.close();
+});
+
+// Update receipt with support for file and Base64 image uploads
+router.put("/:id", authenticateJWT, uploaders.warehouse.combinedImages.any(), async (req: Request, res: Response) => {
     const conn = await db();
     await warehouseReceiptController.updateWarehouseReceipt(req, res, conn);
     if (conn) conn.close();

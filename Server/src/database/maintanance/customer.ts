@@ -62,6 +62,30 @@ export async function getDepartmentAndPersonnelEmails(
     return result;
 }
 
+export async function getStationDefaultEmails(conn: Connection, stationId: number): Promise<{ hasDefaultEmails: 'Y' | 'N', emails: string[] }> {
+
+    let query = `
+    SELECT "warehouseEmails" AS "emails"
+    FROM ${SCHEMA}."Station"
+    WHERE "stationId" = ?
+    `;
+    const params: any[] = [stationId];
+
+    const result = await conn.query(query, params) as any[];
+    if (result.length > 0) {
+        const emails = result[0].emails;
+        return {
+            hasDefaultEmails: JSON.parse(emails)?.length > 0 ? 'Y' : 'N',
+            emails: emails ? JSON.parse(emails) : []
+        };
+    }
+    return {
+        hasDefaultEmails: 'N',
+        emails: []
+    };
+
+}
+
 export async function getStationByRmAccountNumber(
     conn: Connection,
     rmAccountNumber: string
@@ -80,15 +104,36 @@ export async function getStationByRmAccountNumber(
 }
 
 
-export async function getStationRateDetails(conn: Connection, stationId: number): Promise<{ rateId: number; customerRateId: number; minRate: number; maxRate: number; ratePerPound: number; department: string; warehouse: string }[]> {
+export async function getStationRateDetails(
+    conn: Connection,
+    stationId: number
+): Promise<{
+    rateId: number;
+    customerRateId: number;
+    minRate: number;
+    maxRate: number;
+    baseRate: number;
+    department: string;
+    warehouse: string;
+} | null> {
     const query = `
-    SELECT "crw"."rateId", "crw"."customerRateId", "crw"."minRate", "crw"."maxRate", "crw"."ratePerPound", "crw"."department", "crw"."warehouse"
+    SELECT 
+      "crw"."rateId", 
+      "crw"."customerRateId", 
+      "crw"."minRate", 
+      "crw"."maxRate", 
+      "crw"."ratePerPound" AS "baseRate", 
+      "crw"."department", 
+      "crw"."warehouse"
     FROM ${SCHEMA}."Customer_Rate_Warehouse" "crw"
-    LEFT JOIN ${SCHEMA}."Station_Rate_Map" "srm" ON "srm"."rateType" = 'WAREHOUSE' AND "crw"."rateId" = "srm"."rateId" 
+    LEFT JOIN ${SCHEMA}."Station_Rate_Map" "srm" 
+      ON "srm"."rateType" = 'WAREHOUSE' 
+      AND "crw"."rateId" = "srm"."rateId" 
     WHERE "srm"."stationId" = ?
-    `;
+  `;
+
     const result = await conn.query(query, [stationId]) as any[];
-    return result;
+    return result.length > 0 ? result[0] : null;
 }
 
 export async function getCustomerDropdown(conn: Connection, search: string): Promise<{ customerId: number; customerName: string }[]> {

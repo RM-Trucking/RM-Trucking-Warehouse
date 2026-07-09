@@ -146,6 +146,7 @@ export async function comprehensiveVerifyPro(
     if (warehouseRecord) {
         // Fetch emails only after confirming record exists
         const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, warehouseRecord.stationId);
+        const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, warehouseRecord.stationId);
 
         // Return warehouse record details with status check
         if (warehouseRecord.status === 'REJECTED') {
@@ -165,7 +166,8 @@ export async function comprehensiveVerifyPro(
                 weight: warehouseRecord.weightInland,
                 shipper: warehouseRecord.shipper,
                 toEmails: warehouseRecord.toEmails ? JSON.parse(warehouseRecord.toEmails) : [],
-                customerEmails: emails
+                customerEmails: emails,
+                stationDefaultEmails: stationDefaultEmails
             };
         } else {
             // Record exists but not rejected
@@ -181,6 +183,8 @@ export async function comprehensiveVerifyPro(
     if (enrouteRecord) {
         // Fetch emails only after confirming record exists
         const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, enrouteRecord.stationId);
+
+        const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, enrouteRecord.stationId);
 
         // Return en_route data
         return {
@@ -199,7 +203,8 @@ export async function comprehensiveVerifyPro(
             activeStatus: enrouteRecord.activeStatus,
             proDetailId: enrouteRecord.proDetailId,
             toEmails: enrouteRecord.toEmails ? JSON.parse(enrouteRecord.toEmails) : [],
-            customerEmails: emails
+            customerEmails: emails,
+            stationDefaultEmails: stationDefaultEmails
         };
     }
 

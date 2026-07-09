@@ -99,5 +99,9 @@ export interface ComprehensiveVerifyResponse {
         entryType: "Department" | "Personnel";
         entryEmail: string
     }[];
+    stationDefaultEmails?: {
+        hasDefaultEmails: 'Y' | 'N',
+        emails: string[]
+    };
     message?: string;
 }

@@ -23,9 +23,12 @@ export async function getCustomerWithStationDropdownService(
         stations.map(async (station) => {
             const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, station.stationId);
 
+            const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, station.stationId);
+
             return {
                 ...station,
                 emails, // already deduplicated by query
+                stationDefaultEmails
             };
         })
     );

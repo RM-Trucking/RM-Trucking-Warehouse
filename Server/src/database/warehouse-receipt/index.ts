@@ -112,9 +112,10 @@ export async function createWarehouseReceipt(
                 "notes",
                 "receivedBy",
                 "location",
-                "reWeight"
+                "reWeight",
+                "approvalStatus"
             )
-            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,(CURRENT_TIMESTAMP - CURRENT_TIMEZONE),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -158,7 +159,8 @@ export async function createWarehouseReceipt(
         receipt.notes ?? '',
         receipt.receivedBy ?? '',
         receipt.location ?? '',
-        receipt.reWeight ?? 0
+        receipt.reWeight ?? 0,
+        receipt.approvalStatus ?? 'APPROVED'
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -170,6 +172,8 @@ export async function getWarehouseReceiptById(
     conn: Connection,
     receiptId: number
 ): Promise<WarehouseReceipt | null> {
+    console.log("Fetching warehouse receipt by ID:", receiptId);
+
     const query = `
         SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
@@ -241,10 +245,11 @@ export async function getWarehouseReceiptsByCustomerStation(conn: Connection, cu
 
 export async function listWarehouseReceipts(
     conn: Connection,
-    limit: number,
-    offset: number,
+    limit?: number,
+    offset?: number,
     status?: string,
     receiptNumber?: string,
+    accounting?: boolean,
     filters?: {
         startDate?: string;
         endDate?: string;
@@ -278,6 +283,14 @@ export async function listWarehouseReceipts(
     if (receiptNumber) {
         query += ` AND "wr"."receiptNumber" LIKE ?`;
         params.push(`%${receiptNumber}%`);
+    }
+
+    if (accounting) {
+        query += ` AND "wr"."accountOnHold" = 'Y'`;
+    }
+
+    if (!accounting) {
+        query += ` AND "wr"."accountOnHold" = 'N'`;
     }
 
     // Special filters (grouped with filterLogic)
@@ -344,8 +357,16 @@ export async function listWarehouseReceipts(
         params.push(...specialParams);
     }
 
-    query += ` ORDER BY "wr"."receiptNumber" DESC LIMIT ? OFFSET ?`;
-    params.push(limit, offset);
+    query += ` ORDER BY "wr"."receiptNumber" DESC`;
+
+    if (typeof limit === 'number' && typeof offset === 'number') {
+        query += ` LIMIT ? OFFSET ?`;
+        params.push(limit, offset);
+    }
+
+    console.log("LIMIT And OFFSET values:", limit, offset);
+
+    console.log("Executing listWarehouseReceipts query:", query);
 
     const result = await conn.query(query, params) as WarehouseReceipt[];
 
@@ -548,10 +569,6 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         fields.push(`"updatedBy" = ?`);
         params.push(Number(updates.updatedBy));
     }
-    if (updates.documentId !== undefined) {
-        fields.push(`"documentId" = ?`);
-        params.push(Number(updates.documentId));
-    }
 
     // Invoice and PO related fields
     if (updates.invoiceNumber !== undefined) {
@@ -650,6 +667,31 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         params.push(updates.notes ? updates.notes : '' as string);
     }
 
+    if (updates.accountOnHold !== undefined) {
+        fields.push(`"accountOnHold" = ?`);
+        params.push(updates.accountOnHold == 'Y' ? 'Y' : 'N');
+    }
+
+    if (updates.sendToTellSystem !== undefined) {
+        fields.push(`"sendToTellSystem" = ?`);
+        params.push(updates.sendToTellSystem == 'Y' ? 'Y' : 'N');
+    }
+
+    if (updates.approvalStatus !== undefined) {
+        fields.push(`"approvalStatus" = ?`);
+        params.push(updates.approvalStatus ?? null);
+    }
+
+    if (updates.hasFlatRate !== undefined) {
+        fields.push(`"hasFlatRate" = ?`);
+        params.push(updates.hasFlatRate == 'Y' ? 'Y' : 'N');
+    }
+
+    if (updates.notesForFlatRate !== undefined) {
+        fields.push(`"notesForFlatRate" = ?`);
+        params.push(updates.notesForFlatRate ?? null);
+    }
+
     if (updates.toEmails !== undefined) {
         fields.push(`"toEmails" = ?`);
         params.push(
@@ -663,11 +705,91 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
 
     fields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
 
+
+
+
+    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET ${fields.join(', ')} WHERE "receiptId" = ?`;
+    console.log(query);
+    params.push(Number(receiptId));
+    console.log(params);
+
+
+    await conn.query(query, params as any[]);
+}
+
+
+export async function updateWarehouseReceiptForReadyForApproval(conn: Connection, receiptId: number, updates: any): Promise<void> {
+    const fields: string[] = [];
+    const params: (string | number | null)[] = [];
+
+    if (updates.approvalStatus !== undefined) {
+        fields.push(`"approvalStatus" = ?`);
+        params.push(updates.approvalStatus ?? null);
+    }
+
+    if (updates.hasFlatRate !== undefined) {
+        fields.push(`"hasFlatRate" = ?`);
+        params.push(updates.hasFlatRate == 'Y' ? 'Y' : 'N');
+    }
+
+    if (updates.notesForFlatRate !== undefined) {
+        fields.push(`"notesForFlatRate" = ?`);
+        params.push(updates.notesForFlatRate ?? null);
+    }
+
+    if (updates.requestedBy !== undefined) {
+        fields.push(`"requestedBy" = ?`);
+        params.push(updates.requestedBy ?? null);
+    }
+
+    if (updates.requestedDate !== undefined) {
+        fields.push(`"requestedAt" = CURRENT_TIMESTAMP`);
+    }
+
+    if (fields.length === 0) return;
+
     const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET ${fields.join(', ')} WHERE "receiptId" = ?`;
     params.push(Number(receiptId));
 
     await conn.query(query, params as any[]);
 }
+
+export async function updateWarehouseReceiptApproval(conn: Connection, receiptId: number, updates: any): Promise<void> {
+    const fields: string[] = [];
+    const params: (string | number | null)[] = [];
+
+    if (updates.approvalStatus !== undefined) {
+        fields.push(`"approvalStatus" = ?`);
+        params.push(updates.approvalStatus ?? null);
+    }
+
+    if (updates.hasFlatRate !== undefined) {
+        fields.push(`"hasFlatRate" = ?`);
+        params.push(updates.hasFlatRate == 'Y' ? 'Y' : 'N');
+    }
+
+    if (updates.notesForFlatRate !== undefined) {
+        fields.push(`"notesForFlatRate" = ?`);
+        params.push(updates.notesForFlatRate ?? null);
+    }
+
+    if (updates.requestedBy !== undefined) {
+        fields.push(`"approvedBy" = ?`);
+        params.push(updates.approvedBy ?? null);
+    }
+
+    if (updates.requestedDate !== undefined) {
+        fields.push(`"approvedAt" = CURRENT_TIMESTAMP`);
+    }
+
+    if (fields.length === 0) return;
+
+    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET ${fields.join(', ')} WHERE "receiptId" = ?`;
+    params.push(Number(receiptId));
+
+    await conn.query(query, params as any[]);
+}
+
 
 /**
  * Validation: check duplicate carrier + PRO number
@@ -695,11 +817,11 @@ export async function createFreightInfo(conn: Connection, freight: Omit<FreightI
         Number(freight.receiptId),
         freight.pieces,
         freight.type,
-        (freight.length || '') as string | number,
-        (freight.width || '') as string | number,
-        (freight.height || '') as string | number,
-        (freight.weight || '') as string | number,
-        (freight.cubicMeter || '') as string | number
+        (freight.length || 0) as string | number,
+        (freight.width || 0) as string | number,
+        (freight.height || 0) as string | number,
+        (freight.weight || 0) as string | number,
+        (freight.cubicMeter || 0) as string | number
     ];
     const result = await conn.query(query, params) as any[];
     return result[0].freightId;
@@ -836,6 +958,15 @@ export async function deleteFreightImagesByFreight(conn: Connection, freightId: 
     await conn.query(query, [Number(freightId)]);
 }
 
+export async function deleteFreightImageByPath(conn: Connection, freightId: number | bigint, imagePath: string): Promise<void> {
+    const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Freight_Images" WHERE "freightId" = ? AND "imagePath" = ?`;
+    await conn.query(query, [Number(freightId), imagePath]);
+}
+
+export async function deleteBadFreightConditionImageByPath(conn: Connection, receiptId: number | bigint, imagePath: string): Promise<void> {
+    const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Freight_Condition_Images" WHERE "receiptId" = ? AND "imagePath" = ?`;
+    await conn.query(query, [Number(receiptId), imagePath]);
+}
 
 export async function getWarehouseReceiptByReceiptNumber(
     conn: Connection,
@@ -1027,7 +1158,7 @@ export async function getAuditLogsByReceiptId(
     conn: Connection,
     receiptId: number | bigint
 ): Promise<AuditLog[]> {
-    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Audit_Log" WHERE "receiptId" = ? ORDER BY "eventTime" DESC`;
+    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Audit_Log" WHERE "receiptId" = ? ORDER BY "auditLogId" ASC`;
     const result = await conn.query(query, [Number(receiptId)]) as any[];
 
     const logs = await Promise.all(
@@ -1069,22 +1200,36 @@ export async function createWarehouseReceiptRate(conn: Connection, rateData: Omi
     const params: (string | number)[] = [
         Number(rateData.receiptId),
         rateData.rate,
-        (rateData.dimFactor || '') as string | number,
-        (rateData.baseRate || '') as string | number,
-        (rateData.minRate || '') as string | number,
-        (rateData.maxRate || '') as string | number
+        (rateData.dimFactor || 0) as string | number,
+        (rateData.baseRate || 0) as string | number,
+        (rateData.minRate || 0) as string | number,
+        (rateData.maxRate || 0) as string | number
     ];
     const result = await conn.query(query, params) as any[];
     return result[0].rateId;
 }
 
-export async function getWarehouseReceiptRate(conn: Connection, receiptId: number | bigint): Promise<WarehouseReceiptRate | null> {
-    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Rate" WHERE "receiptId" = ?`;
-    const result = await conn.query(query, [Number(receiptId)]) as any[];
-    return result[0] || null;
+export async function getWarehouseReceiptRate(
+    conn: Connection,
+    receiptId: number | bigint
+): Promise<WarehouseReceiptRate | null> {
+    const query = `
+    SELECT 
+      "receiptId",
+      "rateId", 
+      "rate" AS "finalRate",
+      "minRate", 
+      "maxRate", 
+      "baseRate"
+    FROM ${SCHEMA}."Warehouse_Receipt_Rate" 
+    WHERE "receiptId" = ?
+  `;
+    const result = (await conn.query(query, [Number(receiptId)])) as WarehouseReceiptRate[];
+    return result.length > 0 ? result[0] : null;
 }
 
-export async function updateWarehouseReceiptRate(conn: Connection, rateId: number, updates: any): Promise<void> {
+
+export async function updateWarehouseReceiptRate(conn: Connection, receiptId: number, updates: any): Promise<void> {
     const fields: string[] = [];
     const params: (string | number)[] = [];
 
@@ -1111,8 +1256,8 @@ export async function updateWarehouseReceiptRate(conn: Connection, rateId: numbe
 
     if (fields.length === 0) return;
 
-    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt_Rate" SET ${fields.join(', ')} WHERE "rateId" = ?`;
-    params.push(Number(rateId));
+    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt_Rate" SET ${fields.join(', ')} WHERE "receiptId" = ?`;
+    params.push(Number(receiptId));
 
     await conn.query(query, params);
 }
@@ -1123,17 +1268,19 @@ export async function updateWarehouseReceiptRate(conn: Connection, rateId: numbe
 export async function createWarehouseReceiptDocument(
     conn: Connection,
     receiptId: number,
+    filePath?: string | null,
+    fileType?: string | null,
 ): Promise<number> {
     const query = `
-    SELECT "documentId"
+    SELECT "documentId", "filePath", "fileType"
     FROM FINAL TABLE (
       INSERT INTO ${SCHEMA}."Warehouse_Receipt_Documents"
-        ("receiptId")
-      VALUES (?)
+        ("receiptId", "filePath", "fileType", "uploadedAt")
+      VALUES (?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
     )
   `;
 
-    const result = await conn.query(query, [receiptId]) as any[];
+    const result = await conn.query(query, [receiptId, filePath ?? null, fileType ?? null] as any[]) as any[];
     return Number(result[0].documentId);
 }
 
@@ -1159,6 +1306,20 @@ export async function getDocumentsByReceiptNumber(
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
     }));
 }
+
+export async function getDocumentsByReceiptId(
+    conn: Connection,
+    receiptId: number | bigint
+): Promise<WarehouseReceiptDocuments[]> {
+    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Documents" WHERE "receiptId" = ? ORDER BY "documentId" DESC`;
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+    return result.map((row: any) => ({
+        ...row,
+        documentId: row.documentId != null ? parseInt(row.documentId) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+    }));
+}
+
 
 /**
  * GET PRO HEADER DETAILS
@@ -1247,4 +1408,14 @@ export async function saveProDetail(
 export async function updateWarehouseReceiptLocation(conn: Connection, receiptId: number, location: string): Promise<void> {
     const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET "location" = ? WHERE "receiptId" = ?`;
     await conn.query(query, [location, Number(receiptId)]);
+}
+
+export async function warehouseReceiptAccountHold(conn: Connection, receiptId: number, accountOnHold: 'Y' | 'N', approvalStatus: 'PENDING' | 'READY' | 'APPROVED'): Promise<void> {
+    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET "accountOnHold" = ?, "approvalStatus" = ? WHERE "receiptId" = ?`;
+    await conn.query(query, [accountOnHold, approvalStatus, Number(receiptId)]);
+}
+
+export async function updateWarehouseReceiptApprovalStatus(conn: Connection, receiptId: number, status: string): Promise<void> {
+    const query = `UPDATE ${SCHEMA}."Warehouse_Receipt" SET "status" = ? WHERE "receiptId" = ?`;
+    await conn.query(query, [status, Number(receiptId)]);
 }

@@ -14,6 +14,7 @@ import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, Warehous
 import { getProDetailFromCsv, validateProCsvData, findProCsvFile } from "../../utils/pro-csv-handler";
 import { createWarehouseReceiptPDF } from "../../utils/warehouseReceiptPDFHandler";
 import { ensureUploadDirExists } from "../../config/multer";
+import ExcelJS from 'exceljs';
 
 
 export async function getWarehouseReceiptWithDetailsService(conn: Connection, receiptId: number) {
@@ -33,6 +34,7 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
     const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receiptId);
     const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receiptId);
     const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId);
+    const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, receipt.stationId);
 
     return {
         ...receipt,
@@ -40,6 +42,7 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
         rate,
         auditLogs,
         customerEmails: emails,
+        stationDefaultEmails: stationDefaultEmails
     };
 }
 
@@ -65,12 +68,14 @@ export async function getWarehouseReceiptsByProService(conn: Connection, proNumb
             const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
             const auditLogs = await warehouseReceiptDB.getAuditLogsByReceipt(conn, receipt.receiptId);
             const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId);
+            const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, receipt.stationId);
             return {
                 ...receipt,
                 freightInformation: freightWithImages,
                 rate,
                 auditLogs,
-                customerEmails: emails
+                customerEmails: emails,
+                stationDefaultEmails: stationDefaultEmails
             };
         })
     );
@@ -86,6 +91,7 @@ export async function listWarehouseReceiptsService(
     pageSize: number = 10,
     status?: string,
     receiptNumber?: string,
+    accounting?: boolean,
     filters?: {
         startDate?: string;
         endDate?: string;
@@ -102,13 +108,32 @@ export async function listWarehouseReceiptsService(
 ) {
     const offset = (page - 1) * pageSize;
     let data = [];
-    const { data: receipts, total } = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, status, receiptNumber, filters);
+    const { data: receipts, total } = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, status, receiptNumber, accounting, filters);
     data = receipts;
 
     data = await Promise.all(
         data.map(async (receipt) => {
             const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receipt.receiptId);
             return { ...receipt, badFreightConditionImages };
+        })
+    );
+
+    data = await Promise.all(
+        data.map(async (receipt) => {
+            const documents = await warehouseReceiptDB.getDocumentsByReceiptId(conn, receipt.receiptId);
+            return { ...receipt, uploadedDocuments: documents };
+        })
+    );
+
+    data = await Promise.all(
+        data.map(async (receipt) => {
+            const emails = receipt
+                ? await customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId)
+                : [];
+            const stationDefaultEmails = receipt
+                ? await customerDB.getStationDefaultEmails(conn, receipt.stationId)
+                : { hasDefaultEmails: 'N', emails: [] };
+            return { ...receipt, customerEmails: emails, stationDefaultEmails: stationDefaultEmails };
         })
     );
 
@@ -128,64 +153,136 @@ export async function listWarehouseReceiptsService(
 
     data = await Promise.all(
         data.map(async (receipt) => {
-            const rate = await customerDB.getStationRateDetails(conn, receipt.stationId);
+            let rate: {
+                minRate: number;
+                maxRate: number;
+                baseRate: number;
+                finalRate?: number;
+                department?: string;
+                warehouse?: string;
+            } | null = null;
 
-            if (rate && rate.length > 0) {
+            // ✅ Step 1: Try warehouse rate first
+            rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.stationId);
+
+            // ✅ Step 2: If warehouse rate exists and flat rate applies
+            if (rate && receipt.hasFlatRate === "Y" && rate.finalRate) {
                 let totalActualWeight = 0;
                 let totalDimensionalWeight = 0;
 
-                if (receipt.freightInformation && Array.isArray(receipt.freightInformation)) {
-                    receipt.freightInformation.forEach((freight) => {
-                        const {
-                            pieces = 0,
-                            length = 0,
-                            width = 0,
-                            height = 0,
-                            weight = 0,
-                        } = freight;
+                const freightBreakdown: any[] = (receipt.freightInformation || []).map((freight) => {
+                    const {
+                        pieces = 0,
+                        length = 0,
+                        width = 0,
+                        height = 0,
+                        weight = 0,
+                        type = "UNKNOWN",
+                    } = freight;
 
-                        // ✅ Sum actual weight
-                        totalActualWeight += weight;
+                    const actualWeight = weight;
+                    const dimensionalWeight = (pieces * length * width * height) / DIM_FACTOR;
 
-                        // ✅ Sum dimensional weight
-                        const dimWeight = (pieces * length * width * height) / DIM_FACTOR;
-                        totalDimensionalWeight += dimWeight;
-                    });
-                }
+                    totalActualWeight += actualWeight;
+                    totalDimensionalWeight += dimensionalWeight;
 
-                // ✅ Compare totals
+                    return {
+                        pieces,
+                        type,
+                        length,
+                        width,
+                        height,
+                        actualWeight,
+                        dimensionalWeight,
+                    };
+                });
+
+                return {
+                    ...receipt,
+                    rateInformation: {
+                        minRate: rate.minRate,
+                        maxRate: rate.maxRate,
+                        baseRate: rate.baseRate,
+                        finalRate: rate.finalRate, // ✅ override with flat rate
+                        rateCalculatedBy: "FLAT_RATE",
+                        totalActualWeight,
+                        totalDimensionalWeight,
+                        dimFactor: DIM_FACTOR,
+                        freightBreakdown,
+                    },
+                };
+            }
+
+            // ✅ Step 3: If no warehouse rate, check station rate
+            if (!rate) {
+                rate = await customerDB.getStationRateDetails(conn, receipt.stationId);
+            }
+
+            // ✅ Step 4: If we have a rate (station or warehouse without flat rate), calculate
+            if (rate) {
+                let totalActualWeight = 0;
+                let totalDimensionalWeight = 0;
+
+                const freightBreakdown: any[] = (receipt.freightInformation || []).map((freight) => {
+                    const {
+                        pieces = 0,
+                        length = 0,
+                        width = 0,
+                        height = 0,
+                        weight = 0,
+                        type = "UNKNOWN",
+                    } = freight;
+
+                    const actualWeight = weight;
+                    const dimensionalWeight = (pieces * length * width * height) / DIM_FACTOR;
+
+                    totalActualWeight += actualWeight;
+                    totalDimensionalWeight += dimensionalWeight;
+
+                    return {
+                        pieces,
+                        type,
+                        length,
+                        width,
+                        height,
+                        actualWeight,
+                        dimensionalWeight,
+                    };
+                });
+
                 const chargeableWeight = Math.max(totalActualWeight, totalDimensionalWeight);
 
-                const rateInformation = {
-                    minRate: rate[0].minRate,
-                    maxRate: rate[0].maxRate,
-                    ratePerPound: rate[0].ratePerPound,
-                    finalRate: chargeableWeight * rate[0].ratePerPound,
-                    rateCalculatedBy: totalActualWeight >= totalDimensionalWeight ? "ACTUAL_WEIGHT" : "DIMENSIONAL_WEIGHT",
+                let rateInformation = {
+                    minRate: rate.minRate,
+                    maxRate: rate.maxRate,
+                    baseRate: rate.baseRate,
+                    finalRate: chargeableWeight * rate.baseRate,
+                    rateCalculatedBy:
+                        totalActualWeight >= totalDimensionalWeight ? "ACTUAL_WEIGHT" : "DIMENSIONAL_WEIGHT",
+
+                    totalActualWeight,
+                    totalDimensionalWeight,
+                    dimFactor: DIM_FACTOR,
+                    freightBreakdown,
                 };
 
-                // ✅ Optional min/max enforcement
-                if (
-                    rateInformation.minRate &&
-                    rateInformation.finalRate < rateInformation.minRate
-                ) {
+                // ✅ Apply min/max constraints
+                if (rateInformation.minRate && rateInformation.finalRate < rateInformation.minRate) {
                     rateInformation.finalRate = rateInformation.minRate;
                 }
 
-                if (
-                    rateInformation.maxRate &&
-                    rateInformation.finalRate > rateInformation.maxRate
-                ) {
+                if (rateInformation.maxRate && rateInformation.finalRate > rateInformation.maxRate) {
                     rateInformation.finalRate = rateInformation.maxRate;
                 }
 
                 return { ...receipt, rateInformation };
-
-            } else {
-                return { ...receipt, rateInformation: null };
             }
+
+            // ✅ Step 5: No rate found at all
+            return { ...receipt, rateInformation: null };
         })
     );
+
 
     const pagination = {
         page: page,
@@ -246,12 +343,258 @@ export async function updateWarehouseReceiptService(
     return await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
 }
 
+export async function editWarehouseReceiptService(
+    conn: Connection,
+    receiptId: number,
+    payload: any,
+    userId: number | undefined
+) {
+    const currentReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    if (!currentReceipt) {
+        throw new Error(`Receipt with ID ${receiptId} not found`);
+    }
+
+    console.log("Current Receipt:", currentReceipt);
+    console.log("Payload:", payload);
+
+    await conn.beginTransaction();
+    try {
+        const receiptPayload = payload.receipt || payload;
+        const excludedFields = [
+            "receiptId",
+            "createdAt",
+            "createdBy",
+            "freightDetails",
+            "removeFreightIds",
+            "badFreightImages",
+            "removeBadFreightImagePaths"
+        ];
+
+        const receiptUpdates: any = {};
+        for (const [key, value] of Object.entries(receiptPayload || {})) {
+            if (!excludedFields.includes(key)) {
+                receiptUpdates[key] = value;
+            }
+        }
+
+        if (Object.keys(receiptUpdates).length > 0) {
+            if (userId !== undefined) {
+                receiptUpdates.updatedBy = userId;
+            }
+            console.log("Updating receipt with:", receiptUpdates);
+            await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, receiptUpdates);
+            console.log("Receipt updated successfully.");
+
+            if (receiptUpdates.status && receiptUpdates.status !== currentReceipt.status) {
+                emitAuditLog({
+                    receiptNumber: currentReceipt.receiptNumber,
+                    receiptId,
+                    proNumber: currentReceipt.proNumber || undefined,
+                    userId: userId || currentReceipt.createdBy,
+                    status: receiptUpdates.status,
+                    description: `Status changed from ${currentReceipt.status} to ${receiptUpdates.status}`,
+                    level: "INFO"
+                });
+            }
+        }
+
+        if (Array.isArray(payload.removeFreightIds) && payload.removeFreightIds.length > 0) {
+            console.log("Removing freight info for IDs:", payload.removeFreightIds);
+            for (const rawId of payload.removeFreightIds) {
+                const freightId = Number(rawId);
+                if (isNaN(freightId)) continue;
+                console.log(`Removing freight info with ID: ${freightId}`);
+                await warehouseReceiptDB.deleteFreightImagesByFreight(conn, freightId);
+                console.log(`Deleted images for freight ID: ${freightId}`);
+                await warehouseReceiptDB.deleteFreightInfo(conn, freightId);
+                console.log(`Deleted freight info with ID: ${freightId}`);
+            }
+        }
+
+        const receiptFreightDetails = Array.isArray(receiptPayload.freightDetails) ? receiptPayload.freightDetails : [];
+        const topLevelFreightDetails = Array.isArray(payload.freightDetails) ? payload.freightDetails : [];
+        const freightProcessingQueue = [
+            ...receiptFreightDetails.map((item: any, index: number) => ({ item, payloadIndex: index, source: "receipt" })),
+            ...topLevelFreightDetails.map((item: any, index: number) => ({ item, payloadIndex: index, source: "payload" }))
+        ];
+        const allFreightDetailsToProcess = freightProcessingQueue.map((entry) => entry?.item);
+        console.log("All freight details to process:", allFreightDetailsToProcess);
+
+        const currentFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+        const currentFreightIds = currentFreightInfos
+            .map((freight: any) => Number(freight?.freightId))
+            .filter((id) => !isNaN(id));
+
+        const referencedFreightIds = new Set(
+            allFreightDetailsToProcess
+                .map((item: any) => Number(item?.freightId))
+                .filter((id) => !isNaN(id))
+        );
+        const unreferencedFreightIds = currentFreightIds.filter((id) => !referencedFreightIds.has(id));
+
+        const requiredFieldsForNewFreight = ["pieces", "type", "length", "width", "height", "weight", "cubicMeter"];
+        const normalizePaths = (paths: any[]) =>
+            paths
+                .filter((path) => typeof path === "string" && path.trim())
+                .map((path) => path.trim());
+
+        const countImageOnlyItems = freightProcessingQueue.reduce((count: number, entry) => {
+            if (!entry) return count;
+            const freightItem = entry.item || {};
+            const newImages = normalizePaths(Array.isArray(freightItem.newImages) ? freightItem.newImages : []);
+            const imagePaths = normalizePaths(Array.isArray(freightItem.images) ? freightItem.images : []);
+            const removeImagePaths = normalizePaths(Array.isArray(freightItem.removeImagePaths) ? freightItem.removeImagePaths : []);
+            const hasAnyImageOps = newImages.length > 0 || imagePaths.length > 0 || removeImagePaths.length > 0;
+            const hasFreightDetails = requiredFieldsForNewFreight.some((field) => freightItem[field] !== undefined);
+            const freightIdValue = Number(freightItem?.freightId);
+            const hasFreightId = !isNaN(freightIdValue) && freightIdValue > 0;
+            return count + (hasAnyImageOps && !hasFreightDetails && !hasFreightId ? 1 : 0);
+        }, 0);
+
+        if (allFreightDetailsToProcess.length > 0) {
+            console.log("Processing all freight details:", allFreightDetailsToProcess);
+            for (const [index, entry] of freightProcessingQueue.entries()) {
+                if (!entry) continue;
+                const freightItem = entry.item || {};
+                const payloadIndex = entry.payloadIndex;
+                let freightId = Number(freightItem?.freightId);
+                const hasFreightId = !isNaN(freightId) && freightId > 0;
+                const newImages = normalizePaths(Array.isArray(freightItem?.newImages) ? freightItem?.newImages : []);
+                const imagePaths = normalizePaths(Array.isArray(freightItem?.images) ? freightItem?.images : []);
+                const removeImagePaths = normalizePaths(Array.isArray(freightItem?.removeImagePaths) ? freightItem?.removeImagePaths : []);
+
+                const hasFreightDetails = requiredFieldsForNewFreight.some((field) => freightItem[field] !== undefined);
+                const hasImageOps = newImages.length > 0 || imagePaths.length > 0 || removeImagePaths.length > 0;
+
+                if (!hasFreightId && !hasFreightDetails && hasImageOps) {
+                    const indexedFreight = currentFreightInfos[payloadIndex];
+                    const indexedFreightId = Number(indexedFreight?.freightId);
+
+                    if (!isNaN(indexedFreightId) && indexedFreightId > 0) {
+                        freightId = indexedFreightId;
+                        console.log(`Assigning image-only freight payload at index ${payloadIndex} from ${entry.source} to freightId: ${freightId}`);
+                    } else if (currentFreightIds.length === 1) {
+                        freightId = currentFreightIds[0];
+                        console.log(`Assigning image-only freight payload to only existing freightId: ${freightId}`);
+                    } else if (unreferencedFreightIds.length === 1 && countImageOnlyItems === 1) {
+                        freightId = unreferencedFreightIds[0];
+                        console.log(`Assigning image-only freight payload to unreferenced freightId: ${freightId}`);
+                    } else {
+                        throw new Error(
+                            "Invalid freight detail entry: freightId is required when only image operations are provided unless the receipt has a single freight item or the payload index maps to an existing freight row."
+                        );
+                    }
+                }
+
+                const updateData: any = {};
+                const fields = ["pieces", "type", "length", "width", "height", "weight", "cubicMeter"];
+                for (const field of fields) {
+                    if (freightItem[field] !== undefined) {
+                        updateData[field] = freightItem[field];
+                    }
+                }
+
+                if (freightId && !isNaN(freightId)) {
+                    if (Object.keys(updateData).length > 0) {
+                        console.log(`Updating freight info with ID: ${freightId} and data:`, updateData);
+                        await warehouseReceiptDB.updateFreightInfo(conn, freightId, updateData);
+                        console.log(`Freight info with ID: ${freightId} updated successfully.`);
+                    }
+
+                    if (removeImagePaths.length > 0) {
+                        console.log(`Removing freight images for freight ID: ${freightId} with paths:`, removeImagePaths);
+                        for (const imagePath of removeImagePaths) {
+                            console.log(`Removing freight image for freight ID: ${freightId} with path: ${imagePath}`);
+                            await warehouseReceiptDB.deleteFreightImageByPath(conn, freightId, imagePath);
+                            console.log(`Removed freight image for freight ID: ${freightId} with path: ${imagePath}`);
+                        }
+                    }
+
+                    if (newImages.length > 0 || imagePaths.length > 0) {
+                        const existingImages = await warehouseReceiptDB.getFreightImages(conn, freightId);
+                        const existingPaths = existingImages.map((image: any) => image.imagePath || image.imageUrl || "");
+                        for (const imagePath of [...imagePaths, ...newImages]) {
+                            if (!existingPaths.includes(imagePath)) {
+                                console.log(`Creating freight image for freight ID: ${freightId} with path: ${imagePath} (length: ${imagePath.length})`);
+                                await warehouseReceiptDB.createFreightImage(conn, freightId, imagePath);
+                                console.log(`Created freight image for freight ID: ${freightId} with path: ${imagePath}`);
+                                existingPaths.push(imagePath);
+                            }
+                        }
+                    }
+                } else {
+                    const newFreightData: any = {
+                        receiptId,
+                        pieces: freightItem.pieces,
+                        type: freightItem.type,
+                        length: freightItem.length,
+                        width: freightItem.width,
+                        height: freightItem.height,
+                        weight: freightItem.weight,
+                        cubicMeter: freightItem.cubicMeter
+                    };
+
+                    const missingFields = requiredFieldsForNewFreight.filter((field) => newFreightData[field] === undefined);
+                    if (missingFields.length > 0) {
+                        throw new Error(
+                            `Cannot create new freight item without required fields: ${missingFields.join(", ")}`
+                        );
+                    }
+
+                    const createdFreightId = await warehouseReceiptDB.createFreightInfo(conn, newFreightData);
+                    console.log(`Created freight info with ID: ${createdFreightId}`);
+                    for (const imagePath of [...imagePaths, ...newImages]) {
+                        console.log(`Creating freight image for new freight ID: ${createdFreightId} with path: ${imagePath}`);
+                        await warehouseReceiptDB.createFreightImage(conn, createdFreightId, imagePath);
+                        console.log(`Created freight image for freight ID: ${createdFreightId} with path: ${imagePath}`);
+                    }
+                }
+            }
+        }
+
+        console.log("Handling bad freight condition images for receipt ID:", receiptId);
+
+        if (Array.isArray(payload.removeBadFreightImagePaths) && payload.removeBadFreightImagePaths.length > 0) {
+            for (const imagePath of payload.removeBadFreightImagePaths) {
+                if (typeof imagePath !== "string" || !imagePath.trim()) continue;
+                await warehouseReceiptDB.deleteBadFreightConditionImageByPath(conn, receiptId, imagePath.trim());
+                console.log(`Removed bad freight image for receipt ID: ${receiptId} with path: ${imagePath.trim()}`);
+            }
+        }
+
+        console.log("Adding new bad freight condition images for receipt ID:", receiptId);
+
+        if (Array.isArray(payload.badFreightImages)) {
+            const existingBadImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId);
+            const existingBadPaths = existingBadImages.map((image: any) => image.imagePath || image.imageUrl);
+
+            for (const imagePath of payload.badFreightImages) {
+                if (typeof imagePath !== "string" || !imagePath.trim()) continue;
+                const normalizedPath = imagePath.trim();
+                if (!existingBadPaths.includes(normalizedPath)) {
+                    await warehouseReceiptDB.createBadFreightConditionImage(conn, receiptId, normalizedPath);
+                    console.log(`Created bad freight image for receipt ID: ${receiptId} with path: ${normalizedPath}`);
+                    existingBadPaths.push(normalizedPath);
+                }
+            }
+        }
+
+        await conn.commit();
+        return await getWarehouseReceiptWithDetailsService(conn, receiptId);
+    } catch (error) {
+        console.error("Error in editWarehouseReceiptService:", error);
+        await conn.rollback();
+        throw error;
+    }
+}
+
 /**
  * ADD FREIGHT INFO TO RECEIPT
  */
 export async function addFreightInfoService(conn: Connection, freightData: Omit<FreightInfo, "freightId">) {
     const freightId = await warehouseReceiptDB.createFreightInfo(conn, freightData);
 
+    console.log(`Creating freight info for receipt ID: ${freightData.receiptId} with data:`, freightData);
     // Handle images if provided
     const images = (freightData as any).images || [];
     if (Array.isArray(images)) {
@@ -302,18 +645,18 @@ export async function getFreightInfoWithImagesService(conn: Connection, freightI
  * ADD AUDIT LOG
  * Emits audit log event for asynchronous centralized processing
  */
-export async function addAuditLogService(conn: Connection, logData: Omit<AuditLog, "auditLogId" | "eventTime">) {
-    emitAuditLog({
-        receiptNumber: logData.receiptNumber,
-        receiptId: logData.receiptId,
-        proNumber: logData.proNumber,
-        userId: logData.userId,
-        status: logData.status,
-        description: logData.description,
-        level: logData.level
-    });
-    return { message: 'Audit log queued for processing' };
-}
+// export async function addAuditLogService(conn: Connection, logData: Omit<AuditLog, "auditLogId" | "eventTime">) {
+//     emitAuditLog({
+//         receiptNumber: logData.receiptNumber,
+//         receiptId: logData.receiptId,
+//         proNumber: logData.proNumber,
+//         userId: logData.userId,
+//         status: logData.status,
+//         description: logData.description,
+//         level: logData.level
+//     });
+//     return { message: 'Audit log queued for processing' };
+// }
 
 /**
  * ADD RATE TO RECEIPT
@@ -321,13 +664,6 @@ export async function addAuditLogService(conn: Connection, logData: Omit<AuditLo
 export async function addWarehouseReceiptRateService(conn: Connection, rateData: Omit<WarehouseReceiptRate, "rateId">) {
     const rateId = await warehouseReceiptDB.createWarehouseReceiptRate(conn, rateData);
     return { rateId };
-}
-
-/**
- * UPDATE RECEIPT RATE
- */
-export async function updateWarehouseReceiptRateService(conn: Connection, rateId: number, updates: any) {
-    await warehouseReceiptDB.updateWarehouseReceiptRate(conn, rateId, updates);
 }
 
 /**
@@ -384,7 +720,10 @@ export async function createTemporaryWarehouseReceiptService(conn: Connection, t
     const emails = tempReceipt
         ? await customerDB.getDepartmentAndPersonnelEmails(conn, tempReceipt.stationId)
         : [];
-    return { ...tempReceipt, customerEmails: emails };
+    const stationDefaultEmails = tempReceipt
+        ? await customerDB.getStationDefaultEmails(conn, tempReceipt.stationId)
+        : { hasDefaultEmails: 'N', emails: [] };
+    return { ...tempReceipt, customerEmails: emails, stationDefaultEmails: stationDefaultEmails };
 }
 
 /**
@@ -392,6 +731,65 @@ export async function createTemporaryWarehouseReceiptService(conn: Connection, t
  * - Creates receipt, adds all freight info, and returns receipt with freight details
  * - createdBy comes from authenticated user
  */
+function getDocumentFileType(file: { originalname?: string; mimetype?: string }): string {
+    const extension = path.extname(file.originalname || "").toLowerCase();
+
+    switch (extension) {
+        case ".pdf":
+            return "PDF";
+        case ".doc":
+            return "DOC";
+        case ".docx":
+            return "DOCX";
+        case ".txt":
+            return "TXT";
+        case ".jpg":
+        case ".jpeg":
+            return "JPG";
+        case ".png":
+            return "PNG";
+        default:
+            return file.mimetype || "UNKNOWN";
+    }
+}
+
+export async function uploadWarehouseReceiptDocumentsService(
+    conn: Connection,
+    receiptId: number,
+    files: Array<{ filename: string; originalname?: string; mimetype?: string }>
+) {
+    const existingReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    if (!existingReceipt) {
+        throw new Error(`Receipt with ID ${receiptId} not found`);
+    }
+
+    if (!files || files.length === 0) {
+        throw new Error("No documents were provided for upload");
+    }
+
+    const documents: any[] = [];
+
+    await conn.beginTransaction();
+    try {
+        for (const file of files) {
+            const storedFileName = file.filename || path.basename(file.originalname || "");
+            const documentId = await warehouseReceiptDB.createWarehouseReceiptDocument(
+                conn,
+                receiptId,
+                storedFileName,
+                getDocumentFileType(file)
+            );
+            documents.push({ documentId, filePath: storedFileName, fileType: getDocumentFileType(file) });
+        }
+
+        await conn.commit();
+        return documents;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
 export async function createWarehouseReceiptWithFreightService(
     conn: Connection,
     receiptData: any,
@@ -470,13 +868,21 @@ export async function createWarehouseReceiptWithFreightService(
 export async function batchProcessWarehouseReceiptsService(
     conn: Connection,
     receipts: any[],
-    userId: number
+    userId: number,
+    split?: boolean,
+    parentReceiptId?: number | undefined
 ) {
     await conn.beginTransaction();
     try {
         const updatedReceipts = [];
         const createdReceipts = [];
         let verificationId = 0;
+        let parentReceipt: WarehouseReceipt | null = null;
+
+        if (split && parentReceiptId) {
+            parentReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, parentReceiptId);
+            console.log("Parent Receipt:", parentReceipt);
+        }
 
         // Process each receipt in the array
         for (const item of receipts) {
@@ -532,6 +938,7 @@ export async function batchProcessWarehouseReceiptsService(
             }
 
             receipt.status = "ON_HAND";
+            receipt.approvalStatus = "APPROVED";
 
             // Check if this is an update (receipt has receiptId) or create (doesn't have receiptId)
             if (receipt.receiptId && receipt.receiptId !== 0) {
@@ -581,6 +988,9 @@ export async function batchProcessWarehouseReceiptsService(
                         receiptId
                     });
 
+                    console.log(images);
+
+
                     // Create associated images if provided
                     if (Array.isArray(images)) {
                         for (const imagePath of images) {
@@ -619,19 +1029,40 @@ export async function batchProcessWarehouseReceiptsService(
                 const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
                 await createWarehouseReceiptPDF(updatedReceiptData, false, tempReceiptOutPath);
 
+                if (split && parentReceiptId) {
+                    emitAuditLog({
+                        receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
+                        receiptId,
+                        proNumber: updatedReceiptData.proNumber,
+                        userId: userId,
+                        status: "SPLIT",
+                        description: `Receipt created as part of SPLIT operation from parent receipt ID ${parentReceiptId}`,
+                        level: "INFO"
+                    });
+                }
+
+
                 emitAuditLog({
                     receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
                     receiptId,
                     proNumber: updatedReceiptData.proNumber,
                     userId: userId,
-                    status: updatedReceiptData.status ? updatedReceiptData.status : "ON_HAND",
+                    status: "ON_HAND",
                     description: `Receipt now ON-HAND for verification ID ${updatedReceiptData.verificationId}`,
                     level: "INFO"
                 });
 
-                if (updatedReceiptData.toEmails && Array.isArray(updatedReceiptData.toEmails) && updatedReceiptData.toEmails.length > 0) {
+                if ((updatedReceiptData.toEmails && Array.isArray(updatedReceiptData.toEmails) && updatedReceiptData.toEmails.length > 0) || (receipt.tempEmails && Array.isArray(receipt.tempEmails) && receipt.tempEmails.length > 0)) {
 
-                    for (const emailRecipient of updatedReceiptData.toEmails) {
+                    let emails: string[] = [];
+                    if (updatedReceiptData.toEmails && Array.isArray(updatedReceiptData.toEmails)) {
+                        emails = [...updatedReceiptData.toEmails];
+                    }
+                    if (receipt.tempEmails && Array.isArray(receipt.tempEmails)) {
+                        emails = [...emails, ...receipt.tempEmails];
+                    }
+
+                    for (const emailRecipient of emails) {
                         // emitEmail will queue email notification asynchronously
                         emitEmail({
                             receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
@@ -644,6 +1075,8 @@ export async function batchProcessWarehouseReceiptsService(
                 }
 
             } else {
+
+                console.log("Creating new warehouse receipt with freight details...");
 
                 const entityId = await entityDB.createWarehouseEntity(conn, 'WAREHOUSE_RECEIPT', receipt.receiptNumber.toString());
                 const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
@@ -668,24 +1101,36 @@ export async function batchProcessWarehouseReceiptsService(
 
                 // Create freight info records with images
                 for (const freight of freightDetails) {
+
                     const { images, ...freightData } = freight;
                     const freightId = await warehouseReceiptDB.createFreightInfo(conn, {
                         ...freightData,
                         receiptId
                     });
 
+                    console.log("Freight info created with ID", freightId, "for receipt ID", receiptId);
+
+                    console.log("Images for freight ID", freightId, ":", images);
+
                     // Create associated images if provided
                     if (Array.isArray(images)) {
                         for (const imagePath of images) {
-                            await warehouseReceiptDB.createFreightImage(conn, freightId, imagePath);
+                            const imageId = await warehouseReceiptDB.createFreightImage(conn, freightId, imagePath);
+                            console.log(`Freight image created with ID ${imageId} for freight ID ${freightId}`);
                         }
                     }
+
+                    console.log(`Freight info created with ID ${freightId} for receipt ID ${receiptId}`);
                 }
 
                 // Get complete receipt with all details
                 const createdReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
                 const badFreightConditionImages = await warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId);
                 const createdFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+
+                console.log("Created Receipt:", createdReceipt);
+                console.log("Bad Freight Condition Images:", badFreightConditionImages);
+                console.log("Created Freight Infos:", createdFreightInfos);
 
                 // Fetch images for each freight
                 const createdFreightWithImages = await Promise.all(
@@ -706,6 +1151,18 @@ export async function batchProcessWarehouseReceiptsService(
                 const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
                 await createWarehouseReceiptPDF(createdReceiptData, false, tempReceiptOutPath);
 
+                if (split && parentReceiptId) {
+                    emitAuditLog({
+                        receiptNumber: createdReceiptData.receiptNumber ? createdReceiptData.receiptNumber : 0,
+                        receiptId,
+                        proNumber: createdReceiptData.proNumber,
+                        userId: userId,
+                        status: "SPLIT-FROM",
+                        description: `Receipt created as part of SPLIT operation from parent receipt ID ${parentReceipt?.receiptNumber}`,
+                        level: "INFO"
+                    });
+                }
+
 
 
                 emitAuditLog({
@@ -713,13 +1170,22 @@ export async function batchProcessWarehouseReceiptsService(
                     receiptId,
                     proNumber: createdReceiptData.proNumber,
                     userId: userId,
-                    status: createdReceiptData.status ? createdReceiptData.status : "ON_HAND",
+                    status: "ON_HAND",
                     description: `Receipt now ON-HAND for verification ID ${createdReceiptData.verificationId}`,
                     level: "INFO"
                 });
 
-                if (createdReceiptData.toEmails && Array.isArray(createdReceiptData.toEmails) && createdReceiptData.toEmails.length > 0) {
-                    for (const emailRecipient of dataWithUser.toEmails) {
+                if ((createdReceiptData.toEmails && Array.isArray(createdReceiptData.toEmails) && createdReceiptData.toEmails.length > 0) || (receipt.tempEmails && Array.isArray(receipt.tempEmails) && receipt.tempEmails.length > 0)) {
+
+                    let emails: string[] = [];
+                    if (createdReceiptData.toEmails && Array.isArray(createdReceiptData.toEmails)) {
+                        emails = [...createdReceiptData.toEmails];
+                    }
+                    if (receipt.tempEmails && Array.isArray(receipt.tempEmails)) {
+                        emails = [...emails, ...receipt.tempEmails];
+                    }
+
+                    for (const emailRecipient of emails) {
                         // emitEmail will queue email notification asynchronously
                         emitEmail({
                             receiptNumber: dataWithUser.receiptNumber,
@@ -730,16 +1196,39 @@ export async function batchProcessWarehouseReceiptsService(
                         });
                     }
                 }
+
             }
         }
-
-        await conn.commit();
 
         // Collect all receipt numbers from updated and created receipts
         const receiptNumbers = [
             ...updatedReceipts.map(r => r.receiptNumber).filter(Boolean),
             ...createdReceipts.map(r => r.receiptNumber).filter(Boolean)
         ];
+
+        console.log("Updating parent receipt status to ARCHIVED for split operation, if applicable...");
+
+        if (split && parentReceiptId) {
+            console.log(`Parent receipt fetched: ${parentReceipt ? `Receipt Number ${parentReceipt.receiptNumber}` : 'Not found'}`);
+            await warehouseReceiptDB.updateWarehouseReceipt(conn, parentReceiptId, { status: "ARCHIVED", updatedBy: userId });
+            console.log(`Parent receipt ID ${parentReceiptId} archived successfully.`);
+            if (parentReceipt) {
+                console.log(`Emitting audit log for parent receipt ID ${parentReceiptId} with receipt number ${parentReceipt.receiptNumber}...`);
+                emitAuditLog({
+                    receiptNumber: parentReceipt.receiptNumber ? parentReceipt.receiptNumber : 0,
+                    receiptId: parentReceiptId,
+                    proNumber: parentReceipt.proNumber,
+                    userId: userId,
+                    status: "ARCHIVED",
+                    description: `Receipt ${parentReceipt.receiptNumber} has been split into ${receiptNumbers.join(', ')}`,
+                    level: "INFO"
+                });
+            }
+        }
+
+        await conn.commit();
+
+
 
         return {
             updated: updatedReceipts,
@@ -754,9 +1243,18 @@ export async function batchProcessWarehouseReceiptsService(
     }
 }
 
+
+
 export async function rejectWarehouseReceiptService(conn: Connection, receiptId: number, reason: string, userId: number) {
     await conn.beginTransaction();
     try {
+
+        const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+
+        if (!receipt) {
+            throw new Error(`Receipt not found`);
+        }
+
         // Update receipt status to REJECTED and add rejection reason
         await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, {
             status: 'REJECTED',
@@ -764,16 +1262,16 @@ export async function rejectWarehouseReceiptService(conn: Connection, receiptId:
             updatedBy: userId
         });
 
-        // emitAuditLog({
-        //     receiptNumber,
-        //     receiptId,
-        //     proNumber: detail.proNumber,
-        //     userId: userId,
-        //     status: "INITIATE",
-        //     description: `Receipt created for verification ID ${verificationId}`,
-        //     level: "INFO"
-        // });
-        // console.log(`📝 Audit log queued for receipt #${receiptNumber}`);
+        emitAuditLog({
+            receiptNumber: receipt.receiptNumber,
+            receiptId,
+            proNumber: receipt.proNumber,
+            userId: userId,
+            status: "REJECTED",
+            description: `Receipt rejected with reason: ${reason}`,
+            level: "INFO"
+        });
+        console.log(`📝 Audit log queued for receipt #${receipt.receiptNumber}`);
 
         await conn.commit();
     } catch (err) {
@@ -896,6 +1394,8 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
 
     const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, station.stationId);
 
+    const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, station.stationId);
+
     // Format response with required fields and enriched customer/carrier data
     return {
         proDetailId: proDetail.proDetailId,
@@ -918,6 +1418,7 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         hazmat: proDetail.hazmat || 'N',
         receiptNumber: receiptNumber,
         customerEmails: emails,
+        stationDefaultEmails: stationDefaultEmails
     };
 }
 
@@ -1009,7 +1510,7 @@ export async function printWarehouseReceiptLabelService(
         // const pieces = freightInformation.reduce((sum, freight) => sum + (freight.pieces || 0), 0);
 
         printData = {
-            labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
+            labelCount: receipt.labelCount && receipt.labelCount > 0 ? receipt.labelCount : 1,
             receiptNumber: Number(receipt.receiptNumber),
             customerName: receipt.customerName || "",
             packageId: receipt.packageId || "",
@@ -1036,6 +1537,248 @@ export async function getAuditLogsForReceiptService(conn: Connection, receiptId:
     return auditLogs;
 }
 
-export async function updateWarehouseReceiptLocationService(conn: Connection, receiptId: number, location: string) {
-    await warehouseReceiptDB.updateWarehouseReceiptLocation(conn, receiptId, location);
+export async function updateWarehouseReceiptLocationService(conn: Connection, receiptId: number, location: string, userId: number) {
+    const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+
+    console.log(`Updating location for receipt ID ${receiptId} to ${location} by user ID ${userId}`);
+    if (!receipt) {
+        throw new Error(`Receipt with ID ${receiptId} not found`);
+    }
+    const data = warehouseReceiptDB.updateWarehouseReceiptLocation(conn, receiptId, location);
+
+    emitAuditLog({
+        receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
+        receiptId,
+        proNumber: receipt.proNumber,
+        userId: userId,
+        status: "LOCATION_UPDATED",
+        description: `Receipt location updated from ${receipt.location} to ${location}`,
+        level: "INFO"
+    });
+
+    return data;
+}
+
+export async function warehouseReceiptAccountHoldService(conn: Connection, receiptIds: number[], userId: number) {
+    console.log(`Updating account hold status for receipts ${receiptIds} by user ID ${userId}`);
+    for (const receiptId of receiptIds) {
+        const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+        if (!receipt) {
+            throw new Error(`Receipt with ID ${receiptId} not found`);
+        }
+
+        await warehouseReceiptDB.warehouseReceiptAccountHold(conn, receiptId, 'Y', 'PENDING');
+
+        emitAuditLog({
+            receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
+            receiptId,
+            proNumber: receipt.proNumber,
+            userId: userId,
+            status: "ACCOUNT_ON_HOLD",
+            description: `Receipt account status updated to ON HOLD`,
+            level: "INFO"
+        });
+    }
+}
+
+export async function warehouseReceiptAccountHoldRevertService(conn: Connection, receiptIds: number[], userId: number) {
+    for (const receiptId of receiptIds) {
+        const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+        if (!receipt) {
+            throw new Error(`Receipt with ID ${receiptId} not found`);
+        }
+
+        await warehouseReceiptDB.warehouseReceiptAccountHold(conn, receiptId, 'N', 'APPROVED');
+
+        emitAuditLog({
+            receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
+            receiptId,
+            proNumber: receipt.proNumber,
+            userId: userId,
+            status: "ACCOUNT_ON_HOLD_REVERTED",
+            description: `Receipt account status reverted to APPROVED`,
+            level: "INFO"
+        });
+    }
+}
+
+
+export async function updateWarehouseReceiptApprovalStatusService(conn: Connection, receiptId: number, status: string, userId: number) {
+    const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    if (!receipt) {
+        throw new Error(`Receipt with ID ${receiptId} not found`);
+    }
+    const data = await warehouseReceiptDB.updateWarehouseReceiptApprovalStatus(conn, receiptId, status);
+
+    emitAuditLog({
+        receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
+        receiptId,
+        proNumber: receipt.proNumber,
+        userId: userId,
+        status: "APPROVAL_STATUS_UPDATED",
+        description: `Receipt approval status updated from ${receipt.status} to ${status}`,
+        level: "INFO"
+    });
+    return data;
+}
+
+export async function warehouseReceiptRateReadyForApprovalService(conn: Connection, receiptId: number, rateDetails: { rate: number, dimFactor: number, baseRate: number, minRate: number, maxRate: number, hasFlatRate: 'Y' | 'N', notesForFlatRate: string | null }, userId: number) {
+
+    await conn.beginTransaction();
+
+    try {
+        const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+        if (!receipt) {
+            throw new Error(`Receipt with ID ${receiptId} not found`);
+        }
+
+        if (rateDetails.hasFlatRate) {
+            await warehouseReceiptDB.updateWarehouseReceiptForReadyForApproval(conn, receiptId, {
+                approvalStatus: 'READY',
+                hasFlatRate: rateDetails.hasFlatRate,
+                notesForFlatRate: rateDetails.notesForFlatRate ? rateDetails.notesForFlatRate : null,
+                requestedBy: userId
+            });
+        }
+
+
+        const rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receiptId);
+        if (!rate) {
+            await warehouseReceiptDB.createWarehouseReceiptRate(conn, {
+                receiptId,
+                rate: rateDetails.rate,
+                dimFactor: rateDetails.dimFactor,
+                baseRate: rateDetails.baseRate,
+                minRate: rateDetails.minRate,
+                maxRate: rateDetails.maxRate
+            });
+        } else {
+            await warehouseReceiptDB.updateWarehouseReceiptRate(conn, receiptId, {
+                rate: rateDetails.rate,
+                dimFactor: rateDetails.dimFactor,
+                baseRate: rateDetails.baseRate,
+                minRate: rateDetails.minRate,
+                maxRate: rateDetails.maxRate
+            });
+        }
+
+        await conn.commit();
+    }
+    catch (err) {
+        await conn.rollback();
+        throw err;
+    }
+
+}
+
+export async function warehouseReceiptRateApproveService(conn: Connection, receiptIds: number[], userId: number) {
+    await conn.beginTransaction();
+    try {
+
+        receiptIds.forEach(async (receiptId) => {
+            const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+            if (!receipt) {
+                throw new Error(`Receipt with ID ${receiptId} not found`);
+            }
+            await warehouseReceiptDB.updateWarehouseReceiptApproval(conn, receiptId, {
+                approvalStatus: 'APPROVED',
+                requestedBy: userId
+            });
+        });
+
+        await conn.commit();
+    }
+    catch (err) {
+        await conn.rollback();
+        throw err;
+    }
+}
+
+export async function exportWarehouseReceiptsToSpreadsheetService(
+    conn: Connection,
+    status?: string,
+    receiptNumber?: string,
+    accounting?: boolean,
+    filters?: {
+        startDate?: string;
+        endDate?: string;
+        customerId?: number;
+        stationId?: number;
+        carrierId?: number;
+        location?: string;
+        proNumber?: string;
+        verificationId?: number;
+        destination?: string;
+        packageId?: string;
+        customerRefNumber?: string;
+    }
+) {
+
+
+    const { data: receipts } = await warehouseReceiptDB.listWarehouseReceipts(
+        conn,
+        undefined, // page
+        undefined, // pageSize
+        status,
+        receiptNumber,
+        accounting,
+        filters
+    );
+
+    if (!receipts || receipts.length === 0) {
+        throw new Error("No Record Found");
+    }
+
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Warehouse Receipts");
+
+    // Define columns
+    worksheet.columns = [
+        { header: "Warehouse Receipt ID", key: "receiptNumber", width: 20 },
+        { header: "Customer Name", key: "customerName", width: 25 },
+        { header: "Carrier", key: "carrierName", width: 20 },
+        { header: "Location", key: "location", width: 20 },
+        { header: "Pro Number", key: "proNumber", width: 20 },
+        { header: "Destination", key: "destination", width: 25 },
+        { header: "Created Date", key: "createdDate", width: 20 },
+        { header: "Status", key: "status", width: 15 },
+        { header: "ID Verification Number", key: "idVerification", width: 25 },
+        { header: "Package ID", key: "packageId", width: 25 },
+        { header: "Customer Ref Number", key: "customerRefNumber", width: 25 },
+    ];
+
+    // Map receipts into rows
+    const rows = receipts.map((r: any) => ({
+        receiptNumber: r.receiptNumber || "",
+        customerName: r.customerName || "",
+        carrierName: r.carrierName || "",
+        location: r.location || "",
+        proNumber: r.proNumber || "",
+        destination: r.destination || "",
+        createdDate: r.createdAt ? new Date(r.createdAt).toLocaleString() : "",
+        status: r.status || "",
+        idVerification: r.verificationId || "",
+        packageId: r.packageId || "",
+        customerRefNumber: r.customerRefNumber || "",
+    }));
+
+    worksheet.addRows(rows);
+
+    // Style header row
+    worksheet.getRow(1).font = { bold: true };
+
+    // Add borders to all cells
+    worksheet.eachRow({ includeEmpty: true }, (row) => {
+        row.eachCell({ includeEmpty: true }, (cell) => {
+            cell.border = {
+                top: { style: "thin" },
+                left: { style: "thin" },
+                bottom: { style: "thin" },
+                right: { style: "thin" },
+            };
+        });
+    });
+
+    return workbook;
 }

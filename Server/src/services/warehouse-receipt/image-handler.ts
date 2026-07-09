@@ -30,7 +30,7 @@ export function processUploadedImages(batchData: any, uploadedFiles: Express.Mul
     processedData.receipts?.forEach((item: any, receiptIndex: number) => {
         // Process freight images
         item.freightDetails?.forEach((freight: any, freightIndex: number) => {
-            freight.images = [];
+            freight.images = freight.images || [];
 
             // Find all images for this freight item
             let imageIndex = 0;
@@ -43,7 +43,7 @@ export function processUploadedImages(batchData: any, uploadedFiles: Express.Mul
         });
 
         // Process bad freight images for this receipt
-        item.receipt.badFreightImages = [];
+        item.receipt.badFreightImages = item.receipt.badFreightImages || [];
         let badImageIndex = 0;
         while (true) {
             const fieldName = `bad-freight-image-${receiptIndex}-${badImageIndex}`;

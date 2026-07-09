@@ -84,6 +84,11 @@ export interface WarehouseReceipt {
     accountOnHold: 'Y' | 'N';
     sendToTellSystem: 'Y' | 'N';
     hasFlatRate: 'Y' | 'N';
+    approvalStatus?: 'PENDING' | 'READY' | 'APPROVED';
+    requestedBy?: number;
+    requestedAt?: Date;
+    approvedBy?: number;
+    approvedAt?: Date;
 }
 
 /**
@@ -208,12 +213,13 @@ export interface CreateAuditLog {
 export interface WarehouseReceiptRate {
     rateId: number | bigint;
     receiptId: number | bigint;
-    rate: number;
-    dimFactor?: number;
-    baseRate?: number;
-    minRate?: number;
-    maxRate?: number;
+    rate: number;        // required
+    dimFactor: number;   // required
+    baseRate: number;    // required
+    minRate: number;     // required
+    maxRate: number;     // required
 }
+
 
 export interface CreateWarehouseReceiptRate {
     receiptId: number | bigint;
@@ -236,7 +242,7 @@ export interface WarehouseReceiptFreightImage {
 export interface WarehouseReceiptDocuments {
     documentId: number | bigint;
     receiptId: number | bigint;
-    documentUrl: string;
-    uploadedAt: Date;
-    uploadedBy: number;
+    filePath?: string;
+    fileType?: string;
+    uploadedAt?: Date;
 }
