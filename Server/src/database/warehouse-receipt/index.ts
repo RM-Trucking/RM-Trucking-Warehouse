@@ -171,7 +171,7 @@ export async function createWarehouseReceipt(
 export async function getWarehouseReceiptById(
     conn: Connection,
     receiptId: number
-): Promise<WarehouseReceipt | null> {
+): Promise<WarehouseReceipt & { carrierName: string; customerName: string; stationName: string } | null> {
     console.log("Fetching warehouse receipt by ID:", receiptId);
 
     const query = `

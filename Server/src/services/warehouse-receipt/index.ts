@@ -1736,7 +1736,8 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
     // Define columns
     worksheet.columns = [
         { header: "Warehouse Receipt ID", key: "receiptNumber", width: 20 },
-        { header: "Customer Name", key: "customerName", width: 25 },
+        { header: "Customer Name", key: "customerName", width: 30 },
+        { header: "Station Name", key: "stationName", width: 25 },
         { header: "Carrier", key: "carrierName", width: 20 },
         { header: "Location", key: "location", width: 20 },
         { header: "Pro Number", key: "proNumber", width: 20 },
@@ -1752,11 +1753,12 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
     const rows = receipts.map((r: any) => ({
         receiptNumber: r.receiptNumber || "",
         customerName: r.customerName || "",
+        stationName: r.stationName || "",
         carrierName: r.carrierName || "",
         location: r.location || "",
         proNumber: r.proNumber || "",
         destination: r.destination || "",
-        createdDate: r.createdAt ? new Date(r.createdAt).toLocaleString() : "",
+        createdDate: r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "",
         status: r.status || "",
         idVerification: r.verificationId || "",
         packageId: r.packageId || "",

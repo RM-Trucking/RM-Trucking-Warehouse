@@ -117,3 +117,13 @@ export interface UpdateProDetail {
     weight?: number;
     shipper?: string;
 }
+
+export interface ReceiptSummary {
+    receiptId?: number | bigint;
+    receiptNumber?: number | bigint;
+    proNumber?: string;
+    status?: string;
+    customerName?: string;
+    stationName?: string;
+    carrierName?: string;
+}

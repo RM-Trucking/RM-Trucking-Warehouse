@@ -5,7 +5,7 @@ import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as userDB from "../../database/maintanance/auth";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
-import { CreateIDVerification, CreateProDetail, Driver, IDVerification, IDVerificationProDetail, FreightDetailInput } from "../../entities/id-verification";
+import { CreateIDVerification, CreateProDetail, Driver, IDVerification, IDVerificationProDetail, FreightDetailInput, ReceiptSummary } from "../../entities/id-verification";
 import { WarehouseReceiptTemp, WarehouseReceipt } from "../../entities/warehouse-receipt";
 import { create } from "node:domain";
 import { toUtcDate } from "../../utils/dateFormater";
@@ -38,7 +38,7 @@ export async function createVerificationService(
     header: CreateIDVerification,
     freightDetails: FreightDetailInput[],
     userId: number
-): Promise<{ verificationIds: number[] }> {
+): Promise<{ verificationIds: number[], receipts: ReceiptSummary[] }> {
     await conn.beginTransaction();
     try {
         // Step 1: Create driver from header info
@@ -68,6 +68,7 @@ export async function createVerificationService(
         }
 
         const verificationIds: number[] = [];
+        const receiptIds: number[] = [];
 
         // Step 4: Create one ID_Verification per customer+station group
         for (const [key, details] of grouped) {
@@ -155,6 +156,7 @@ export async function createVerificationService(
 
                 const receiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, receipt);
 
+                receiptIds.push(receiptId);
                 console.log("Receipt ID:", receiptId);
 
                 // Step 8: Emit audit log event (centralized handling)
@@ -186,8 +188,21 @@ export async function createVerificationService(
             }
         }
 
+        const receipts = await Promise.all(receiptIds.map(async (receiptId) => {
+            const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+            return {
+                receiptId: receipt?.receiptId,
+                receiptNumber: receipt?.receiptNumber,
+                proNumber: receipt?.proNumber,
+                status: receipt?.status,
+                customerName: receipt?.customerName,
+                stationName: receipt?.stationName,
+                carrierName: receipt?.carrierName
+            };
+        }));
+
         await conn.commit();
-        return { verificationIds };
+        return { verificationIds, receipts };
     } catch (err) {
         await conn.rollback();
         throw err;
