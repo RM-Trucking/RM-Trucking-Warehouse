@@ -1166,8 +1166,11 @@ export default function WarehouseReceiptFormPage() {
   const isWarehouseReceiptEdit = Boolean(state?.warehouseReceiptEdit);
   const viewReceiptSummary = state?.viewReceiptSummary || null;
   const initialReceiptForms = useMemo(() => {
+    const routeReceiptForms = state?.receiptForms || [];
     const routeReceipts = state?.receipts || [];
     const savedReceiptForms = warehouseCheckInDrafts?.[selectedDraftKey]?.receiptForms || [];
+
+    if (routeReceiptForms.length) return routeReceiptForms;
 
     if (routeReceipts.length) {
       const routeForms = getFormsFromState(routeReceipts);
@@ -1189,7 +1192,7 @@ export default function WarehouseReceiptFormPage() {
     const sourceReceipts = routeReceipts.length ? routeReceipts : draftReceipts;
     const forms = getFormsFromState(sourceReceipts);
     return forms.length ? forms : buildEmptyReceiptForms();
-  }, [state?.receipts, selectedDraftKey, warehouseCheckInDrafts]);
+  }, [state?.receiptForms, state?.receipts, selectedDraftKey, warehouseCheckInDrafts]);
   const [receiptForms, setReceiptForms] = useState(initialReceiptForms);
   const [activeTab, setActiveTab] = useState(initialReceiptForms[0]?.id || '');
   const [imageDialog, setImageDialog] = useState({ open: false, images: [], itemLabel: '', imageType: 'freight', splitFormIndex: null });

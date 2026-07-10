@@ -766,7 +766,7 @@ const haveCommonReceiptFieldsChanged = (
   });
 };
 
-const mergeReceiptItemsWithLatestImages = (
+const mergeReceiptItemsWithCurrentCheckInValues = (
   savedItems = [],
   currentItems = [],
 ) => {
@@ -775,11 +775,12 @@ const mergeReceiptItemsWithLatestImages = (
 
   const mergedSavedItems = savedItems.map((savedItem) => {
     const currentItem = currentItemMap.get(savedItem.id);
-    const latestImages = currentItem?.images || [];
+    if (!currentItem) return savedItem;
 
     return {
       ...savedItem,
-      images: latestImages.length ? latestImages : savedItem.images || [],
+      ...currentItem,
+      images: currentItem.images?.length ? currentItem.images : savedItem.images || [],
     };
   });
 
@@ -810,7 +811,7 @@ const mergeReceiptFormsWithSaved = (
         ...(currentForm.row || {}),
         ...(savedForm.row || {}),
       },
-      items: mergeReceiptItemsWithLatestImages(
+      items: mergeReceiptItemsWithCurrentCheckInValues(
         savedForm.items || [],
         currentForm.items || [],
       ),
@@ -2823,7 +2824,7 @@ export default function WarehouseCheckInPage({
     );
 
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
-      state: { receipts: proceededReceipts, title, draftKey },
+      state: { receipts: proceededReceipts, receiptForms, title, draftKey },
     });
   };
 
