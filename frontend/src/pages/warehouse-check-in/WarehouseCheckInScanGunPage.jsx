@@ -547,7 +547,7 @@ export default function WarehouseCheckInScanGunPage({
   };
 
   return (
-    <Box sx={{ width: '100vw', minHeight: '100dvh', bgcolor: '#fff', fontSize: 12, overflowX: 'hidden' }}>
+    <Box sx={{ width: '100vw', minHeight: '100dvh', bgcolor: '#fff', color: '#000', fontSize: 12, overflowX: 'hidden' }}>
       <Box sx={{ width: '100vw', maxWidth: 'none', mx: 0, bgcolor: '#fff', minHeight: '100dvh' }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75 }}>
           <Stack
