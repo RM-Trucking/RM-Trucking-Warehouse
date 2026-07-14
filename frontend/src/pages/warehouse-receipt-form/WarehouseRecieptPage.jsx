@@ -435,8 +435,6 @@ export default function WarehouseRecieptPage() {
             sx={{ width: '100%', height: '100%' }}
           >
             {visibleActionIcons.map((icon) => {
-              const isEnabledAction = ['mdi:eye', 'location-edit'].includes(icon);
-              const iconColor = isEnabledAction ? '#050505' : '#a8a8a8';
               const handleActionClick = (event) => {
                 event.stopPropagation();
 
@@ -447,10 +445,7 @@ export default function WarehouseRecieptPage() {
 
                 if (icon === 'location-edit') {
                   handleOpenLocationDialog(params.row);
-                  return;
                 }
-
-                setComingSoonMessageOpen(true);
               };
               const handleActionMouseDown = (event) => {
                 event.stopPropagation();
@@ -462,12 +457,12 @@ export default function WarehouseRecieptPage() {
                   size="small"
                   onClick={handleActionClick}
                   onMouseDown={handleActionMouseDown}
-                  sx={{ p: 0.25, color: iconColor }}
+                  sx={{ p: 0.25, color: '#050505' }}
                 >
                   {icon === 'location-edit' ? (
-                    <EditLocationAltIcon sx={{ color: iconColor, fontSize: 18 }} />
+                    <EditLocationAltIcon sx={{ color: '#050505', fontSize: 18 }} />
                   ) : (
-                    <Iconify icon={icon} width={16} sx={{ color: iconColor }} />
+                    <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
                   )}
                 </IconButton>
               );
