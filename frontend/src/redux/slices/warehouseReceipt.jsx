@@ -264,7 +264,7 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '', filters = {} } = {}) {
+export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
@@ -280,6 +280,8 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
       if (receiptNumber) {
         params.set('receiptNumber', receiptNumber);
       }
+
+      params.set('accounting', accounting ? 'true' : 'false');
 
       Object.entries(filters || {}).forEach(([key, value]) => {
         const cleanValue = String(value ?? '').trim();
@@ -365,6 +367,56 @@ export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
         error.response?.data?.message ||
         error.message ||
         'Failed to update warehouse receipt location';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function putWarehouseReceiptsOnAccountHold(receiptIds = []) {
+  return async () => {
+    const validReceiptIds = receiptIds.filter((receiptId) => receiptId !== null && receiptId !== undefined && receiptId !== '');
+
+    if (!validReceiptIds.length) {
+      return { error: true, message: 'At least one receipt ID is required for account hold' };
+    }
+
+    try {
+      const response = await axios.put('/warehouse-receipt/account-hold', {
+        receiptIds: validReceiptIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to place warehouse receipt on account hold';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function revertWarehouseReceiptsFromAccountHold(receiptIds = []) {
+  return async () => {
+    const validReceiptIds = receiptIds.filter((receiptId) => receiptId !== null && receiptId !== undefined && receiptId !== '');
+
+    if (!validReceiptIds.length) {
+      return { error: true, message: 'At least one receipt ID is required to revert account hold' };
+    }
+
+    try {
+      const response = await axios.put('/warehouse-receipt/account-hold-revert', {
+        receiptIds: validReceiptIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to revert warehouse receipt from account hold';
 
       return { error: true, message: errorMessage };
     }

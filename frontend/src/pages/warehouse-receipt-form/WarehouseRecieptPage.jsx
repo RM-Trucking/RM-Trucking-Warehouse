@@ -13,6 +13,11 @@ import {
   InputAdornment,
   Snackbar,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -29,6 +34,8 @@ import { useDispatch, useSelector } from '../../redux/store';
 import {
   exportWarehouseReceiptSpreadsheet,
   getWarehouseReceipts,
+  putWarehouseReceiptsOnAccountHold,
+  revertWarehouseReceiptsFromAccountHold,
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
   updateWarehouseReceiptLocation,
@@ -50,6 +57,11 @@ const quickStatuses = [
   { label: 'Archived', countKey: 'archived' },
 ];
 
+const accountingStatuses = [
+  { label: 'On Hold', countKey: 'onHold' },
+  { label: 'Ready for Approval', countKey: 'readyForApproval' },
+];
+
 const statusApiValues = {
   Initiated: 'INITIATED',
   'On-Hand': 'ON_HAND',
@@ -58,6 +70,8 @@ const statusApiValues = {
   Shipped: 'SHIPPED',
   Rejected: 'REJECTED',
   Archived: 'ARCHIVED',
+  'On Hold': 'ON_HOLD',
+  'Ready for Approval': 'READY_FOR_APPROVAL',
 };
 
 const emptyReceiptFilters = {
@@ -86,6 +100,11 @@ const actionIcons = [
   'mdi:file-document',
   'mdi:send',
   'mdi:hourglass',
+];
+
+const accountingActionIcons = [
+  'material-symbols:edit-square-outline',
+  'material-symbols:keyboard-return-rounded',
 ];
 
 const gridSx = {
@@ -134,6 +153,52 @@ const getStatusPillColor = (status) => {
 };
 
 const isOnHandStatus = (status) => String(status || '').trim().toLowerCase().replace('_', '-') === 'on-hand';
+
+const getRateDisplayValue = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
+};
+
+const getAccountingRateRows = (rateInformation = {}, receipt = {}) => {
+  const freightBreakdown = Array.isArray(rateInformation.freightBreakdown) ? rateInformation.freightBreakdown : [];
+  const sourceRows = freightBreakdown.length
+    ? freightBreakdown
+    : Array.isArray(receipt.freightInformation) ? receipt.freightInformation : [];
+  const hasValue = (value) => value !== undefined && value !== null && value !== '';
+  const dimFactor = hasValue(rateInformation.dimFactor) ? getRateDisplayValue(rateInformation.dimFactor) : '';
+
+  return sourceRows.map((item) => {
+    const pieces = hasValue(item.pieces) ? item.pieces : '';
+    const length = hasValue(item.length) ? getRateDisplayValue(item.length) : '';
+    const width = hasValue(item.width) ? getRateDisplayValue(item.width) : '';
+    const height = hasValue(item.height) ? getRateDisplayValue(item.height) : '';
+    const numericPieces = Number(pieces);
+    const numericLength = Number(length);
+    const numericWidth = Number(width);
+    const numericHeight = Number(height);
+    const numericDimFactor = Number(dimFactor);
+    const canCalculateDimensionalWeight =
+      [pieces, length, width, height, dimFactor].every(hasValue) &&
+      [numericPieces, numericLength, numericWidth, numericHeight, numericDimFactor].every(Number.isFinite) &&
+      numericDimFactor > 0;
+    const dimensionalWeight = canCalculateDimensionalWeight
+      ? getRateDisplayValue((numericPieces * numericLength * numericWidth * numericHeight) / numericDimFactor)
+      : hasValue(item.dimensionalWeight) ? getRateDisplayValue(item.dimensionalWeight) : '';
+    const actualWeightValue = item.actualWeight ?? item.weight;
+
+    return {
+      pieces,
+      type: item.type || '',
+      formula: [pieces, length, width, height, dimFactor, dimensionalWeight].every(hasValue)
+        ? `${pieces} x ${length} x ${width} x ${height} / ${dimFactor} = ${dimensionalWeight}`
+        : '',
+      dimensionalWeight,
+      actualWeight: hasValue(actualWeightValue) ? getRateDisplayValue(actualWeightValue) : '',
+    };
+  });
+};
 
 const getCarrierOptionLabel = (option) => {
   if (!option) return '';
@@ -196,7 +261,7 @@ export default function WarehouseRecieptPage() {
     stationLoading,
   } = useSelector((state) => state.warehouseReceiptdata);
   const { carrierOptions, carrierLoading } = useSelector((state) => state.enroutedata);
-  const [activeTab, setActiveTab] = useState('Active');
+  const [activeTab, setActiveTab] = useState(gridState.activeTab || 'Active');
   const [searchValue, setSearchValue] = useState(gridState.searchValue || '');
   const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState(gridState.submittedReceiptNumber || '');
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
@@ -205,10 +270,22 @@ export default function WarehouseRecieptPage() {
   const [locationError, setLocationError] = useState('');
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
-  const [comingSoonMessageOpen, setComingSoonMessageOpen] = useState(false);
   const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
   const [exportError, setExportError] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState(gridState.selectedStatus || '');
+  const [accountHoldReceiptId, setAccountHoldReceiptId] = useState(null);
+  const [accountHoldMessage, setAccountHoldMessage] = useState('');
+  const [accountHoldError, setAccountHoldError] = useState('');
+  const [accountHoldRevertReceiptId, setAccountHoldRevertReceiptId] = useState(null);
+  const [accountingRatesDialog, setAccountingRatesDialog] = useState({
+    open: false,
+    row: null,
+    rateInformation: {},
+    hasFlatRate: false,
+  });
+  const [selectedStatus, setSelectedStatus] = useState(() => {
+    const availableStatuses = gridState.activeTab === 'Accounting' ? accountingStatuses : quickStatuses;
+    return availableStatuses.some((status) => status.label === gridState.selectedStatus) ? gridState.selectedStatus : '';
+  });
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [receiptFilters, setReceiptFilters] = useState(gridState.receiptFilters || gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(gridState.appliedReceiptFilters || emptyReceiptFilters);
@@ -240,10 +317,12 @@ export default function WarehouseRecieptPage() {
       pageSize: paginationModel.pageSize,
       status: requestStatus,
       receiptNumber: requestReceiptNumber,
+      accounting: activeTab === 'Accounting',
       filters: requestFilters,
     }));
   }, [
     dispatch,
+    activeTab,
     filterSearchVersion,
     paginationModel.page,
     paginationModel.pageSize,
@@ -424,7 +503,11 @@ export default function WarehouseRecieptPage() {
       headerAlign: 'center',
       align: 'center',
       renderCell: (params) => {
-        const visibleActionIcons = isOnHandStatus(params.row.status) ? actionIcons : ['mdi:eye'];
+        const visibleActionIcons = activeTab === 'Accounting'
+          ? accountingActionIcons
+          : isOnHandStatus(params.row.status)
+            ? actionIcons
+            : ['mdi:eye'];
 
         return (
           <Stack
@@ -443,8 +526,23 @@ export default function WarehouseRecieptPage() {
                   return;
                 }
 
+                if (icon === 'material-symbols:edit-square-outline') {
+                  handleOpenAccountingRates(params.row);
+                  return;
+                }
+
+                if (icon === 'material-symbols:keyboard-return-rounded') {
+                  handleAccountHoldRevert(params.row);
+                  return;
+                }
+
                 if (icon === 'location-edit') {
                   handleOpenLocationDialog(params.row);
+                  return;
+                }
+
+                if (icon === 'mdi:hourglass') {
+                  handleAccountHold(params.row);
                 }
               };
               const handleActionMouseDown = (event) => {
@@ -457,6 +555,12 @@ export default function WarehouseRecieptPage() {
                   size="small"
                   onClick={handleActionClick}
                   onMouseDown={handleActionMouseDown}
+                  disabled={
+                    (icon === 'mdi:hourglass' &&
+                      String(accountHoldReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id)) ||
+                    (icon === 'material-symbols:keyboard-return-rounded' &&
+                      String(accountHoldRevertReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id))
+                  }
                   sx={{ p: 0.25, color: '#050505' }}
                 >
                   {icon === 'location-edit' ? (
@@ -620,6 +724,72 @@ export default function WarehouseRecieptPage() {
     setLocationMessageOpen(true);
   };
 
+  const handleAccountHold = async (row) => {
+    const receiptId = row?.receiptId ?? row?.rawData?.receiptId ?? row?.id;
+
+    if (receiptId === null || receiptId === undefined || receiptId === '' || accountHoldReceiptId !== null) {
+      if (receiptId === null || receiptId === undefined || receiptId === '') {
+        setAccountHoldError('Receipt ID is required for account hold');
+      }
+      return;
+    }
+
+    setAccountHoldReceiptId(receiptId);
+    setAccountHoldError('');
+    setAccountHoldMessage('');
+
+    const response = await dispatch(putWarehouseReceiptsOnAccountHold([receiptId]));
+
+    if (response?.error) {
+      setAccountHoldError(response.message || 'Failed to place warehouse receipt on account hold');
+    } else {
+      setAccountHoldMessage(response?.message || 'Warehouse receipt placed on account hold successfully');
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: activeTab === 'Accounting',
+        filters: requestFilters,
+      }));
+    }
+
+    setAccountHoldReceiptId(null);
+  };
+
+  const handleAccountHoldRevert = async (row) => {
+    const receiptId = row?.receiptId ?? row?.rawData?.receiptId ?? row?.id;
+
+    if (receiptId === null || receiptId === undefined || receiptId === '' || accountHoldRevertReceiptId !== null) {
+      if (receiptId === null || receiptId === undefined || receiptId === '') {
+        setAccountHoldError('Receipt ID is required to revert account hold');
+      }
+      return;
+    }
+
+    setAccountHoldRevertReceiptId(receiptId);
+    setAccountHoldError('');
+    setAccountHoldMessage('');
+
+    const response = await dispatch(revertWarehouseReceiptsFromAccountHold([receiptId]));
+
+    if (response?.error) {
+      setAccountHoldError(response.message || 'Failed to revert warehouse receipt from account hold');
+    } else {
+      setAccountHoldMessage(response?.message || 'Warehouse receipt reverted from account hold successfully');
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: true,
+        filters: requestFilters,
+      }));
+    }
+
+    setAccountHoldRevertReceiptId(null);
+  };
+
   const handleExportSpreadsheet = async () => {
     setExportingSpreadsheet(true);
     setExportError('');
@@ -639,6 +809,7 @@ export default function WarehouseRecieptPage() {
   };
 
   const getWarehouseReceiptGridState = () => ({
+    activeTab,
     selectedStatus,
     searchValue,
     submittedReceiptNumber,
@@ -646,6 +817,32 @@ export default function WarehouseRecieptPage() {
     appliedReceiptFilters,
     paginationModel,
   });
+
+  const handleOpenAccountingRates = (row) => {
+    const receipt = row?.rawData || {};
+    const rateInformation = receipt.rateInformation || row?.rateInformation || {};
+
+    setAccountingRatesDialog({
+      open: true,
+      row,
+      rateInformation: { ...rateInformation },
+      hasFlatRate: isYes(receipt.hasFlatRate ?? rateInformation.hasFlatRate),
+    });
+  };
+
+  const handleCloseAccountingRates = () => {
+    setAccountingRatesDialog({ open: false, row: null, rateInformation: {}, hasFlatRate: false });
+  };
+
+  const handleAccountingRateChange = (field, value) => {
+    setAccountingRatesDialog((previous) => ({
+      ...previous,
+      rateInformation: {
+        ...previous.rateInformation,
+        [field]: value,
+      },
+    }));
+  };
 
   const handleViewReceipt = (row) => {
     const receipt = row.rawData || {};
@@ -792,27 +989,24 @@ export default function WarehouseRecieptPage() {
         <Stack direction="row" alignItems="flex-end" spacing={2}>
           {statusTabs.map((tab) => {
             const selected = activeTab === tab.label;
-            const isDisabledTab = tab.label === 'Accounting';
             return (
               <Button
                 key={tab.label}
                 onClick={() => {
-                  if (isDisabledTab) {
-                    setComingSoonMessageOpen(true);
-                    return;
-                  }
                   setActiveTab(tab.label);
+                  setSelectedStatus('');
+                  setPaginationModel((prev) => ({ ...prev, page: 0 }));
                 }}
                 sx={{
                   px: 0,
                   pb: 0.7,
                   minWidth: 0,
                   borderRadius: 0,
-                  color: isDisabledTab ? '#a8a8a8' : selected ? '#111' : '#777',
-                  borderBottom: selected && !isDisabledTab ? '2px solid #a22' : '2px solid transparent',
+                  color: selected ? '#111' : '#777',
+                  borderBottom: selected ? '2px solid #a22' : '2px solid transparent',
                   textTransform: 'none',
                   fontSize: 14,
-                  fontWeight: selected && !isDisabledTab ? 700 : 400,
+                  fontWeight: selected ? 700 : 400,
                 }}
               >
                 {tab.label} ({String(getCount(tab.countKey)).padStart(2, '0')})
@@ -823,7 +1017,7 @@ export default function WarehouseRecieptPage() {
       </Stack>
 
       <Stack direction="row" spacing={1.2} sx={{ mb: 1.3 }}>
-        {quickStatuses.map((status) => (
+        {(activeTab === 'Accounting' ? accountingStatuses : quickStatuses).map((status) => (
           <FormControlLabel
             key={status.label}
             sx={{ mr: 0.5 }}
@@ -864,6 +1058,178 @@ export default function WarehouseRecieptPage() {
           sx={gridSx}
         />
       </Box>
+
+      <Dialog
+        open={accountingRatesDialog.open}
+        onClose={handleCloseAccountingRates}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 1.2, minHeight: 430 } }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 16, fontWeight: 700 }}>
+              Charges/Rating - {accountingRatesDialog.row?.receiptNumber || ''}
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleCloseAccountingRates}
+                sx={{ height: 28, minWidth: 74, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 12 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                sx={{
+                  height: 28,
+                  minWidth: 126,
+                  bgcolor: '#A22',
+                  color: '#fff',
+                  textTransform: 'none',
+                  fontSize: 12,
+                  '&:hover': { bgcolor: '#8b1c1c' },
+                }}
+              >
+                Ready for Approval
+              </Button>
+            </Stack>
+          </Stack>
+
+          {(() => {
+            const rateInformation = accountingRatesDialog.rateInformation || {};
+            const hasFlatRate = accountingRatesDialog.hasFlatRate;
+            const rateRows = getAccountingRateRows(rateInformation, accountingRatesDialog.row?.rawData || {});
+            const revisedDimensionalWeightTotal = rateRows.reduce(
+              (total, row) => total + (Number(row.dimensionalWeight) || 0),
+              0
+            );
+            const rateCalculatedBy = String(rateInformation.rateCalculatedBy || '').replace(/_/g, ' ');
+            const hasBaseRate = rateInformation.baseRate !== undefined && rateInformation.baseRate !== null && rateInformation.baseRate !== '';
+            const hasMinRate = rateInformation.minRate !== undefined && rateInformation.minRate !== null && rateInformation.minRate !== '';
+            const hasMaxRate = rateInformation.maxRate !== undefined && rateInformation.maxRate !== null && rateInformation.maxRate !== '';
+
+            return (
+              <>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ xs: 'stretch', md: 'flex-end' }} sx={{ mt: 2 }}>
+                  <TextField
+                    variant="standard"
+                    label="Dim Factor"
+                    value={getRateDisplayValue(rateInformation.dimFactor)}
+                    onChange={(event) => handleAccountingRateChange('dimFactor', event.target.value)}
+                    size="small"
+                    sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 14 }, '& input': { fontSize: 14 } }}
+                  />
+                  <TextField
+                    variant="standard"
+                    label="Base Rate"
+                    value={getRateDisplayValue(rateInformation.baseRate)}
+                    onChange={(event) => handleAccountingRateChange('baseRate', event.target.value)}
+                    size="small"
+                    sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 14 }, '& input': { fontSize: 14 } }}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={hasFlatRate}
+                        onChange={(event) => setAccountingRatesDialog((previous) => ({ ...previous, hasFlatRate: event.target.checked }))}
+                        size="small"
+                        sx={{ p: 0.35, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
+                      />
+                    }
+                    label={<Typography sx={{ fontSize: 14 }}>Flat Rate</Typography>}
+                    sx={{ mx: 0, pb: 0.3 }}
+                  />
+                  <TextField
+                    variant="standard"
+                    label="Flat Rate"
+                    value={getRateDisplayValue(rateInformation.finalRate)}
+                    onChange={(event) => handleAccountingRateChange('finalRate', event.target.value)}
+                    size="small"
+                    sx={{
+                      flex: 0.75,
+                      visibility: hasFlatRate ? 'visible' : 'hidden',
+                      '& .MuiInputLabel-root': { fontSize: 14 },
+                      '& input': { fontSize: 14 },
+                    }}
+                  />
+                  <TextField
+                    variant="standard"
+                    label="Notes"
+                    value={rateInformation.notes || ''}
+                    onChange={(event) => handleAccountingRateChange('notes', event.target.value)}
+                    size="small"
+                    sx={{
+                      flex: 1,
+                      visibility: hasFlatRate ? 'visible' : 'hidden',
+                      '& .MuiInputLabel-root': { fontSize: 14 },
+                      '& input': { fontSize: 14 },
+                    }}
+                  />
+                </Stack>
+
+                <Table size="small" sx={{ mt: 4, border: '1px solid #d0d0d0', '& th': { bgcolor: '#f5f5f5', fontSize: 13, fontWeight: 700 }, '& td': { fontSize: 13 } }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ width: 110 }}>Pieces ⇅</TableCell>
+                      <TableCell sx={{ width: 110 }}>Type ⇅</TableCell>
+                      <TableCell>Pieces x L x W x H / Dim Factor (Dimensional Weight) ⇅</TableCell>
+                      <TableCell sx={{ width: 140 }}>Actual Weight ⇅</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rateRows.map((row, index) => (
+                      <TableRow key={`${row.pieces}-${row.type}-${index}`}>
+                        <TableCell>{row.pieces}</TableCell>
+                        <TableCell>{row.type}</TableCell>
+                        <TableCell>{row.formula}</TableCell>
+                        <TableCell>{row.actualWeight}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                      <TableCell />
+                      <TableCell sx={{ fontWeight: 700 }}>
+                        {rateRows.length ? getRateDisplayValue(revisedDimensionalWeightTotal) : getRateDisplayValue(rateInformation.totalDimensionalWeight)}
+                        {rateRows.length || (rateInformation.totalDimensionalWeight !== undefined && rateInformation.totalDimensionalWeight !== null && rateInformation.totalDimensionalWeight !== '') ? ' lbs' : ''}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>
+                        {getRateDisplayValue(rateInformation.totalActualWeight)}
+                        {rateInformation.totalActualWeight !== undefined && rateInformation.totalActualWeight !== null && rateInformation.totalActualWeight !== '' ? ' lbs' : ''}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+
+                <Typography sx={{ mt: 2, ml: 1.2, fontSize: 14 }}>
+                  Total Estimated Cost -{' '}
+                  <Box component="span" sx={{ fontWeight: 700 }}>
+                    {rateInformation.finalRate !== undefined && rateInformation.finalRate !== null && rateInformation.finalRate !== '' ? `$${getRateDisplayValue(rateInformation.finalRate)}` : ''}
+                  </Box>
+                  {rateCalculatedBy ? ` (Calculated based on ${rateCalculatedBy})` : ''}
+                </Typography>
+
+                {(hasBaseRate || hasMinRate || hasMaxRate) && (
+                  <Box sx={{ mt: 1.5, ml: 1.2, bgcolor: '#dff0fa', borderRadius: 1, px: 1.5, py: 1.1, width: { xs: '100%', sm: 395 }, boxSizing: 'border-box' }}>
+                    {hasBaseRate && (
+                      <Typography sx={{ fontSize: 13 }}>
+                        Calculated Based on <Box component="span" sx={{ fontWeight: 700 }}>${getRateDisplayValue(rateInformation.baseRate)}</Box> per lbs.
+                      </Typography>
+                    )}
+                    {(hasMinRate || hasMaxRate) && (
+                      <Typography sx={{ fontSize: 13 }}>
+                        Minimum and maximum charges are <Box component="span" sx={{ fontWeight: 700 }}>{hasMinRate ? `$${getRateDisplayValue(rateInformation.minRate)}` : ''}</Box>{hasMinRate && hasMaxRate ? ' and ' : ''}<Box component="span" sx={{ fontWeight: 700 }}>{hasMaxRate ? `$${getRateDisplayValue(rateInformation.maxRate)}` : ''}</Box> respectively.
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={filterDialogOpen}
@@ -1188,17 +1554,24 @@ export default function WarehouseRecieptPage() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
       <Snackbar
-        open={comingSoonMessageOpen}
-        autoHideDuration={2000}
-        onClose={() => setComingSoonMessageOpen(false)}
-        message="This feature will be available soon"
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
-      <Snackbar
         open={Boolean(exportError)}
         autoHideDuration={3000}
         onClose={() => setExportError('')}
         message={exportError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={Boolean(accountHoldMessage)}
+        autoHideDuration={3000}
+        onClose={() => setAccountHoldMessage('')}
+        message={accountHoldMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={Boolean(accountHoldError)}
+        autoHideDuration={3000}
+        onClose={() => setAccountHoldError('')}
+        message={accountHoldError}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>
