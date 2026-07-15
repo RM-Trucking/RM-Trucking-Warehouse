@@ -32,9 +32,11 @@ import Iconify from '../../components/iconify';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
+  approveWarehouseReceiptRates,
   exportWarehouseReceiptSpreadsheet,
   getWarehouseReceipts,
   putWarehouseReceiptsOnAccountHold,
+  markWarehouseReceiptRateReadyForApproval,
   revertWarehouseReceiptsFromAccountHold,
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
@@ -58,8 +60,8 @@ const quickStatuses = [
 ];
 
 const accountingStatuses = [
-  { label: 'On Hold', countKey: 'onHold' },
-  { label: 'Ready for Approval', countKey: 'readyForApproval' },
+  { label: 'On Hold', countKey: 'pending' },
+  { label: 'Ready for Approval', countKey: 'ready' },
 ];
 
 const statusApiValues = {
@@ -70,8 +72,11 @@ const statusApiValues = {
   Shipped: 'SHIPPED',
   Rejected: 'REJECTED',
   Archived: 'ARCHIVED',
-  'On Hold': 'ON_HOLD',
-  'Ready for Approval': 'READY_FOR_APPROVAL',
+};
+
+const approvalStatusApiValues = {
+  'On Hold': 'PENDING',
+  'Ready for Approval': 'READY',
 };
 
 const emptyReceiptFilters = {
@@ -276,11 +281,17 @@ export default function WarehouseRecieptPage() {
   const [accountHoldMessage, setAccountHoldMessage] = useState('');
   const [accountHoldError, setAccountHoldError] = useState('');
   const [accountHoldRevertReceiptId, setAccountHoldRevertReceiptId] = useState(null);
+  const [rateApprovalSaving, setRateApprovalSaving] = useState(false);
+  const [selectedApprovalReceiptIds, setSelectedApprovalReceiptIds] = useState([]);
+  const [bulkRateApprovalSaving, setBulkRateApprovalSaving] = useState(false);
   const [accountingRatesDialog, setAccountingRatesDialog] = useState({
     open: false,
     row: null,
     rateInformation: {},
     hasFlatRate: false,
+    flatRateError: '',
+    dimFactorError: false,
+    baseRateError: false,
   });
   const [selectedStatus, setSelectedStatus] = useState(() => {
     const availableStatuses = gridState.activeTab === 'Accounting' ? accountingStatuses : quickStatuses;
@@ -295,7 +306,10 @@ export default function WarehouseRecieptPage() {
   const activeFilterCount = Object.entries(appliedReceiptFilters)
     .filter(([key, value]) => !['carrier', 'customerId', 'stationId'].includes(key) && String(value || '').trim())
     .length;
-  const requestStatus = selectedStatus ? statusApiValues[selectedStatus] : '';
+  const requestStatus = activeTab === 'Active' && selectedStatus ? statusApiValues[selectedStatus] : '';
+  const requestApprovalStatus = activeTab === 'Accounting' && selectedStatus
+    ? approvalStatusApiValues[selectedStatus]
+    : '';
   const requestReceiptNumber = appliedReceiptFilters.receiptNumber || submittedReceiptNumber;
   const requestFilters = {
     startDate: appliedReceiptFilters.startDate,
@@ -316,6 +330,7 @@ export default function WarehouseRecieptPage() {
       page: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
       status: requestStatus,
+      approvalStatus: requestApprovalStatus,
       receiptNumber: requestReceiptNumber,
       accounting: activeTab === 'Accounting',
       filters: requestFilters,
@@ -327,6 +342,7 @@ export default function WarehouseRecieptPage() {
     paginationModel.page,
     paginationModel.pageSize,
     requestStatus,
+    requestApprovalStatus,
     requestReceiptNumber,
     requestFilters.startDate,
     requestFilters.endDate,
@@ -409,7 +425,61 @@ export default function WarehouseRecieptPage() {
     setCopyMessageOpen(true);
   };
 
+  const showApprovalSelection = activeTab === 'Accounting' && selectedStatus === 'Ready for Approval';
+  const visibleApprovalReceiptIds = filteredRows.map((row) => row.receiptId ?? row.rawData?.receiptId ?? row.id);
+  const allVisibleApprovalRowsSelected =
+    visibleApprovalReceiptIds.length > 0 &&
+    visibleApprovalReceiptIds.every((receiptId) => selectedApprovalReceiptIds.some((selectedId) => String(selectedId) === String(receiptId)));
+
   const columns = [
+    ...(showApprovalSelection
+      ? [{
+          field: 'approvalSelection',
+          headerName: '',
+          width: 52,
+          sortable: false,
+          filterable: false,
+          disableColumnMenu: true,
+          align: 'center',
+          headerAlign: 'center',
+          renderHeader: () => (
+            <Checkbox
+              size="small"
+              checked={allVisibleApprovalRowsSelected}
+              indeterminate={
+                !allVisibleApprovalRowsSelected &&
+                visibleApprovalReceiptIds.some((receiptId) =>
+                  selectedApprovalReceiptIds.some((selectedId) => String(selectedId) === String(receiptId))
+                )
+              }
+              onChange={(event) => {
+                setSelectedApprovalReceiptIds(event.target.checked ? visibleApprovalReceiptIds : []);
+              }}
+              sx={{ p: 0.3, '&.Mui-checked': { color: '#1b426f' } }}
+            />
+          ),
+          renderCell: (params) => {
+            const receiptId = params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id;
+            const checked = selectedApprovalReceiptIds.some((selectedId) => String(selectedId) === String(receiptId));
+
+            return (
+              <Checkbox
+                size="small"
+                checked={checked}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => {
+                  setSelectedApprovalReceiptIds((previous) =>
+                    event.target.checked
+                      ? [...previous, receiptId]
+                      : previous.filter((selectedId) => String(selectedId) !== String(receiptId))
+                  );
+                }}
+                sx={{ p: 0.3, '&.Mui-checked': { color: '#1b426f' } }}
+              />
+            );
+          },
+        }]
+      : []),
     {
       field: 'receiptNumber',
       headerName: 'Receipt Number',
@@ -579,6 +649,7 @@ export default function WarehouseRecieptPage() {
 
   const handleStatusChange = (label, checked) => {
     setSelectedStatus(checked ? label : '');
+    setSelectedApprovalReceiptIds([]);
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
@@ -748,6 +819,7 @@ export default function WarehouseRecieptPage() {
         page: paginationModel.page + 1,
         pageSize: paginationModel.pageSize,
         status: requestStatus,
+        approvalStatus: requestApprovalStatus,
         receiptNumber: requestReceiptNumber,
         accounting: activeTab === 'Accounting',
         filters: requestFilters,
@@ -781,6 +853,7 @@ export default function WarehouseRecieptPage() {
         page: paginationModel.page + 1,
         pageSize: paginationModel.pageSize,
         status: requestStatus,
+        approvalStatus: requestApprovalStatus,
         receiptNumber: requestReceiptNumber,
         accounting: true,
         filters: requestFilters,
@@ -796,6 +869,7 @@ export default function WarehouseRecieptPage() {
 
     const response = await dispatch(exportWarehouseReceiptSpreadsheet({
       status: requestStatus,
+      approvalStatus: requestApprovalStatus,
       receiptNumber: requestReceiptNumber,
       accounting: activeTab === 'Accounting',
       filters: requestFilters,
@@ -825,13 +899,60 @@ export default function WarehouseRecieptPage() {
     setAccountingRatesDialog({
       open: true,
       row,
-      rateInformation: { ...rateInformation },
+      rateInformation: {
+        ...rateInformation,
+        dimFactor:
+          rateInformation.dimFactor === null ||
+          rateInformation.dimFactor === undefined ||
+          rateInformation.dimFactor === ''
+            ? 166
+            : rateInformation.dimFactor,
+      },
       hasFlatRate: isYes(receipt.hasFlatRate ?? rateInformation.hasFlatRate),
+      flatRateError: '',
+      dimFactorError: false,
+      baseRateError: false,
     });
   };
 
+  const handleBulkRateApproval = async () => {
+    if (!selectedApprovalReceiptIds.length || bulkRateApprovalSaving) return;
+
+    setBulkRateApprovalSaving(true);
+    setAccountHoldError('');
+    setAccountHoldMessage('');
+
+    const response = await dispatch(approveWarehouseReceiptRates(selectedApprovalReceiptIds));
+
+    if (response?.error) {
+      setAccountHoldError(response.message || 'Failed to approve warehouse receipt rates');
+    } else {
+      setAccountHoldMessage(response?.message || 'Warehouse receipt rates approved successfully');
+      setSelectedApprovalReceiptIds([]);
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        approvalStatus: requestApprovalStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: true,
+        filters: requestFilters,
+      }));
+    }
+
+    setBulkRateApprovalSaving(false);
+  };
+
   const handleCloseAccountingRates = () => {
-    setAccountingRatesDialog({ open: false, row: null, rateInformation: {}, hasFlatRate: false });
+    setAccountingRatesDialog({
+      open: false,
+      row: null,
+      rateInformation: {},
+      hasFlatRate: false,
+      flatRateError: '',
+      dimFactorError: false,
+      baseRateError: false,
+    });
   };
 
   const handleAccountingRateChange = (field, value) => {
@@ -841,7 +962,111 @@ export default function WarehouseRecieptPage() {
         ...previous.rateInformation,
         [field]: value,
       },
+      flatRateError: field === 'finalRate' && String(value).trim() ? '' : previous.flatRateError,
+      dimFactorError: field === 'dimFactor' && String(value).trim() ? false : previous.dimFactorError,
+      baseRateError: field === 'baseRate' && String(value).trim() ? false : previous.baseRateError,
     }));
+  };
+
+  const handleAccountingFlatRateChange = (checked) => {
+    setAccountingRatesDialog((previous) => ({
+      ...previous,
+      hasFlatRate: checked,
+      rateInformation: {
+        ...previous.rateInformation,
+        finalRate: checked ? '' : previous.rateInformation.finalRate,
+      },
+      flatRateError: '',
+      dimFactorError: false,
+      baseRateError: false,
+    }));
+  };
+
+  const handleAccountingReadyForApproval = async () => {
+    const rateInformation = accountingRatesDialog.rateInformation || {};
+    const flatRateMissing = accountingRatesDialog.hasFlatRate && !String(rateInformation.finalRate ?? '').trim();
+    const dimFactorMissing = !accountingRatesDialog.hasFlatRate && !String(rateInformation.dimFactor ?? '').trim();
+    const baseRateMissing = !accountingRatesDialog.hasFlatRate && !String(rateInformation.baseRate ?? '').trim();
+
+    setAccountingRatesDialog((previous) => ({
+      ...previous,
+      flatRateError: flatRateMissing ? 'Flat Rate is required' : '',
+      dimFactorError: dimFactorMissing,
+      baseRateError: baseRateMissing,
+    }));
+
+    if (flatRateMissing || dimFactorMissing || baseRateMissing) return;
+
+    const receiptId =
+      accountingRatesDialog.row?.receiptId ??
+      accountingRatesDialog.row?.rawData?.receiptId ??
+      accountingRatesDialog.row?.id;
+
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      setAccountHoldError('Receipt ID is required for rate approval');
+      return;
+    }
+
+    setRateApprovalSaving(true);
+    setAccountHoldError('');
+    setAccountHoldMessage('');
+
+    const rateRows = getAccountingRateRows(rateInformation, accountingRatesDialog.row?.rawData || {});
+    const revisedDimensionalWeightTotal = rateRows.reduce(
+      (total, row) => total + (Number(row.dimensionalWeight) || 0),
+      0
+    );
+    const hasBackendActualWeightTotal =
+      rateInformation.totalActualWeight !== null &&
+      rateInformation.totalActualWeight !== undefined &&
+      rateInformation.totalActualWeight !== '';
+    const totalActualWeight = hasBackendActualWeightTotal
+      ? Number(rateInformation.totalActualWeight)
+      : rateRows.reduce((total, row) => total + (Number(row.actualWeight) || 0), 0);
+    const baseRate = Number(rateInformation.baseRate);
+    const higherWeight = Math.max(
+      Number.isFinite(totalActualWeight) ? totalActualWeight : 0,
+      revisedDimensionalWeightTotal
+    );
+    const calculatedRate = accountingRatesDialog.hasFlatRate
+      ? Number(rateInformation.finalRate)
+      : (baseRate / 100) * higherWeight;
+    const toRateNumberOrNull = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      const numberValue = Number(value);
+      return Number.isFinite(numberValue) ? numberValue : null;
+    };
+    const rateDetails = {
+      rate: Number.isFinite(calculatedRate) ? calculatedRate : null,
+      dimFactor: toRateNumberOrNull(rateInformation.dimFactor),
+      baseRate: toRateNumberOrNull(rateInformation.baseRate),
+      minRate: toRateNumberOrNull(rateInformation.minRate),
+      maxRate: toRateNumberOrNull(rateInformation.maxRate),
+      hasFlatRate: accountingRatesDialog.hasFlatRate ? 'Y' : 'N',
+      notesForFlatRate: accountingRatesDialog.hasFlatRate
+        ? String(rateInformation.notes || '').trim() || null
+        : null,
+    };
+
+    const response = await dispatch(markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails }));
+
+    if (response?.error) {
+      setAccountHoldError(response.message || 'Failed to mark warehouse receipt rate ready for approval');
+    } else {
+      setAccountHoldMessage(response?.message || 'Warehouse receipt rate is ready for approval');
+      handleCloseAccountingRates();
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        approvalStatus: requestApprovalStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: true,
+        filters: requestFilters,
+      }));
+    }
+
+    setRateApprovalSaving(false);
   };
 
   const handleViewReceipt = (row) => {
@@ -995,6 +1220,7 @@ export default function WarehouseRecieptPage() {
                 onClick={() => {
                   setActiveTab(tab.label);
                   setSelectedStatus('');
+                  setSelectedApprovalReceiptIds([]);
                   setPaginationModel((prev) => ({ ...prev, page: 0 }));
                 }}
                 sx={{
@@ -1016,26 +1242,47 @@ export default function WarehouseRecieptPage() {
         </Stack>
       </Stack>
 
-      <Stack direction="row" spacing={1.2} sx={{ mb: 1.3 }}>
-        {(activeTab === 'Accounting' ? accountingStatuses : quickStatuses).map((status) => (
-          <FormControlLabel
-            key={status.label}
-            sx={{ mr: 0.5 }}
-            control={
-              <Checkbox
-                size="small"
-                checked={selectedStatus === status.label}
-                onChange={(event) => handleStatusChange(status.label, event.target.checked)}
-                sx={{ p: 0.3, '&.Mui-checked': { color: '#1b426f' } }}
-              />
-            }
-            label={
-              <Typography sx={{ fontSize: 12 }}>
-                {status.label} ({getCount(status.countKey)})
-              </Typography>
-            }
-          />
-        ))}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.3 }}>
+        <Stack direction="row" spacing={1.2}>
+          {(activeTab === 'Accounting' ? accountingStatuses : quickStatuses).map((status) => (
+            <FormControlLabel
+              key={status.label}
+              sx={{ mr: 0.5 }}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={selectedStatus === status.label}
+                  onChange={(event) => handleStatusChange(status.label, event.target.checked)}
+                  sx={{ p: 0.3, '&.Mui-checked': { color: '#1b426f' } }}
+                />
+              }
+              label={
+                <Typography sx={{ fontSize: 12 }}>
+                  {status.label} ({getCount(status.countKey)})
+                </Typography>
+              }
+            />
+          ))}
+        </Stack>
+        {showApprovalSelection && selectedApprovalReceiptIds.length > 0 && (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleBulkRateApproval}
+            disabled={bulkRateApprovalSaving}
+            sx={{
+              height: 28,
+              minWidth: 86,
+              bgcolor: '#A22',
+              color: '#fff',
+              textTransform: 'none',
+              fontSize: 12,
+              '&:hover': { bgcolor: '#8b1c1c' },
+            }}
+          >
+            {bulkRateApprovalSaving ? 'Approving...' : 'Approve'}
+          </Button>
+        )}
       </Stack>
 
       <Box sx={{ width: '100%' }}>
@@ -1076,6 +1323,7 @@ export default function WarehouseRecieptPage() {
                 variant="outlined"
                 size="small"
                 onClick={handleCloseAccountingRates}
+                disabled={rateApprovalSaving}
                 sx={{ height: 28, minWidth: 74, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 12 }}
               >
                 Cancel
@@ -1083,6 +1331,8 @@ export default function WarehouseRecieptPage() {
               <Button
                 variant="contained"
                 size="small"
+                onClick={handleAccountingReadyForApproval}
+                disabled={rateApprovalSaving}
                 sx={{
                   height: 28,
                   minWidth: 126,
@@ -1093,7 +1343,7 @@ export default function WarehouseRecieptPage() {
                   '&:hover': { bgcolor: '#8b1c1c' },
                 }}
               >
-                Ready for Approval
+                {rateApprovalSaving ? 'Submitting...' : 'Ready for Approval'}
               </Button>
             </Stack>
           </Stack>
@@ -1106,7 +1356,34 @@ export default function WarehouseRecieptPage() {
               (total, row) => total + (Number(row.dimensionalWeight) || 0),
               0
             );
-            const rateCalculatedBy = String(rateInformation.rateCalculatedBy || '').replace(/_/g, ' ');
+            const hasBackendActualWeightTotal =
+              rateInformation.totalActualWeight !== null &&
+              rateInformation.totalActualWeight !== undefined &&
+              rateInformation.totalActualWeight !== '';
+            const calculatedActualWeightTotal = rateRows.reduce(
+              (total, row) => total + (Number(row.actualWeight) || 0),
+              0
+            );
+            const totalActualWeight = hasBackendActualWeightTotal
+              ? Number(rateInformation.totalActualWeight)
+              : calculatedActualWeightTotal;
+            const baseRate = Number(rateInformation.baseRate);
+            const higherWeight = Math.max(
+              Number.isFinite(totalActualWeight) ? totalActualWeight : 0,
+              revisedDimensionalWeightTotal
+            );
+            const calculatedEstimatedCost =
+              hasFlatRate
+                ? rateInformation.finalRate
+                : Number.isFinite(baseRate) && higherWeight > 0
+                  ? getRateDisplayValue((baseRate / 100) * higherWeight)
+                  : '';
+            const baseRatePerLb = Number.isFinite(baseRate) ? getRateDisplayValue(baseRate / 100) : '';
+            const rateCalculatedBy = hasFlatRate
+              ? 'FLAT RATE'
+              : revisedDimensionalWeightTotal > (Number.isFinite(totalActualWeight) ? totalActualWeight : 0)
+                ? 'DIMENSIONAL WEIGHT'
+                : 'ACTUAL WEIGHT';
             const hasBaseRate = rateInformation.baseRate !== undefined && rateInformation.baseRate !== null && rateInformation.baseRate !== '';
             const hasMinRate = rateInformation.minRate !== undefined && rateInformation.minRate !== null && rateInformation.minRate !== '';
             const hasMaxRate = rateInformation.maxRate !== undefined && rateInformation.maxRate !== null && rateInformation.maxRate !== '';
@@ -1119,22 +1396,36 @@ export default function WarehouseRecieptPage() {
                     label="Dim Factor"
                     value={getRateDisplayValue(rateInformation.dimFactor)}
                     onChange={(event) => handleAccountingRateChange('dimFactor', event.target.value)}
+                    InputProps={{ readOnly: hasFlatRate }}
+                    required={!hasFlatRate}
+                    error={accountingRatesDialog.dimFactorError}
                     size="small"
-                    sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 14 }, '& input': { fontSize: 14 } }}
+                    sx={{
+                      flex: 1,
+                      '& .MuiInputLabel-root': { fontSize: 14 },
+                      '& input': { fontSize: 14, color: hasFlatRate ? '#777' : 'inherit' },
+                    }}
                   />
                   <TextField
                     variant="standard"
                     label="Base Rate"
                     value={getRateDisplayValue(rateInformation.baseRate)}
                     onChange={(event) => handleAccountingRateChange('baseRate', event.target.value)}
+                    InputProps={{ readOnly: hasFlatRate }}
+                    required={!hasFlatRate}
+                    error={accountingRatesDialog.baseRateError}
                     size="small"
-                    sx={{ flex: 1, '& .MuiInputLabel-root': { fontSize: 14 }, '& input': { fontSize: 14 } }}
+                    sx={{
+                      flex: 1,
+                      '& .MuiInputLabel-root': { fontSize: 14 },
+                      '& input': { fontSize: 14, color: hasFlatRate ? '#777' : 'inherit' },
+                    }}
                   />
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={hasFlatRate}
-                        onChange={(event) => setAccountingRatesDialog((previous) => ({ ...previous, hasFlatRate: event.target.checked }))}
+                        onChange={(event) => handleAccountingFlatRateChange(event.target.checked)}
                         size="small"
                         sx={{ p: 0.35, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }}
                       />
@@ -1148,6 +1439,8 @@ export default function WarehouseRecieptPage() {
                     value={getRateDisplayValue(rateInformation.finalRate)}
                     onChange={(event) => handleAccountingRateChange('finalRate', event.target.value)}
                     size="small"
+                    required={hasFlatRate}
+                    error={Boolean(accountingRatesDialog.flatRateError)}
                     sx={{
                       flex: 0.75,
                       visibility: hasFlatRate ? 'visible' : 'hidden',
@@ -1196,8 +1489,8 @@ export default function WarehouseRecieptPage() {
                         {rateRows.length || (rateInformation.totalDimensionalWeight !== undefined && rateInformation.totalDimensionalWeight !== null && rateInformation.totalDimensionalWeight !== '') ? ' lbs' : ''}
                       </TableCell>
                       <TableCell sx={{ fontWeight: 700 }}>
-                        {getRateDisplayValue(rateInformation.totalActualWeight)}
-                        {rateInformation.totalActualWeight !== undefined && rateInformation.totalActualWeight !== null && rateInformation.totalActualWeight !== '' ? ' lbs' : ''}
+                        {getRateDisplayValue(totalActualWeight)}
+                        {hasBackendActualWeightTotal || rateRows.length ? ' lbs' : ''}
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -1206,16 +1499,16 @@ export default function WarehouseRecieptPage() {
                 <Typography sx={{ mt: 2, ml: 1.2, fontSize: 14 }}>
                   Total Estimated Cost -{' '}
                   <Box component="span" sx={{ fontWeight: 700 }}>
-                    {rateInformation.finalRate !== undefined && rateInformation.finalRate !== null && rateInformation.finalRate !== '' ? `$${getRateDisplayValue(rateInformation.finalRate)}` : ''}
+                    {calculatedEstimatedCost !== undefined && calculatedEstimatedCost !== null && calculatedEstimatedCost !== '' ? `$${getRateDisplayValue(calculatedEstimatedCost)}` : ''}
                   </Box>
                   {rateCalculatedBy ? ` (Calculated based on ${rateCalculatedBy})` : ''}
                 </Typography>
 
-                {(hasBaseRate || hasMinRate || hasMaxRate) && (
+                {!hasFlatRate && (hasBaseRate || hasMinRate || hasMaxRate) && (
                   <Box sx={{ mt: 1.5, ml: 1.2, bgcolor: '#dff0fa', borderRadius: 1, px: 1.5, py: 1.1, width: { xs: '100%', sm: 395 }, boxSizing: 'border-box' }}>
                     {hasBaseRate && (
                       <Typography sx={{ fontSize: 13 }}>
-                        Calculated Based on <Box component="span" sx={{ fontWeight: 700 }}>${getRateDisplayValue(rateInformation.baseRate)}</Box> per lbs.
+                        Calculated Based on <Box component="span" sx={{ fontWeight: 700 }}>${baseRatePerLb}</Box> per lbs.
                       </Typography>
                     )}
                     {(hasMinRate || hasMaxRate) && (

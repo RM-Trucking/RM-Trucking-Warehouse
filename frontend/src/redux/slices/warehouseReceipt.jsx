@@ -264,7 +264,7 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
+export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', approvalStatus = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
@@ -275,6 +275,10 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
 
       if (status) {
         params.set('status', status);
+      }
+
+      if (approvalStatus) {
+        params.set('approvalStatus', approvalStatus);
       }
 
       if (receiptNumber) {
@@ -305,13 +309,17 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
   };
 }
 
-export function exportWarehouseReceiptSpreadsheet({ status = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
+export function exportWarehouseReceiptSpreadsheet({ status = '', approvalStatus = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
   return async () => {
     try {
       const params = new URLSearchParams();
 
       if (status) {
         params.set('status', status);
+      }
+
+      if (approvalStatus) {
+        params.set('approvalStatus', approvalStatus);
       }
 
       if (receiptNumber) {
@@ -417,6 +425,57 @@ export function revertWarehouseReceiptsFromAccountHold(receiptIds = []) {
         error.response?.data?.message ||
         error.message ||
         'Failed to revert warehouse receipt from account hold';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required for rate approval' };
+    }
+
+    try {
+      const response = await axios.post(
+        `/warehouse-receipt/rate-ready-for-approval?receiptId=${encodeURIComponent(receiptId)}`,
+        {
+          rateDetails,
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to mark warehouse receipt rate ready for approval';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function approveWarehouseReceiptRates(receiptIds = []) {
+  return async () => {
+    const validReceiptIds = receiptIds.filter((receiptId) => receiptId !== null && receiptId !== undefined && receiptId !== '');
+
+    if (!validReceiptIds.length) {
+      return { error: true, message: 'At least one receipt ID is required for rate approval' };
+    }
+
+    try {
+      const response = await axios.put('/warehouse-receipt/rate-approve', {
+        receiptIds: validReceiptIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to approve warehouse receipt rates';
 
       return { error: true, message: errorMessage };
     }
