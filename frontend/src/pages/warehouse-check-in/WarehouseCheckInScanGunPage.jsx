@@ -38,7 +38,8 @@ const scanActionBtnSx = {
 const sectionSx = { bgcolor: '#fff', border: '1px solid #9d9d9d', borderRadius: 0.75, p: 1 };
 const FREIGHT_BUTTON_OPTIONS = ['Banded Skid', 'Shrink Wrapped Skid', 'SHT / IPPC Skid', 'Plastic Skid', 'Document', 'Haz Mat', 'Bad Freight Condition'];
 const mobileFieldSx = {
-  '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
+  '& .MuiInputBase-root': { color: '#000' },
+  '& .MuiInputBase-input': { fontSize: 12, py: 0.2, color: '#000', WebkitTextFillColor: '#000' },
   '& .MuiFormHelperText-root': { display: 'none' },
 };
 
@@ -681,9 +682,9 @@ export default function WarehouseCheckInScanGunPage({
             <Stack spacing={1}>
               {visibleRows.map((row) => (
                 <Box key={row.id} sx={sectionSx}>
-                  <Typography sx={{ fontSize: 12, fontWeight: 700 }}>{getScanReceiptNumber(row)}</Typography>
-                  <Typography sx={{ fontSize: 11 }}>{getScanCarrier(row)}</Typography>
-                  <Typography sx={{ fontSize: 11 }}>{getScanCustomer(row)}</Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#000' }}>{getScanReceiptNumber(row)}</Typography>
+                  <Typography sx={{ fontSize: 11, color: '#000' }}>{getScanCarrier(row)}</Typography>
+                  <Typography sx={{ fontSize: 11, color: '#000' }}>{getScanCustomer(row)}</Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75, mt: 1 }}>
                     {searchType !== 'rmDriver' && (
                       <Button variant="contained" size="small" onClick={() => handleRejectOpen(row)} sx={scanActionBtnSx}>Reject</Button>
@@ -700,7 +701,7 @@ export default function WarehouseCheckInScanGunPage({
               <Box sx={sectionSx}>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
-                    <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{receipt.proNumber}</Typography>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#000' }}>{receipt.proNumber}</Typography>
                     <IconButton
                       size="small"
                       onClick={() => handleOpenMailList(receipt)}
