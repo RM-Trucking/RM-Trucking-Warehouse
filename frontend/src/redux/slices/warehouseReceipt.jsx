@@ -431,6 +431,30 @@ export function revertWarehouseReceiptsFromAccountHold(receiptIds = []) {
   };
 }
 
+export function sendWarehouseReceiptEmail({ receiptId, emails = [] } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required to send email' };
+    }
+
+    const validEmails = [...new Set(emails.map((email) => String(email || '').trim()).filter(Boolean))];
+    if (!validEmails.length) return { error: true, message: 'At least one email is required' };
+
+    try {
+      const response = await axios.post(
+        `/warehouse-receipt/send-email?receiptId=${encodeURIComponent(receiptId)}`,
+        { emails: validEmails }
+      );
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to send warehouse receipt email',
+      };
+    }
+  };
+}
+
 export function markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails } = {}) {
   return async () => {
     if (receiptId === null || receiptId === undefined || receiptId === '') {

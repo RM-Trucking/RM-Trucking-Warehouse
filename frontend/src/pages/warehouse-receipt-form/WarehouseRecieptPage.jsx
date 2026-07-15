@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ import {
   putWarehouseReceiptsOnAccountHold,
   markWarehouseReceiptRateReadyForApproval,
   revertWarehouseReceiptsFromAccountHold,
+  sendWarehouseReceiptEmail,
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
   updateWarehouseReceiptLocation,
@@ -123,6 +125,26 @@ const gridSx = {
 };
 
 const isYes = (value) => String(value || '').toUpperCase() === 'Y';
+
+const getMailEmailValue = (value) => typeof value === 'string'
+  ? value.trim()
+  : String(value?.entryEmail || value?.emailId || value?.email || '').trim();
+const getMailTypeValue = (value) => typeof value === 'string' ? '' : value?.entryType || value?.type || '';
+const getUniqueEmails = (values = []) => [...new Set(
+  (Array.isArray(values) ? values : []).map(getMailEmailValue).filter(Boolean)
+)];
+const getReceiptMailRows = (row = {}) => {
+  const sourceRow = row.rawData || row;
+  const rowsByEmail = new Map();
+  (Array.isArray(sourceRow.customerEmails) ? sourceRow.customerEmails : []).forEach((entry) => {
+    const email = getMailEmailValue(entry);
+    if (email) rowsByEmail.set(email.toLowerCase(), { email, type: getMailTypeValue(entry) });
+  });
+  getUniqueEmails(sourceRow.toEmails).forEach((email) => {
+    if (!rowsByEmail.has(email.toLowerCase())) rowsByEmail.set(email.toLowerCase(), { email, type: '' });
+  });
+  return Array.from(rowsByEmail.values());
+};
 
 const isSendToTellSystemYes = (value) =>
   ['Y', 'YES', 'SUCCESS', 'SENT', 'TRUE'].includes(String(value || '').trim().toUpperCase());
@@ -281,6 +303,11 @@ export default function WarehouseRecieptPage() {
   const [accountHoldMessage, setAccountHoldMessage] = useState('');
   const [accountHoldError, setAccountHoldError] = useState('');
   const [accountHoldRevertReceiptId, setAccountHoldRevertReceiptId] = useState(null);
+  const [accountingConfirmation, setAccountingConfirmation] = useState({ open: false, action: '', row: null });
+  const [mailDialog, setMailDialog] = useState({ open: false, receiptId: null, rows: [], selectedEmails: [], extraEmails: [] });
+  const [mailSending, setMailSending] = useState(false);
+  const [mailMessage, setMailMessage] = useState('');
+  const [mailError, setMailError] = useState('');
   const [rateApprovalSaving, setRateApprovalSaving] = useState(false);
   const [selectedApprovalReceiptIds, setSelectedApprovalReceiptIds] = useState([]);
   const [bulkRateApprovalSaving, setBulkRateApprovalSaving] = useState(false);
@@ -602,7 +629,7 @@ export default function WarehouseRecieptPage() {
                 }
 
                 if (icon === 'material-symbols:keyboard-return-rounded') {
-                  handleAccountHoldRevert(params.row);
+                  setAccountingConfirmation({ open: true, action: 'revert', row: params.row });
                   return;
                 }
 
@@ -611,8 +638,13 @@ export default function WarehouseRecieptPage() {
                   return;
                 }
 
+                if (icon === 'mdi:send') {
+                  handleOpenMailDialog(params.row);
+                  return;
+                }
+
                 if (icon === 'mdi:hourglass') {
-                  handleAccountHold(params.row);
+                  setAccountingConfirmation({ open: true, action: 'hold', row: params.row });
                 }
               };
               const handleActionMouseDown = (event) => {
@@ -750,6 +782,56 @@ export default function WarehouseRecieptPage() {
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
+  const handleOpenMailDialog = (row) => {
+    const sourceRow = row.rawData || row;
+    setMailError('');
+    setMailDialog({
+      open: true,
+      receiptId: row.receiptId ?? row.rawData?.receiptId ?? row.id,
+      rows: getReceiptMailRows(row),
+      selectedEmails: getUniqueEmails(sourceRow.toEmails),
+      extraEmails: [],
+    });
+  };
+
+  const handleCloseMailDialog = () => {
+    if (!mailSending) setMailDialog((previous) => ({ ...previous, open: false }));
+  };
+
+  const handleToggleMailEmail = (email) => {
+    setMailError('');
+    setMailDialog((previous) => ({
+      ...previous,
+      selectedEmails: previous.selectedEmails.some((value) => value.toLowerCase() === email.toLowerCase())
+        ? previous.selectedEmails.filter((value) => value.toLowerCase() !== email.toLowerCase())
+        : [...previous.selectedEmails, email],
+    }));
+  };
+
+  const handleSendMail = async () => {
+    const emails = getUniqueEmails([...mailDialog.selectedEmails, ...mailDialog.extraEmails]);
+    if (!emails.length) {
+      setMailError('Select or enter at least one email');
+      return;
+    }
+
+    setMailSending(true);
+    setMailError('');
+    const response = await dispatch(sendWarehouseReceiptEmail({
+      receiptId: mailDialog.receiptId,
+      emails,
+    }));
+    setMailSending(false);
+
+    if (response?.error) {
+      setMailError(response.message || 'Failed to send warehouse receipt email');
+      return;
+    }
+
+    setMailDialog((previous) => ({ ...previous, open: false }));
+    setMailMessage(response?.message || 'Email sent successfully');
+  };
+
   const handleOpenLocationDialog = (row) => {
     setLocationDialog({ open: true, row, location: row.location || '' });
     setLocationError('');
@@ -861,6 +943,24 @@ export default function WarehouseRecieptPage() {
     }
 
     setAccountHoldRevertReceiptId(null);
+  };
+
+  const handleCloseAccountingConfirmation = () => {
+    if (accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null) return;
+    setAccountingConfirmation({ open: false, action: '', row: null });
+  };
+
+  const handleConfirmAccountingAction = async () => {
+    const { action, row } = accountingConfirmation;
+    if (!row) return;
+
+    if (action === 'hold') {
+      await handleAccountHold(row);
+    } else if (action === 'revert') {
+      await handleAccountHoldRevert(row);
+    }
+
+    setAccountingConfirmation({ open: false, action: '', row: null });
   };
 
   const handleExportSpreadsheet = async () => {
@@ -1765,6 +1865,112 @@ export default function WarehouseRecieptPage() {
       </Dialog>
 
       <Dialog
+        open={accountingConfirmation.open}
+        onClose={handleCloseAccountingConfirmation}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 1, maxWidth: 420 } }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Typography sx={{ fontSize: 16, fontWeight: 700 }}>Confirmation</Typography>
+          <Typography sx={{ mt: 2, fontSize: 14 }}>
+            {accountingConfirmation.action === 'hold'
+              ? 'Are you sure you want to move this receipt to the Accounting tab?'
+              : 'Are you sure you want to revert this receipt back to the Active tab?'}
+          </Typography>
+          <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 3 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleCloseAccountingConfirmation}
+              disabled={accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null}
+              sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 76 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleConfirmAccountingAction}
+              disabled={accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null}
+              sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 76 }}
+            >
+              {accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null ? 'Processing...' : 'Confirm'}
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={mailDialog.open}
+        onClose={handleCloseMailDialog}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 1, minHeight: 430 } }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Mail List</Typography>
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" size="small" onClick={handleCloseMailDialog} disabled={mailSending} sx={{ height: 24, minWidth: 70, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}>
+                Cancel
+              </Button>
+              <Button variant="contained" size="small" onClick={handleSendMail} disabled={mailSending} sx={{ height: 24, minWidth: 70, bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', fontSize: 11 }}>
+                {mailSending ? 'Sending...' : 'Confirm'}
+              </Button>
+            </Stack>
+          </Stack>
+
+          <Table size="small" sx={{ mt: 5, border: '1px solid #d0d0d0', '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500, py: 0.6 }, '& td': { fontSize: 12, py: 0.45 } }}>
+            <TableHead>
+              <TableRow><TableCell sx={{ width: 46 }} /><TableCell sx={{ width: 70 }}>SNo</TableCell><TableCell sx={{ width: 120 }}>Type</TableCell><TableCell>EmailID</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {mailDialog.rows.length ? mailDialog.rows.map((row, index) => (
+                <TableRow key={row.email}>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    <Checkbox size="small" checked={mailDialog.selectedEmails.some((email) => email.toLowerCase() === row.email.toLowerCase())} onChange={() => handleToggleMailEmail(row.email)} sx={{ p: 0.2, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }} />
+                  </TableCell>
+                  <TableCell>{index + 1}</TableCell>
+                  <TableCell>{row.type}</TableCell>
+                  <TableCell>{row.email}</TableCell>
+                </TableRow>
+              )) : (
+                <TableRow><TableCell colSpan={4} align="center" sx={{ py: 3, color: '#555' }}>No emails found</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+
+          <Box component="fieldset" sx={{ mt: 3, border: '1px solid #777', borderRadius: 1, px: 1.2, py: 1.2, minHeight: 64 }}>
+            <Box component="legend" sx={{ px: 0.7, fontSize: 12, fontWeight: 700 }}>Email Addresses</Box>
+            <Autocomplete
+              multiple
+              freeSolo
+              options={[]}
+              value={mailDialog.extraEmails}
+              onChange={(event, values) => {
+                setMailDialog((previous) => ({ ...previous, extraEmails: getUniqueEmails(values) }));
+                setMailError('');
+              }}
+              renderTags={(values, getTagProps) => values.map((value, index) => (
+                <Chip label={value} size="small" {...getTagProps({ index })} key={value} />
+              ))}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  variant="standard"
+                  placeholder="Enter email and press Enter"
+                  error={Boolean(mailError)}
+                  helperText={mailError}
+                  InputProps={{ ...params.InputProps, disableUnderline: true }}
+                />
+              )}
+            />
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={locationDialog.open}
         onClose={handleCloseLocationDialog}
         maxWidth="xs"
@@ -1865,6 +2071,13 @@ export default function WarehouseRecieptPage() {
         autoHideDuration={3000}
         onClose={() => setAccountHoldError('')}
         message={accountHoldError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={Boolean(mailMessage)}
+        autoHideDuration={3000}
+        onClose={() => setMailMessage('')}
+        message={mailMessage}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>
