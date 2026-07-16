@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
@@ -43,6 +43,7 @@ import {
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
   updateWarehouseReceiptLocation,
+  uploadWarehouseReceiptDocuments,
 } from '../../redux/slices/warehouseReceipt';
 import { searchCarriers } from '../../redux/slices/enroute';
 
@@ -109,9 +110,12 @@ const actionIcons = [
   'mdi:hourglass',
 ];
 
+const warehouseReceiptDocumentAccept = 'application/pdf,.pdf';
+
 const accountingActionIcons = [
   'material-symbols:edit-square-outline',
   'material-symbols:keyboard-return-rounded',
+  'mdi:check-circle-outline',
 ];
 
 const gridSx = {
@@ -186,6 +190,21 @@ const getRateDisplayValue = (value) => {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return value;
   return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
+};
+
+const formatRateApprovalDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).replace(',', '');
 };
 
 const getAccountingRateRows = (rateInformation = {}, receipt = {}) => {
@@ -276,6 +295,7 @@ export default function WarehouseRecieptPage() {
   const { state } = useLocation();
   const gridState = state?.warehouseReceiptGridState || {};
   const dispatch = useDispatch();
+  const documentInputRef = useRef(null);
   const {
     receipts,
     isLoading,
@@ -297,6 +317,12 @@ export default function WarehouseRecieptPage() {
   const [locationError, setLocationError] = useState('');
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
+  const [documentUploadDialog, setDocumentUploadDialog] = useState({ open: false, receiptId: null, receiptNumber: '', files: [] });
+  const [documentUploadDragging, setDocumentUploadDragging] = useState(false);
+  const [documentUploading, setDocumentUploading] = useState(false);
+  const [documentUploadError, setDocumentUploadError] = useState('');
+  const [documentUploadMessage, setDocumentUploadMessage] = useState('');
+  const [documentPreview, setDocumentPreview] = useState({ open: false, file: null, url: '' });
   const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
   const [exportError, setExportError] = useState('');
   const [accountHoldReceiptId, setAccountHoldReceiptId] = useState(null);
@@ -311,11 +337,13 @@ export default function WarehouseRecieptPage() {
   const [rateApprovalSaving, setRateApprovalSaving] = useState(false);
   const [selectedApprovalReceiptIds, setSelectedApprovalReceiptIds] = useState([]);
   const [bulkRateApprovalSaving, setBulkRateApprovalSaving] = useState(false);
+  const [rowRateApprovalReceiptId, setRowRateApprovalReceiptId] = useState(null);
   const [accountingRatesDialog, setAccountingRatesDialog] = useState({
     open: false,
     row: null,
     rateInformation: {},
     hasFlatRate: false,
+    notesForFlatRate: '',
     flatRateError: '',
     dimFactorError: false,
     baseRateError: false,
@@ -329,6 +357,32 @@ export default function WarehouseRecieptPage() {
   const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
   const [paginationModel, setPaginationModel] = useState(gridState.paginationModel || { page: 0, pageSize: 10 });
+  const [gridStateByTab, setGridStateByTab] = useState(() => {
+    const emptyTabState = {
+      selectedStatus: '',
+      searchValue: '',
+      submittedReceiptNumber: '',
+      receiptFilters: { ...emptyReceiptFilters },
+      appliedReceiptFilters: { ...emptyReceiptFilters },
+      paginationModel: { page: 0, pageSize: 10 },
+      selectedApprovalReceiptIds: [],
+    };
+    const initialTab = gridState.activeTab === 'Accounting' ? 'Accounting' : 'Active';
+
+    return {
+      Active: { ...emptyTabState, receiptFilters: { ...emptyReceiptFilters }, appliedReceiptFilters: { ...emptyReceiptFilters }, paginationModel: { page: 0, pageSize: 10 } },
+      Accounting: { ...emptyTabState, receiptFilters: { ...emptyReceiptFilters }, appliedReceiptFilters: { ...emptyReceiptFilters }, paginationModel: { page: 0, pageSize: 10 } },
+      [initialTab]: {
+        selectedStatus: gridState.selectedStatus || '',
+        searchValue: gridState.searchValue || '',
+        submittedReceiptNumber: gridState.submittedReceiptNumber || '',
+        receiptFilters: gridState.receiptFilters || gridState.appliedReceiptFilters || { ...emptyReceiptFilters },
+        appliedReceiptFilters: gridState.appliedReceiptFilters || { ...emptyReceiptFilters },
+        paginationModel: gridState.paginationModel || { page: 0, pageSize: 10 },
+        selectedApprovalReceiptIds: [],
+      },
+    };
+  });
 
   const activeFilterCount = Object.entries(appliedReceiptFilters)
     .filter(([key, value]) => !['carrier', 'customerId', 'stationId'].includes(key) && String(value || '').trim())
@@ -589,7 +643,90 @@ export default function WarehouseRecieptPage() {
     { field: 'proNumber', headerName: 'Pro Number', minWidth: 170, flex: 1.4 },
     { field: 'idVerification', headerName: 'Id Verification', minWidth: 120, flex: 1 },
     { field: 'location', headerName: 'Location', minWidth: 85, flex: 0.6 },
-    { field: 'rate', headerName: 'Rate', minWidth: 80, flex: 0.6 },
+    {
+      field: 'rate',
+      headerName: 'Rate',
+      minWidth: 80,
+      flex: 0.6,
+      renderCell: (params) => {
+        const sourceRow = params.row.rawData || params.row;
+        const approvalStatus = String(
+          params.row.approvalStatus ?? sourceRow.approvalStatus ?? ''
+        ).trim().toUpperCase();
+        const dollarColor = ['PENDING', 'READY'].includes(approvalStatus)
+          ? '#f59e0b'
+          : approvalStatus === 'APPROVED'
+            ? '#2e7d32'
+            : 'inherit';
+        const hasRate = params.value !== null && params.value !== undefined && params.value !== '';
+        const showDollar = hasRate && (
+          (activeTab === 'Accounting' && approvalStatus === 'READY') ||
+          (activeTab === 'Active' && approvalStatus === 'APPROVED')
+        );
+
+        return (
+          <Stack direction="row" alignItems="center" spacing={0.4} sx={{ height: '100%' }}>
+            <Typography component="span" sx={{ fontSize: 14 }}>
+              {params.value ?? ''}
+            </Typography>
+            {showDollar && (
+              <Tooltip
+                placement="bottom-start"
+                title={
+                  <Box sx={{ minWidth: 260, px: 1, py: 0.6 }}>
+                    <Stack direction="row" spacing={1} alignItems="baseline">
+                      <Typography sx={{ fontSize: 14, color: '#111', minWidth: 112 }}>Requested by :</Typography>
+                      <Typography sx={{ fontSize: 14, color: '#111' }}>{sourceRow.requestedByName || ''}</Typography>
+                    </Stack>
+                    <Typography sx={{ ml: 15, mt: 0.3, mb: 1.5, fontSize: 14, fontStyle: 'italic', color: '#111' }}>
+                      {formatRateApprovalDate(sourceRow.requestedAt)}
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="baseline">
+                      <Typography sx={{ fontSize: 14, color: '#111', minWidth: 112 }}>Approved by :</Typography>
+                      <Typography sx={{ fontSize: 14, color: '#111' }}>{sourceRow.approvedByName || ''}</Typography>
+                    </Stack>
+                    <Typography sx={{ ml: 15, mt: 0.3, fontSize: 14, fontStyle: 'italic', color: '#111' }}>
+                      {formatRateApprovalDate(sourceRow.approvedAt)}
+                    </Typography>
+                  </Box>
+                }
+                componentsProps={{
+                  tooltip: {
+                    sx: {
+                      bgcolor: '#fff',
+                      border: '1px solid #bdbdbd',
+                      boxShadow: 3,
+                      maxWidth: 'none',
+                    },
+                  },
+                }}
+              >
+                <Box
+                  component="span"
+                  sx={{
+                    width: 18,
+                    height: 18,
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    bgcolor: dollarColor,
+                    color: '#fff',
+                    fontSize: 13,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    cursor: 'default',
+                  }}
+                >
+                  $
+                </Box>
+              </Tooltip>
+            )}
+          </Stack>
+        );
+      },
+    },
     { field: 'createdDate', headerName: 'Created Date', minWidth: 125, flex: 0.9 },
     {
       field: 'actions',
@@ -600,8 +737,14 @@ export default function WarehouseRecieptPage() {
       headerAlign: 'center',
       align: 'center',
       renderCell: (params) => {
+        const approvalStatus = String(
+          params.row.approvalStatus ?? params.row.rawData?.approvalStatus ?? ''
+        ).trim().toUpperCase();
         const visibleActionIcons = activeTab === 'Accounting'
-          ? accountingActionIcons
+          ? accountingActionIcons.filter((icon) =>
+              (icon !== 'material-symbols:keyboard-return-rounded' || approvalStatus === 'PENDING') &&
+              (icon !== 'mdi:check-circle-outline' || approvalStatus === 'READY')
+            )
           : isOnHandStatus(params.row.status)
             ? actionIcons
             : ['mdi:eye'];
@@ -633,8 +776,18 @@ export default function WarehouseRecieptPage() {
                   return;
                 }
 
+                if (icon === 'mdi:check-circle-outline') {
+                  setAccountingConfirmation({ open: true, action: 'approve', row: params.row });
+                  return;
+                }
+
                 if (icon === 'location-edit') {
                   handleOpenLocationDialog(params.row);
+                  return;
+                }
+
+                if (icon === 'mdi:upload') {
+                  handleOpenDocumentUpload(params.row);
                   return;
                 }
 
@@ -661,7 +814,9 @@ export default function WarehouseRecieptPage() {
                     (icon === 'mdi:hourglass' &&
                       String(accountHoldReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id)) ||
                     (icon === 'material-symbols:keyboard-return-rounded' &&
-                      String(accountHoldRevertReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id))
+                      String(accountHoldRevertReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id)) ||
+                    (icon === 'mdi:check-circle-outline' &&
+                      String(rowRateApprovalReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id))
                   }
                   sx={{ p: 0.25, color: '#050505' }}
                 >
@@ -680,9 +835,36 @@ export default function WarehouseRecieptPage() {
   ];
 
   const handleStatusChange = (label, checked) => {
-    setSelectedStatus(checked ? label : '');
+    const nextStatus = checked ? label : '';
+    setSelectedStatus(nextStatus);
     setSelectedApprovalReceiptIds([]);
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleMainTabChange = (tabLabel) => {
+    if (tabLabel === activeTab) return;
+
+    const currentTabState = {
+      selectedStatus,
+      searchValue,
+      submittedReceiptNumber,
+      receiptFilters,
+      appliedReceiptFilters,
+      paginationModel,
+      selectedApprovalReceiptIds,
+    };
+    const targetTabState = gridStateByTab[tabLabel];
+
+    setGridStateByTab((previous) => ({ ...previous, [activeTab]: currentTabState }));
+    setActiveTab(tabLabel);
+    setSelectedStatus(targetTabState.selectedStatus);
+    setSelectedApprovalReceiptIds(targetTabState.selectedApprovalReceiptIds);
+    setSearchValue(targetTabState.searchValue);
+    setSubmittedReceiptNumber(targetTabState.submittedReceiptNumber);
+    setReceiptFilters(targetTabState.receiptFilters);
+    setAppliedReceiptFilters(targetTabState.appliedReceiptFilters);
+    setFilterDialogOpen(false);
+    setPaginationModel(targetTabState.paginationModel);
   };
 
   const handleReceiptSearch = () => {
@@ -792,6 +974,89 @@ export default function WarehouseRecieptPage() {
       selectedEmails: getUniqueEmails(sourceRow.toEmails),
       extraEmails: [],
     });
+  };
+
+  const handleOpenDocumentUpload = (row) => {
+    setDocumentUploadError('');
+    setDocumentUploadDragging(false);
+    setDocumentUploadDialog({
+      open: true,
+      receiptId: row.receiptId ?? row.rawData?.receiptId ?? row.id,
+      receiptNumber: row.receiptNumber ?? row.rawData?.receiptNumber ?? '',
+      files: [],
+    });
+  };
+
+  const handleCloseDocumentUpload = () => {
+    if (documentUploading) return;
+    setDocumentUploadDialog({ open: false, receiptId: null, receiptNumber: '', files: [] });
+    setDocumentUploadError('');
+    setDocumentUploadDragging(false);
+  };
+
+  const addWarehouseReceiptDocuments = (fileList) => {
+    const selectedFiles = Array.from(fileList || []);
+    const validFiles = selectedFiles.filter((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      return file.type === 'application/pdf' || extension === 'pdf';
+    });
+
+    if (validFiles.length !== selectedFiles.length) {
+      setDocumentUploadError('Only PDF files are allowed');
+    } else {
+      setDocumentUploadError('');
+    }
+
+    if (validFiles.length) {
+      setDocumentUploadDialog((previous) => ({
+        ...previous,
+        files: [...previous.files, ...validFiles],
+      }));
+    }
+  };
+
+  const handleDocumentSelection = (event) => {
+    addWarehouseReceiptDocuments(event.target.files);
+    event.target.value = '';
+  };
+
+  const handleDocumentDrop = (event) => {
+    event.preventDefault();
+    setDocumentUploadDragging(false);
+    addWarehouseReceiptDocuments(event.dataTransfer.files);
+  };
+
+  const handleOpenDocumentPreview = (file) => {
+    if (!file) return;
+    setDocumentPreview({ open: true, file, url: URL.createObjectURL(file) });
+  };
+
+  const handleCloseDocumentPreview = () => {
+    if (documentPreview.url) URL.revokeObjectURL(documentPreview.url);
+    setDocumentPreview({ open: false, file: null, url: '' });
+  };
+
+  const handleUploadDocuments = async () => {
+    if (!documentUploadDialog.files.length) {
+      setDocumentUploadError('Select at least one document to upload');
+      return;
+    }
+
+    setDocumentUploading(true);
+    setDocumentUploadError('');
+    const response = await dispatch(uploadWarehouseReceiptDocuments({
+      receiptId: documentUploadDialog.receiptId,
+      files: documentUploadDialog.files,
+    }));
+    setDocumentUploading(false);
+
+    if (response?.error) {
+      setDocumentUploadError(response.message || 'Failed to upload warehouse receipt documents');
+      return;
+    }
+
+    setDocumentUploadDialog({ open: false, receiptId: null, receiptNumber: '', files: [] });
+    setDocumentUploadMessage(response?.message || 'Documents uploaded successfully');
   };
 
   const handleCloseMailDialog = () => {
@@ -946,8 +1211,43 @@ export default function WarehouseRecieptPage() {
   };
 
   const handleCloseAccountingConfirmation = () => {
-    if (accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null) return;
+    if (accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null || rowRateApprovalReceiptId !== null) return;
     setAccountingConfirmation({ open: false, action: '', row: null });
+  };
+
+  const handleRowRateApproval = async (row) => {
+    const receiptId = row?.receiptId ?? row?.rawData?.receiptId ?? row?.id;
+
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      setAccountHoldError('Receipt ID is required for rate approval');
+      return;
+    }
+
+    setRowRateApprovalReceiptId(receiptId);
+    setAccountHoldError('');
+    setAccountHoldMessage('');
+
+    const response = await dispatch(approveWarehouseReceiptRates([receiptId]));
+
+    if (response?.error) {
+      setAccountHoldError(response.message || 'Failed to approve warehouse receipt rate');
+    } else {
+      setAccountHoldMessage(response?.message || 'Warehouse receipt rate approved successfully');
+      setSelectedApprovalReceiptIds((previous) =>
+        previous.filter((selectedId) => String(selectedId) !== String(receiptId))
+      );
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        approvalStatus: requestApprovalStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: true,
+        filters: requestFilters,
+      }));
+    }
+
+    setRowRateApprovalReceiptId(null);
   };
 
   const handleConfirmAccountingAction = async () => {
@@ -958,6 +1258,8 @@ export default function WarehouseRecieptPage() {
       await handleAccountHold(row);
     } else if (action === 'revert') {
       await handleAccountHoldRevert(row);
+    } else if (action === 'approve') {
+      await handleRowRateApproval(row);
     }
 
     setAccountingConfirmation({ open: false, action: '', row: null });
@@ -1009,6 +1311,7 @@ export default function WarehouseRecieptPage() {
             : rateInformation.dimFactor,
       },
       hasFlatRate: isYes(receipt.hasFlatRate ?? rateInformation.hasFlatRate),
+      notesForFlatRate: receipt.notesForFlatRate ?? row?.notesForFlatRate ?? '',
       flatRateError: '',
       dimFactorError: false,
       baseRateError: false,
@@ -1049,6 +1352,7 @@ export default function WarehouseRecieptPage() {
       row: null,
       rateInformation: {},
       hasFlatRate: false,
+      notesForFlatRate: '',
       flatRateError: '',
       dimFactorError: false,
       baseRateError: false,
@@ -1072,6 +1376,7 @@ export default function WarehouseRecieptPage() {
     setAccountingRatesDialog((previous) => ({
       ...previous,
       hasFlatRate: checked,
+      notesForFlatRate: checked ? previous.notesForFlatRate : '',
       rateInformation: {
         ...previous.rateInformation,
         finalRate: checked ? '' : previous.rateInformation.finalRate,
@@ -1144,7 +1449,7 @@ export default function WarehouseRecieptPage() {
       maxRate: toRateNumberOrNull(rateInformation.maxRate),
       hasFlatRate: accountingRatesDialog.hasFlatRate ? 'Y' : 'N',
       notesForFlatRate: accountingRatesDialog.hasFlatRate
-        ? String(rateInformation.notes || '').trim() || null
+        ? String(accountingRatesDialog.notesForFlatRate || '').trim() || null
         : null,
     };
 
@@ -1199,6 +1504,7 @@ export default function WarehouseRecieptPage() {
           noteThreadId: receipt.noteThreadId,
           rateInformation: receipt.rateInformation,
           hasFlatRate: receipt.hasFlatRate,
+          notesForFlatRate: receipt.notesForFlatRate,
         },
         receipts: [
           {
@@ -1317,12 +1623,7 @@ export default function WarehouseRecieptPage() {
             return (
               <Button
                 key={tab.label}
-                onClick={() => {
-                  setActiveTab(tab.label);
-                  setSelectedStatus('');
-                  setSelectedApprovalReceiptIds([]);
-                  setPaginationModel((prev) => ({ ...prev, page: 0 }));
-                }}
+                onClick={() => handleMainTabChange(tab.label)}
                 sx={{
                   px: 0,
                   pb: 0.7,
@@ -1551,8 +1852,11 @@ export default function WarehouseRecieptPage() {
                   <TextField
                     variant="standard"
                     label="Notes"
-                    value={rateInformation.notes || ''}
-                    onChange={(event) => handleAccountingRateChange('notes', event.target.value)}
+                    value={accountingRatesDialog.notesForFlatRate}
+                    onChange={(event) => setAccountingRatesDialog((previous) => ({
+                      ...previous,
+                      notesForFlatRate: event.target.value,
+                    }))}
                     size="small"
                     sx={{
                       flex: 1,
@@ -1876,14 +2180,16 @@ export default function WarehouseRecieptPage() {
           <Typography sx={{ mt: 2, fontSize: 14 }}>
             {accountingConfirmation.action === 'hold'
               ? 'Are you sure you want to move this receipt to the Accounting tab?'
-              : 'Are you sure you want to revert this receipt back to the Active tab?'}
+              : accountingConfirmation.action === 'approve'
+                ? 'Are you sure you want to approve this warehouse receipt rate?'
+                : 'Are you sure you want to revert this receipt back to the Active tab?'}
           </Typography>
           <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 3 }}>
             <Button
               variant="outlined"
               size="small"
               onClick={handleCloseAccountingConfirmation}
-              disabled={accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null}
+              disabled={accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null || rowRateApprovalReceiptId !== null}
               sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 76 }}
             >
               Cancel
@@ -1892,10 +2198,12 @@ export default function WarehouseRecieptPage() {
               variant="contained"
               size="small"
               onClick={handleConfirmAccountingAction}
-              disabled={accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null}
+              disabled={accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null || rowRateApprovalReceiptId !== null}
               sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 76 }}
             >
-              {accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null ? 'Processing...' : 'Confirm'}
+              {accountHoldReceiptId !== null || accountHoldRevertReceiptId !== null || rowRateApprovalReceiptId !== null
+                ? 'Processing...'
+                : 'Confirm'}
             </Button>
           </Stack>
         </DialogContent>
@@ -1967,6 +2275,161 @@ export default function WarehouseRecieptPage() {
               )}
             />
           </Box>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={documentUploadDialog.open}
+        onClose={handleCloseDocumentUpload}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 1 } }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 16, fontWeight: 700 }}>
+              Upload Documents - {documentUploadDialog.receiptNumber}
+            </Typography>
+            <IconButton size="small" onClick={handleCloseDocumentUpload} disabled={documentUploading} sx={{ p: 0.2, color: '#111' }}>
+              <CloseIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Stack>
+
+          <input
+            ref={documentInputRef}
+            type="file"
+            multiple
+            accept={warehouseReceiptDocumentAccept}
+            hidden
+            onChange={handleDocumentSelection}
+          />
+
+          <Stack
+            alignItems="center"
+            justifyContent="center"
+            spacing={1}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDocumentUploadDragging(true);
+            }}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setDocumentUploadDragging(true);
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              setDocumentUploadDragging(false);
+            }}
+            onDrop={handleDocumentDrop}
+            sx={{
+              mt: 2,
+              minHeight: 180,
+              border: '1px dashed #999',
+              borderRadius: 1.5,
+              bgcolor: documentUploadDragging ? '#fff3f3' : '#fff',
+              transition: 'background-color 0.2s ease',
+            }}
+          >
+            <Iconify icon="mdi:tray-arrow-up" width={34} sx={{ color: '#A22' }} />
+            <Typography sx={{ fontSize: 14, fontWeight: 600 }}>Drag & Drop File</Typography>
+            <Typography sx={{ fontSize: 11, color: '#777' }}>File Supported: PDF</Typography>
+            <Typography sx={{ fontSize: 13, fontWeight: 600 }}>OR</Typography>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => documentInputRef.current?.click()}
+              sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}
+            >
+              Browse Files
+            </Button>
+          </Stack>
+
+          {documentUploadDialog.files.length > 0 && (
+            <Stack spacing={0.8} sx={{ mt: 2 }}>
+              {documentUploadDialog.files.map((file, index) => (
+                <Stack
+                  key={`${file.name}-${file.lastModified}-${index}`}
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  sx={{ bgcolor: '#f5f5f5', border: '1px solid #e0e0e0', borderRadius: 1, px: 1, py: 0.5 }}
+                >
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleOpenDocumentPreview(file)}
+                      sx={{ p: 0.3, bgcolor: '#dbdbdb', color: '#111', borderRadius: 0.5, flexShrink: 0 }}
+                    >
+                      <Iconify icon="mdi:eye" width={16} />
+                    </IconButton>
+                    <Iconify icon="mdi:file-document-outline" width={18} sx={{ flexShrink: 0 }} />
+                    <Typography noWrap sx={{ fontSize: 12 }}>{file.name}</Typography>
+                  </Stack>
+                  <Stack direction="row" alignItems="center">
+                    <IconButton
+                      size="small"
+                      onClick={() => setDocumentUploadDialog((previous) => ({
+                        ...previous,
+                        files: previous.files.filter((_, fileIndex) => fileIndex !== index),
+                      }))}
+                      disabled={documentUploading}
+                      sx={{ p: 0.2, color: '#111' }}
+                    >
+                      <CloseIcon sx={{ fontSize: 17 }} />
+                    </IconButton>
+                  </Stack>
+                </Stack>
+              ))}
+            </Stack>
+          )}
+
+          {documentUploadError && (
+            <Typography sx={{ mt: 1, color: '#A22', fontSize: 12 }}>{documentUploadError}</Typography>
+          )}
+
+          <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2.5 }}>
+            <Button variant="outlined" size="small" onClick={handleCloseDocumentUpload} disabled={documentUploading} sx={{ color: '#111', borderColor: '#111', textTransform: 'none', minWidth: 76 }}>
+              Cancel
+            </Button>
+            <Button variant="contained" size="small" onClick={handleUploadDocuments} disabled={documentUploading || !documentUploadDialog.files.length} sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', minWidth: 76 }}>
+              {documentUploading ? 'Uploading...' : 'Upload'}
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={documentPreview.open}
+        onClose={handleCloseDocumentPreview}
+        maxWidth="xl"
+        fullWidth
+        PaperProps={{ sx: { height: '92vh', maxHeight: '92vh', borderRadius: 1 } }}
+      >
+        <DialogContent sx={{ p: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8, mb: 1.5 }}>
+            <Typography noWrap sx={{ fontSize: 16, fontWeight: 700, pr: 2 }}>
+              {documentPreview.file?.name || 'Document Preview'}
+            </Typography>
+            <IconButton size="small" onClick={handleCloseDocumentPreview} sx={{ p: 0.2, color: '#111' }}>
+              <CloseIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Stack>
+
+          {documentPreview.file?.type?.startsWith('image/') ? (
+            <Box
+              component="img"
+              src={documentPreview.url}
+              alt={documentPreview.file?.name || 'Document preview'}
+              sx={{ width: '100%', height: '100%', minHeight: 0, objectFit: 'contain', bgcolor: '#f5f5f5' }}
+            />
+          ) : (
+            <Box
+              component="iframe"
+              title={documentPreview.file?.name || 'Document preview'}
+              src={documentPreview.url}
+              sx={{ width: '100%', flex: 1, minHeight: 0, border: '1px solid #ddd', bgcolor: '#fff' }}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -2078,6 +2541,13 @@ export default function WarehouseRecieptPage() {
         autoHideDuration={3000}
         onClose={() => setMailMessage('')}
         message={mailMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      <Snackbar
+        open={Boolean(documentUploadMessage)}
+        autoHideDuration={3000}
+        onClose={() => setDocumentUploadMessage('')}
+        message={documentUploadMessage}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
     </Box>

@@ -51,6 +51,7 @@ const toGridRow = (receipt = {}) => {
     receiptId: receipt.receiptId,
     receiptNumber: receipt.receiptNumber,
     sendToTellSystem: receipt.sendToTellSystem,
+    approvalStatus: receipt.approvalStatus,
     status: formatStatus(receipt.status),
     carrier: receipt.carrierName || '',
     customer: [receipt.customerName, receipt.stationName].filter(Boolean).join(' | '),
@@ -455,6 +456,32 @@ export function sendWarehouseReceiptEmail({ receiptId, emails = [] } = {}) {
   };
 }
 
+export function uploadWarehouseReceiptDocuments({ receiptId, files = [] } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required to upload documents' };
+    }
+
+    if (!files.length) {
+      return { error: true, message: 'Select at least one document to upload' };
+    }
+
+    const formData = new FormData();
+    formData.append('receiptId', receiptId);
+    files.forEach((file) => formData.append('files', file));
+
+    try {
+      const response = await axios.post('/warehouse-receipt/document-upload', formData);
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to upload warehouse receipt documents',
+      };
+    }
+  };
+}
+
 export function markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails } = {}) {
   return async () => {
     if (receiptId === null || receiptId === undefined || receiptId === '') {
@@ -549,7 +576,7 @@ export function searchWarehouseReceiptCustomers(searchTerm) {
 
     try {
       const response = await axios.get(
-        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}`
+        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}&getAll=true`
       );
       const customers = Array.isArray(response.data?.data) ? response.data.data : [];
 
@@ -581,7 +608,7 @@ export function searchWarehouseReceiptStations(customerId, searchTerm) {
         params.set('search', cleanSearchTerm);
       }
 
-      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}`);
+      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}&getAll=true`);
       const stations = Array.isArray(response.data?.data) ? response.data.data : [];
 
       dispatch(slice.actions.getStationOptionsSuccess(stations));

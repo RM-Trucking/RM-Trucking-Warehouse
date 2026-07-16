@@ -516,6 +516,7 @@ const buildWarehouseReceiptViewState = (row = {}, warehouseReceiptGridState) => 
       noteThreadId: receipt.noteThreadId,
       rateInformation: receipt.rateInformation,
       hasFlatRate: receipt.hasFlatRate,
+      notesForFlatRate: receipt.notesForFlatRate,
     },
     receipts: [
       {
@@ -3199,6 +3200,9 @@ export default function WarehouseReceiptFormPage() {
 
   const getActiveHasFlatRate = () =>
     isYes(activeForm?.row?.hasFlatRate ?? viewReceiptSummary?.hasFlatRate ?? getActiveRateInformation().hasFlatRate);
+
+  const getActiveNotesForFlatRate = () =>
+    activeForm?.row?.notesForFlatRate ?? viewReceiptSummary?.notesForFlatRate ?? '';
 
   const handleOpenRatesDialog = () => {
     if (!hasActiveRateInformation()) {
@@ -6231,7 +6235,7 @@ export default function WarehouseReceiptFormPage() {
             <TextField
               variant="standard"
               label="Notes"
-              value={rateInformation.notes || ''}
+              value={getActiveNotesForFlatRate()}
               size="small"
               InputProps={{ readOnly: true }}
               sx={{
