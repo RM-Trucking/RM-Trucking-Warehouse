@@ -36,6 +36,7 @@ import {
   approveWarehouseReceiptRates,
   exportWarehouseReceiptSpreadsheet,
   getWarehouseReceipts,
+  getWarehouseReceiptDocument,
   putWarehouseReceiptsOnAccountHold,
   markWarehouseReceiptRateReadyForApproval,
   revertWarehouseReceiptsFromAccountHold,
@@ -133,21 +134,12 @@ const isYes = (value) => String(value || '').toUpperCase() === 'Y';
 const getMailEmailValue = (value) => typeof value === 'string'
   ? value.trim()
   : String(value?.entryEmail || value?.emailId || value?.email || '').trim();
-const getMailTypeValue = (value) => typeof value === 'string' ? '' : value?.entryType || value?.type || '';
 const getUniqueEmails = (values = []) => [...new Set(
   (Array.isArray(values) ? values : []).map(getMailEmailValue).filter(Boolean)
 )];
 const getReceiptMailRows = (row = {}) => {
   const sourceRow = row.rawData || row;
-  const rowsByEmail = new Map();
-  (Array.isArray(sourceRow.customerEmails) ? sourceRow.customerEmails : []).forEach((entry) => {
-    const email = getMailEmailValue(entry);
-    if (email) rowsByEmail.set(email.toLowerCase(), { email, type: getMailTypeValue(entry) });
-  });
-  getUniqueEmails(sourceRow.toEmails).forEach((email) => {
-    if (!rowsByEmail.has(email.toLowerCase())) rowsByEmail.set(email.toLowerCase(), { email, type: '' });
-  });
-  return Array.from(rowsByEmail.values());
+  return getUniqueEmails(sourceRow.toEmails).map((email) => ({ email }));
 };
 
 const isSendToTellSystemYes = (value) =>
@@ -323,6 +315,9 @@ export default function WarehouseRecieptPage() {
   const [documentUploadError, setDocumentUploadError] = useState('');
   const [documentUploadMessage, setDocumentUploadMessage] = useState('');
   const [documentPreview, setDocumentPreview] = useState({ open: false, file: null, url: '' });
+  const [uploadedDocumentsDialog, setUploadedDocumentsDialog] = useState({ open: false, row: null, documents: [] });
+  const [uploadedDocumentLoadingPath, setUploadedDocumentLoadingPath] = useState('');
+  const [uploadedDocumentError, setUploadedDocumentError] = useState('');
   const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
   const [exportError, setExportError] = useState('');
   const [accountHoldReceiptId, setAccountHoldReceiptId] = useState(null);
@@ -330,7 +325,7 @@ export default function WarehouseRecieptPage() {
   const [accountHoldError, setAccountHoldError] = useState('');
   const [accountHoldRevertReceiptId, setAccountHoldRevertReceiptId] = useState(null);
   const [accountingConfirmation, setAccountingConfirmation] = useState({ open: false, action: '', row: null });
-  const [mailDialog, setMailDialog] = useState({ open: false, receiptId: null, rows: [], selectedEmails: [], extraEmails: [] });
+  const [mailDialog, setMailDialog] = useState({ open: false, receiptId: null, receiptNumber: '', rows: [], selectedEmails: [], extraEmails: [] });
   const [mailSending, setMailSending] = useState(false);
   const [mailMessage, setMailMessage] = useState('');
   const [mailError, setMailError] = useState('');
@@ -356,6 +351,7 @@ export default function WarehouseRecieptPage() {
   const [receiptFilters, setReceiptFilters] = useState(gridState.receiptFilters || gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
+  const [receiptSearchVersion, setReceiptSearchVersion] = useState(0);
   const [paginationModel, setPaginationModel] = useState(gridState.paginationModel || { page: 0, pageSize: 10 });
   const [gridStateByTab, setGridStateByTab] = useState(() => {
     const emptyTabState = {
@@ -420,6 +416,7 @@ export default function WarehouseRecieptPage() {
     dispatch,
     activeTab,
     filterSearchVersion,
+    receiptSearchVersion,
     paginationModel.page,
     paginationModel.pageSize,
     requestStatus,
@@ -791,6 +788,11 @@ export default function WarehouseRecieptPage() {
                   return;
                 }
 
+                if (icon === 'mdi:file-document') {
+                  handleOpenUploadedDocuments(params.row);
+                  return;
+                }
+
                 if (icon === 'mdi:send') {
                   handleOpenMailDialog(params.row);
                   return;
@@ -869,6 +871,7 @@ export default function WarehouseRecieptPage() {
 
   const handleReceiptSearch = () => {
     setSubmittedReceiptNumber(searchValue.trim());
+    setReceiptSearchVersion((previous) => previous + 1);
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
@@ -970,6 +973,7 @@ export default function WarehouseRecieptPage() {
     setMailDialog({
       open: true,
       receiptId: row.receiptId ?? row.rawData?.receiptId ?? row.id,
+      receiptNumber: row.receiptNumber ?? row.rawData?.receiptNumber ?? '',
       rows: getReceiptMailRows(row),
       selectedEmails: getUniqueEmails(sourceRow.toEmails),
       extraEmails: [],
@@ -985,6 +989,42 @@ export default function WarehouseRecieptPage() {
       receiptNumber: row.receiptNumber ?? row.rawData?.receiptNumber ?? '',
       files: [],
     });
+  };
+
+  const handleOpenUploadedDocuments = (row) => {
+    const sourceRow = row?.rawData || row || {};
+    setUploadedDocumentError('');
+    setUploadedDocumentsDialog({
+      open: true,
+      row,
+      documents: Array.isArray(sourceRow.uploadedDocuments) ? sourceRow.uploadedDocuments : [],
+    });
+  };
+
+  const handleCloseUploadedDocuments = () => {
+    if (uploadedDocumentLoadingPath) return;
+    setUploadedDocumentsDialog({ open: false, row: null, documents: [] });
+    setUploadedDocumentError('');
+  };
+
+  const handleViewUploadedDocument = async (document) => {
+    const filePath = document?.filePath;
+    if (!filePath || uploadedDocumentLoadingPath) return;
+
+    setUploadedDocumentLoadingPath(filePath);
+    setUploadedDocumentError('');
+    const response = await dispatch(getWarehouseReceiptDocument(filePath));
+    setUploadedDocumentLoadingPath('');
+
+    if (response?.error || !response?.blob) {
+      setUploadedDocumentError(response?.message || 'Failed to load warehouse receipt document');
+      return;
+    }
+
+    const file = new File([response.blob], filePath, {
+      type: response.contentType || response.blob.type || 'application/pdf',
+    });
+    handleOpenDocumentPreview(file);
   };
 
   const handleCloseDocumentUpload = () => {
@@ -1063,20 +1103,10 @@ export default function WarehouseRecieptPage() {
     if (!mailSending) setMailDialog((previous) => ({ ...previous, open: false }));
   };
 
-  const handleToggleMailEmail = (email) => {
-    setMailError('');
-    setMailDialog((previous) => ({
-      ...previous,
-      selectedEmails: previous.selectedEmails.some((value) => value.toLowerCase() === email.toLowerCase())
-        ? previous.selectedEmails.filter((value) => value.toLowerCase() !== email.toLowerCase())
-        : [...previous.selectedEmails, email],
-    }));
-  };
-
   const handleSendMail = async () => {
-    const emails = getUniqueEmails([...mailDialog.selectedEmails, ...mailDialog.extraEmails]);
+    const emails = getUniqueEmails(mailDialog.extraEmails);
     if (!emails.length) {
-      setMailError('Select or enter at least one email');
+      setMailError('Enter at least one email');
       return;
     }
 
@@ -2218,36 +2248,18 @@ export default function WarehouseRecieptPage() {
       >
         <DialogContent sx={{ p: 2 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
-            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Mail List</Typography>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
+              Mail List - {mailDialog.receiptNumber}
+            </Typography>
             <Stack direction="row" spacing={1}>
               <Button variant="outlined" size="small" onClick={handleCloseMailDialog} disabled={mailSending} sx={{ height: 24, minWidth: 70, color: '#111', borderColor: '#111', textTransform: 'none', fontSize: 11 }}>
                 Cancel
               </Button>
               <Button variant="contained" size="small" onClick={handleSendMail} disabled={mailSending} sx={{ height: 24, minWidth: 70, bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none', fontSize: 11 }}>
-                {mailSending ? 'Sending...' : 'Confirm'}
+                {mailSending ? 'Sending...' : 'Send'}
               </Button>
             </Stack>
           </Stack>
-
-          <Table size="small" sx={{ mt: 5, border: '1px solid #d0d0d0', '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500, py: 0.6 }, '& td': { fontSize: 12, py: 0.45 } }}>
-            <TableHead>
-              <TableRow><TableCell sx={{ width: 46 }} /><TableCell sx={{ width: 70 }}>SNo</TableCell><TableCell sx={{ width: 120 }}>Type</TableCell><TableCell>EmailID</TableCell></TableRow>
-            </TableHead>
-            <TableBody>
-              {mailDialog.rows.length ? mailDialog.rows.map((row, index) => (
-                <TableRow key={row.email}>
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <Checkbox size="small" checked={mailDialog.selectedEmails.some((email) => email.toLowerCase() === row.email.toLowerCase())} onChange={() => handleToggleMailEmail(row.email)} sx={{ p: 0.2, color: '#102a63', '&.Mui-checked': { color: '#102a63' } }} />
-                  </TableCell>
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>{row.type}</TableCell>
-                  <TableCell>{row.email}</TableCell>
-                </TableRow>
-              )) : (
-                <TableRow><TableCell colSpan={4} align="center" sx={{ py: 3, color: '#555' }}>No emails found</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
 
           <Box component="fieldset" sx={{ mt: 3, border: '1px solid #777', borderRadius: 1, px: 1.2, py: 1.2, minHeight: 64 }}>
             <Box component="legend" sx={{ px: 0.7, fontSize: 12, fontWeight: 700 }}>Email Addresses</Box>
@@ -2275,6 +2287,22 @@ export default function WarehouseRecieptPage() {
               )}
             />
           </Box>
+
+          <Table size="small" sx={{ mt: 3, border: '1px solid #d0d0d0', '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500, py: 0.6 }, '& td': { fontSize: 12, py: 0.45 } }}>
+            <TableHead>
+              <TableRow><TableCell sx={{ width: 70 }}>S.No</TableCell><TableCell>Email ID</TableCell></TableRow>
+            </TableHead>
+            <TableBody>
+              {mailDialog.rows.length ? mailDialog.rows.map((row, index) => (
+                <TableRow key={row.email}>
+                  <TableCell>{index + 1}</TableCell>
+                  <TableCell>{row.email}</TableCell>
+                </TableRow>
+              )) : (
+                <TableRow><TableCell colSpan={2} align="center" sx={{ py: 3, color: '#555' }}>No emails found</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
         </DialogContent>
       </Dialog>
 
@@ -2395,6 +2423,100 @@ export default function WarehouseRecieptPage() {
               {documentUploading ? 'Uploading...' : 'Upload'}
             </Button>
           </Stack>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={uploadedDocumentsDialog.open}
+        onClose={handleCloseUploadedDocuments}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 1, minHeight: 400 } }}
+      >
+        <DialogContent sx={{ p: 2 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+            <Typography sx={{ fontSize: 16, fontWeight: 700 }}>
+              Upload Document - {uploadedDocumentsDialog.row?.receiptNumber || uploadedDocumentsDialog.row?.rawData?.receiptNumber || ''}
+            </Typography>
+            <IconButton size="small" onClick={handleCloseUploadedDocuments} disabled={Boolean(uploadedDocumentLoadingPath)} sx={{ p: 0.2, color: '#111' }}>
+              <CloseIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Stack>
+
+          <Table
+            size="small"
+            sx={{
+              mt: 2,
+              border: '1px solid #d0d0d0',
+              '& th': { bgcolor: '#d9d9d9', fontSize: 12, fontWeight: 700, borderRight: '1px solid #c7c7c7' },
+              '& td': { fontSize: 12, borderRight: '1px solid #d9d9d9', verticalAlign: 'top' },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: 55 }}>Sno</TableCell>
+                <TableCell sx={{ width: 190 }}>Date &amp; TimeStamp</TableCell>
+                <TableCell sx={{ width: 240 }}>Uploaded by</TableCell>
+                <TableCell>Uploaded file</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {uploadedDocumentsDialog.documents.length ? uploadedDocumentsDialog.documents.map((document, index) => {
+                const sourceRow = uploadedDocumentsDialog.row?.rawData || uploadedDocumentsDialog.row || {};
+                const uploadedByName = document.uploadedByName || document.requestedByName || sourceRow.requestedByName || '';
+                const uploadedByRole = document.uploadedByRole || document.roleName || '';
+                const isLoadingDocument = uploadedDocumentLoadingPath === document.filePath;
+
+                return (
+                  <TableRow key={document.documentId ?? `${document.filePath}-${index}`}>
+                    <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                    <TableCell>{formatRateApprovalDate(document.uploadedAt)}</TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontSize: 12 }}>{uploadedByName}</Typography>
+                      {uploadedByRole && <Typography sx={{ fontSize: 11, fontStyle: 'italic', fontWeight: 600 }}>{uploadedByRole}</Typography>}
+                    </TableCell>
+                    <TableCell>
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        sx={{ maxWidth: 420, border: '1px solid #ddd', borderRadius: 1, px: 0.8, py: 0.45, boxShadow: 1 }}
+                      >
+                        <IconButton
+                          size="small"
+                          onClick={() => handleViewUploadedDocument(document)}
+                          disabled={Boolean(uploadedDocumentLoadingPath)}
+                          sx={{ p: 0.35, bgcolor: '#b8b8b8', color: '#111', borderRadius: 0.5, flexShrink: 0 }}
+                        >
+                          {isLoadingDocument ? <CircularProgress size={16} color="inherit" /> : <Iconify icon="mdi:eye" width={17} />}
+                        </IconButton>
+                        <Typography noWrap sx={{ minWidth: 0, flex: 1, fontSize: 12 }}>{document.filePath}</Typography>
+                        <Iconify icon="carbon:close-filled" width={16} sx={{ color: '#050505', flexShrink: 0 }} />
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                );
+              }) : (
+                <TableRow>
+                  <TableCell colSpan={4} align="center" sx={{ py: 5, color: '#666' }}>No uploaded documents found</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+
+          {uploadedDocumentError && (
+            <Typography sx={{ mt: 1, color: '#A22', fontSize: 12 }}>{uploadedDocumentError}</Typography>
+          )}
+
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleCloseUploadedDocuments}
+            disabled={Boolean(uploadedDocumentLoadingPath)}
+            sx={{ mt: 3, bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, minWidth: 48, textTransform: 'none' }}
+          >
+            OK
+          </Button>
         </DialogContent>
       </Dialog>
 

@@ -482,6 +482,25 @@ export function uploadWarehouseReceiptDocuments({ receiptId, files = [] } = {}) 
   };
 }
 
+export function getWarehouseReceiptDocument(filePath) {
+  return async () => {
+    if (!filePath) return { error: true, message: 'Document file path is required' };
+
+    try {
+      const response = await axios.get(
+        `/uploads/warehouse/documents/${encodeURIComponent(filePath)}`,
+        { responseType: 'blob' }
+      );
+      return { blob: response.data, contentType: response.headers?.['content-type'] || response.data?.type || '' };
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to load warehouse receipt document',
+      };
+    }
+  };
+}
+
 export function markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails } = {}) {
   return async () => {
     if (receiptId === null || receiptId === undefined || receiptId === '') {
