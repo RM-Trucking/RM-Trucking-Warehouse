@@ -30,6 +30,7 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
+import WarehouseReceiptPrintTemplate from './WarehouseReceiptPrintTemplate';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
@@ -318,6 +319,7 @@ export default function WarehouseRecieptPage() {
   const [uploadedDocumentsDialog, setUploadedDocumentsDialog] = useState({ open: false, row: null, documents: [] });
   const [uploadedDocumentLoadingPath, setUploadedDocumentLoadingPath] = useState('');
   const [uploadedDocumentError, setUploadedDocumentError] = useState('');
+  const [printReceipt, setPrintReceipt] = useState(null);
   const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
   const [exportError, setExportError] = useState('');
   const [accountHoldReceiptId, setAccountHoldReceiptId] = useState(null);
@@ -482,6 +484,19 @@ export default function WarehouseRecieptPage() {
       location: locationOverrides[row.id] ?? row.location,
     }));
   }, [locationOverrides, receipts]);
+
+  useEffect(() => {
+    const handleAfterPrint = () => setPrintReceipt(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
+  const handlePrintWarehouseReceipt = (row) => {
+    setPrintReceipt(row.rawData || row);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.print());
+    });
+  };
 
   const handleCopyReceiptNumber = async (event, receiptNumber) => {
     event.stopPropagation();
@@ -760,6 +775,11 @@ export default function WarehouseRecieptPage() {
 
                 if (icon === 'mdi:eye') {
                   handleViewReceipt(params.row);
+                  return;
+                }
+
+                if (icon === 'mdi:printer') {
+                  handlePrintWarehouseReceipt(params.row);
                   return;
                 }
 
@@ -2238,6 +2258,8 @@ export default function WarehouseRecieptPage() {
           </Stack>
         </DialogContent>
       </Dialog>
+
+      {printReceipt && <WarehouseReceiptPrintTemplate data={printReceipt} />}
 
       <Dialog
         open={mailDialog.open}

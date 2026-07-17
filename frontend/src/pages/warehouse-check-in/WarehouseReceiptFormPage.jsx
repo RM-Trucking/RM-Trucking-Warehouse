@@ -34,6 +34,7 @@ import {
 import Iconify from '../../components/iconify';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import rmLogo from '../../assets/RM.png';
+import WarehouseReceiptPrintTemplate from '../warehouse-receipt-form/WarehouseReceiptPrintTemplate';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchCustomers } from '../../redux/slices/enroute';
 import { getIdVerificationData } from '../../redux/slices/idVerification';
@@ -1207,6 +1208,7 @@ export default function WarehouseReceiptFormPage() {
   const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
+  const [printReceipt, setPrintReceipt] = useState(null);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [ratesNoticeOpen, setRatesNoticeOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
@@ -1270,6 +1272,12 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
+  useEffect(() => {
+    const handleAfterPrint = () => setPrintReceipt(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
   const totalWeight = activeForm.items.reduce(
     (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
@@ -1281,6 +1289,16 @@ export default function WarehouseReceiptFormPage() {
   const weightInland = getRowValue(row, ['weightInland', 'weight'], '');
   const activeFreightInfo = { ...createFreightInfo(), ...(activeForm.freightInfo || {}) };
   const isReceiptDetailsEditable = !isWarehouseReceiptView;
+
+  const handlePrintWarehouseReceipt = () => {
+    const receipt = activeForm?.row?.rawData || activeForm?.row;
+    if (!receipt) return;
+
+    setPrintReceipt(receipt);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.print());
+    });
+  };
 
   useEffect(() => {
     if (isWarehouseReceiptEdit) {
@@ -4926,7 +4944,7 @@ export default function WarehouseReceiptFormPage() {
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleViewAction('This feature will be available soon')}
+                    onClick={handlePrintWarehouseReceipt}
                     disabled={disableViewHeaderActions}
                     sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
@@ -6770,6 +6788,7 @@ export default function WarehouseReceiptFormPage() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {printReceipt && <WarehouseReceiptPrintTemplate data={printReceipt} />}
       <Divider />
     </Box>
   );
