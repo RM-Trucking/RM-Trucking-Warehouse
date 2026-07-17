@@ -40,6 +40,7 @@ import {
   getWarehouseReceiptDocument,
   putWarehouseReceiptsOnAccountHold,
   markWarehouseReceiptRateReadyForApproval,
+  removeWarehouseReceiptDocument,
   revertWarehouseReceiptsFromAccountHold,
   sendWarehouseReceiptEmail,
   searchWarehouseReceiptCustomers,
@@ -318,6 +319,7 @@ export default function WarehouseRecieptPage() {
   const [documentPreview, setDocumentPreview] = useState({ open: false, file: null, url: '' });
   const [uploadedDocumentsDialog, setUploadedDocumentsDialog] = useState({ open: false, row: null, documents: [] });
   const [uploadedDocumentLoadingPath, setUploadedDocumentLoadingPath] = useState('');
+  const [uploadedDocumentRemovingId, setUploadedDocumentRemovingId] = useState(null);
   const [uploadedDocumentError, setUploadedDocumentError] = useState('');
   const [printReceipt, setPrintReceipt] = useState(null);
   const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
@@ -662,6 +664,11 @@ export default function WarehouseRecieptPage() {
       flex: 0.6,
       renderCell: (params) => {
         const sourceRow = params.row.rawData || params.row;
+        const receiptStatus = String(
+          params.row.status ?? sourceRow.status ?? ''
+        ).trim().toUpperCase();
+        if (['INITIATED', 'REJECTED'].includes(receiptStatus)) return null;
+
         const approvalStatus = String(
           params.row.approvalStatus ?? sourceRow.approvalStatus ?? ''
         ).trim().toUpperCase();
@@ -1022,7 +1029,7 @@ export default function WarehouseRecieptPage() {
   };
 
   const handleCloseUploadedDocuments = () => {
-    if (uploadedDocumentLoadingPath) return;
+    if (uploadedDocumentLoadingPath || uploadedDocumentRemovingId !== null) return;
     setUploadedDocumentsDialog({ open: false, row: null, documents: [] });
     setUploadedDocumentError('');
   };
@@ -1045,6 +1052,30 @@ export default function WarehouseRecieptPage() {
       type: response.contentType || response.blob.type || 'application/pdf',
     });
     handleOpenDocumentPreview(file);
+  };
+
+  const handleRemoveUploadedDocument = async (document) => {
+    const row = uploadedDocumentsDialog.row || {};
+    const receiptId = document?.receiptId ?? row.receiptId ?? row.rawData?.receiptId ?? row.id;
+    const documentId = document?.documentId;
+    if (uploadedDocumentLoadingPath || uploadedDocumentRemovingId !== null) return;
+
+    setUploadedDocumentRemovingId(documentId);
+    setUploadedDocumentError('');
+    const response = await dispatch(removeWarehouseReceiptDocument({ receiptId, documentId }));
+    setUploadedDocumentRemovingId(null);
+
+    if (response?.error) {
+      setUploadedDocumentError(response.message || 'Failed to remove warehouse receipt document');
+      return;
+    }
+
+    setUploadedDocumentsDialog((previous) => ({
+      ...previous,
+      documents: previous.documents.filter((item) => item.documentId !== documentId),
+    }));
+    setDocumentUploadMessage(response?.message || 'Document removed successfully');
+    setReceiptSearchVersion((previous) => previous + 1);
   };
 
   const handleCloseDocumentUpload = () => {
@@ -1117,6 +1148,7 @@ export default function WarehouseRecieptPage() {
 
     setDocumentUploadDialog({ open: false, receiptId: null, receiptNumber: '', files: [] });
     setDocumentUploadMessage(response?.message || 'Documents uploaded successfully');
+    setReceiptSearchVersion((previous) => previous + 1);
   };
 
   const handleCloseMailDialog = () => {
@@ -2460,7 +2492,7 @@ export default function WarehouseRecieptPage() {
             <Typography sx={{ fontSize: 16, fontWeight: 700 }}>
               Upload Document - {uploadedDocumentsDialog.row?.receiptNumber || uploadedDocumentsDialog.row?.rawData?.receiptNumber || ''}
             </Typography>
-            <IconButton size="small" onClick={handleCloseUploadedDocuments} disabled={Boolean(uploadedDocumentLoadingPath)} sx={{ p: 0.2, color: '#111' }}>
+            <IconButton size="small" onClick={handleCloseUploadedDocuments} disabled={Boolean(uploadedDocumentLoadingPath) || uploadedDocumentRemovingId !== null} sx={{ p: 0.2, color: '#111' }}>
               <CloseIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Stack>
@@ -2488,6 +2520,7 @@ export default function WarehouseRecieptPage() {
                 const uploadedByName = document.uploadedByName || document.requestedByName || sourceRow.requestedByName || '';
                 const uploadedByRole = document.uploadedByRole || document.roleName || '';
                 const isLoadingDocument = uploadedDocumentLoadingPath === document.filePath;
+                const isRemovingDocument = uploadedDocumentRemovingId === document.documentId;
 
                 return (
                   <TableRow key={document.documentId ?? `${document.filePath}-${index}`}>
@@ -2507,13 +2540,23 @@ export default function WarehouseRecieptPage() {
                         <IconButton
                           size="small"
                           onClick={() => handleViewUploadedDocument(document)}
-                          disabled={Boolean(uploadedDocumentLoadingPath)}
+                          disabled={Boolean(uploadedDocumentLoadingPath) || uploadedDocumentRemovingId !== null}
                           sx={{ p: 0.35, bgcolor: '#b8b8b8', color: '#111', borderRadius: 0.5, flexShrink: 0 }}
                         >
                           {isLoadingDocument ? <CircularProgress size={16} color="inherit" /> : <Iconify icon="mdi:eye" width={17} />}
                         </IconButton>
                         <Typography noWrap sx={{ minWidth: 0, flex: 1, fontSize: 12 }}>{document.filePath}</Typography>
-                        <Iconify icon="carbon:close-filled" width={16} sx={{ color: '#050505', flexShrink: 0 }} />
+                        <IconButton
+                          size="small"
+                          aria-label={`Remove ${document.filePath || 'document'}`}
+                          onClick={() => handleRemoveUploadedDocument(document)}
+                          disabled={Boolean(uploadedDocumentLoadingPath) || uploadedDocumentRemovingId !== null}
+                          sx={{ p: 0.2, color: '#050505', flexShrink: 0 }}
+                        >
+                          {isRemovingDocument
+                            ? <CircularProgress size={14} color="inherit" />
+                            : <Iconify icon="carbon:close-filled" width={16} />}
+                        </IconButton>
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -2534,7 +2577,7 @@ export default function WarehouseRecieptPage() {
             variant="contained"
             size="small"
             onClick={handleCloseUploadedDocuments}
-            disabled={Boolean(uploadedDocumentLoadingPath)}
+            disabled={Boolean(uploadedDocumentLoadingPath) || uploadedDocumentRemovingId !== null}
             sx={{ mt: 3, bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, minWidth: 48, textTransform: 'none' }}
           >
             OK

@@ -501,6 +501,33 @@ export function getWarehouseReceiptDocument(filePath) {
   };
 }
 
+export function removeWarehouseReceiptDocument({ receiptId, documentId } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required to remove the document' };
+    }
+    if (documentId === null || documentId === undefined || documentId === '') {
+      return { error: true, message: 'Document ID is required to remove the document' };
+    }
+
+    try {
+      const response = await axios.delete('/warehouse-receipt/document-remove', {
+        data: {
+          receiptId,
+          documentIds: documentId,
+          documentId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to remove warehouse receipt document',
+      };
+    }
+  };
+}
+
 export function markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails } = {}) {
   return async () => {
     if (receiptId === null || receiptId === undefined || receiptId === '') {
