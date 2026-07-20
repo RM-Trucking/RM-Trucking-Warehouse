@@ -1304,7 +1304,7 @@ export default function WarehouseCheckInPage({
     updateReceipt(mailListDialog.receiptKey, (receipt) => ({
       row: {
         ...receipt.row,
-        toEmails: selectedToEmails,
+        toEmails: mergeUniqueEmailLists(selectedToEmails),
       },
     }));
     setMailListDialog((prev) => ({ ...prev, open: false }));
@@ -4997,7 +4997,7 @@ export default function WarehouseCheckInPage({
             </Typography>
           ) : (
             <Typography sx={{ fontSize: 14 }}>
-              No data available for PRO number{" "}
+              No data available for {searchBy === "ID" ? "ID" : "PRO number"}{" "}
               <strong>
                 {warehouseReceiptSearch.data?.proNumber ||
                   noDataSearchValue ||

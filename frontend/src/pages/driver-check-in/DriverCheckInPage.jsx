@@ -24,6 +24,7 @@ import Iconify from "../../components/iconify";
 import { searchCarriers, addNewCarrier, searchCustomers } from "../../redux/slices/enroute";
 import { verifyProNumber, clearProVerification, submitDriverCheckIn } from "../../redux/slices/driverCheckIn";
 import formatPhoneNumber from "../../utils/formatPhoneNumber";
+import DriverCheckInReceiptPrintTemplate from "./DriverCheckInReceiptPrintTemplate";
 
 const actionBtnSx = {
   bgcolor: "#A22",
@@ -64,6 +65,42 @@ const DUMMY_PROS = {
 };
 
 const normalizeProNumber = (pro) => String(pro || '').trim().toUpperCase();
+
+const normalizeEmailAddressList = (emails) => {
+  const emailList = Array.isArray(emails)
+    ? emails
+    : typeof emails === 'string'
+      ? emails.split(',')
+      : [];
+
+  return emailList
+    .map((email) => (
+      typeof email === 'string'
+        ? email
+        : email?.entryEmail || email?.email || ''
+    ))
+    .map((email) => String(email).trim())
+    .filter(Boolean);
+};
+
+const mergeUniqueEmailAddresses = (...emailLists) => {
+  const seenEmails = new Set();
+
+  return emailLists
+    .flatMap((emails) => normalizeEmailAddressList(emails))
+    .filter((email) => {
+      const emailKey = email.toLowerCase();
+      if (seenEmails.has(emailKey)) return false;
+      seenEmails.add(emailKey);
+      return true;
+    });
+};
+
+const getStationDefaultEmails = (stationDefaultEmails) => (
+  String(stationDefaultEmails?.hasDefaultEmails || '').trim().toUpperCase() === 'Y'
+    ? stationDefaultEmails?.emails || []
+    : []
+);
 
 export default function DriverCheckInPage() {
   const navigate = useNavigate();
@@ -206,6 +243,7 @@ export default function DriverCheckInPage() {
 
   const [openVerificationDialog, setOpenVerificationDialog] = useState(false);
   const [verificationIds, setVerificationIds] = useState([]);
+  const [submittedReceipts, setSubmittedReceipts] = useState([]);
   const signatureBase64 = "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";
 
   const handleCloseAddCarrierModal = () => {
@@ -399,7 +437,14 @@ const handleDriverNameFocus = () => {
     setSelectedEmails({});
     setConfirmedEmailsByGroup({});
     setCurrentFormEmails([]);
+    setVerificationIds([]);
+    setSubmittedReceipts([]);
     dispatch(clearProVerification());
+  };
+
+  const handlePrintSubmittedReceipts = () => {
+    if (!submittedReceipts.length) return;
+    window.setTimeout(() => window.print(), 0);
   };
 
   const validateCheckInForm = () => {
@@ -451,11 +496,16 @@ const handleDriverNameFocus = () => {
       proGroups.forEach(group => {
         // Get confirmed emails for this group
         const groupConfirmedEmailIds = confirmedEmailsByGroup[group.id] || {};
-        const toEmailsList = (group.emails || [])
+        const selectedToEmails = (group.emails || [])
           .filter((email) => groupConfirmedEmailIds[email.entryId])
           .map((email) => email.entryEmail);
 
         group.entries.forEach(entry => {
+          const toEmailsList = mergeUniqueEmailAddresses(
+            selectedToEmails,
+            getStationDefaultEmails(entry.stationDefaultEmails),
+          );
+
           freightDetails.push({
             customerId: entry.customerId || 0,
             stationId: entry.stationId || 0,
@@ -487,6 +537,7 @@ const handleDriverNameFocus = () => {
       // Show verification ID dialog
       if (response?.verificationIds) {
         setVerificationIds(response.verificationIds);
+        setSubmittedReceipts(Array.isArray(response.receipts) ? response.receipts : []);
         setOpenVerificationDialog(true);
       } else {
         setSuccessMessage('Driver Check-In submitted successfully!');
@@ -568,7 +619,8 @@ const handleDriverNameFocus = () => {
               customerName: proData.customerName,
               stationName: proData.stationName,
               emails: normalizeEmails(proData.customerEmails),
-              toEmails: normalizeEmails(proData.toEmails)
+              toEmails: normalizeEmails(proData.toEmails),
+              stationDefaultEmails: proData.stationDefaultEmails
             },
             pieces: proData.pieces?.toString() || '',
             weight: proData.weight?.toString() || '',
@@ -632,7 +684,8 @@ const handleDriverNameFocus = () => {
           customerName: rejectedProData.customerName,
           stationName: rejectedProData.stationName,
           emails: normalizeEmails(rejectedProData.customerEmails),
-          toEmails: normalizeEmails(rejectedProData.toEmails)
+          toEmails: normalizeEmails(rejectedProData.toEmails),
+          stationDefaultEmails: rejectedProData.stationDefaultEmails
         },
         pieces: rejectedProData.pieces?.toString() || '',
         weight: rejectedProData.weight?.toString() || '',
@@ -824,6 +877,7 @@ const handleDriverNameFocus = () => {
         shipper,
         customerId: typeof freightForwarder === 'object' ? freightForwarder?.customerId : null,
         stationId: typeof freightForwarder === 'object' ? freightForwarder?.stationId : null,
+        stationDefaultEmails: typeof freightForwarder === 'object' ? freightForwarder?.stationDefaultEmails : null,
         proDetailId: proDetailId || 0,
       };
 
@@ -2217,18 +2271,32 @@ const handleDriverNameFocus = () => {
               </Typography>
             ))}
           </Box>
-          <Button
-            variant="contained"
-            onClick={() => {
-              setOpenVerificationDialog(false);
-              handleResetForm();
-            }}
-            sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' }, px: 4 }}
-          >
-            OK
-          </Button>
+          <Stack direction="row" spacing={2} sx={{ justifyContent: 'center' }}>
+            {submittedReceipts.length > 0 && (
+              <Button
+                variant="outlined"
+                onClick={handlePrintSubmittedReceipts}
+                startIcon={<Iconify icon="mdi:printer" />}
+                sx={{ color: '#a22', borderColor: '#a22', px: 3, '&:hover': { borderColor: '#811' } }}
+              >
+                Show and Print Receipt
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              onClick={() => {
+                setOpenVerificationDialog(false);
+                handleResetForm();
+              }}
+              sx={{ bgcolor: '#a22', '&:hover': { bgcolor: '#811' }, px: 4 }}
+            >
+              OK
+            </Button>
+          </Stack>
         </Box>
       </Dialog>
+
+      <DriverCheckInReceiptPrintTemplate receipts={submittedReceipts} />
 
       {/* Mail List Dialog */}
       <Dialog

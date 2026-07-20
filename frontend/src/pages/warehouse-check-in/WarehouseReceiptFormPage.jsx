@@ -181,6 +181,19 @@ const createFreightInfo = () => ({
   notes: '',
 });
 
+const getHazmatTogglePatch = (checked) => (
+  checked
+    ? { hazMat: true }
+    : {
+        hazMat: false,
+        originalDgd: false,
+        unNumbers: [],
+        hazmatClasses: [],
+        unNumberInput: '',
+        hazmatClassInput: '',
+      }
+);
+
 const createEmptySplitFormDetails = (baseRow = {}) => ({
   row: {
     ...baseRow,
@@ -260,6 +273,13 @@ const formatTwoDecimalMeasurement = (value) => {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return value;
   return Number(numberValue.toFixed(2));
+};
+
+const formatCubicMeterForItemTable = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return numberValue.toFixed(2);
 };
 
 const normalizeEmailList = (value) => {
@@ -4532,7 +4552,7 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField label="Pieces" value={splitPiecesInland} required />
                   <DisplayField label="Weight" value={splitWeightInland} required />
                   <DisplayField label="RE Weight" value={splitTotalWeight} required />
-                  <DisplayField label="CBM (m3)" value={formatMeasurement(splitTotalCbm)} required />
+                  <DisplayField label="CBM (m3)" value={formatCubicMeterForItemTable(splitTotalCbm)} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
@@ -4628,7 +4648,7 @@ export default function WarehouseReceiptFormPage() {
                         </TableCell>
                       ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {formatTwoDecimalMeasurement(calculateItemCbm(item))}
+                        {formatCubicMeterForItemTable(calculateItemCbm(item))}
                       </TableCell>
                       <TableCell
                         sx={{
@@ -4812,7 +4832,7 @@ export default function WarehouseReceiptFormPage() {
                       control={
                         <Checkbox
                           checked={splitFreightInfo.hazMat}
-                          onChange={(event) => updateSplitFreight({ hazMat: event.target.checked })}
+                          onChange={(event) => updateSplitFreight(getHazmatTogglePatch(event.target.checked))}
                           size="small"
                           sx={{ p: 0.4 }}
                         />
@@ -5271,7 +5291,7 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField label="Pieces" value={piecesInland} required />
                   <DisplayField label="Weight" value={weightInland} required />
                   <DisplayField label="RE Weight" value={totalWeight} required />
-                  <DisplayField label="CBM (m³)" value={formatMeasurement(totalCbm)} required />
+                  <DisplayField label="CBM (m³)" value={formatCubicMeterForItemTable(totalCbm)} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
@@ -5374,7 +5394,7 @@ export default function WarehouseReceiptFormPage() {
                         </TableCell>
                       ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {formatTwoDecimalMeasurement(calculateItemCbm(item))}
+                        {formatCubicMeterForItemTable(calculateItemCbm(item))}
                       </TableCell>
                       <TableCell
                         sx={{
@@ -5626,7 +5646,7 @@ export default function WarehouseReceiptFormPage() {
                         <Checkbox
                           checked={activeFreightInfo.hazMat}
                           disabled={!isReceiptDetailsEditable}
-                          onChange={(event) => updateActiveFreightInfo({ hazMat: event.target.checked })}
+                          onChange={(event) => updateActiveFreightInfo(getHazmatTogglePatch(event.target.checked))}
                           size="small"
                           sx={{ p: 0.4 }}
                         />
