@@ -54,6 +54,17 @@ const normalizeEmailList = (value) => {
   return [];
 };
 
+const getUniqueEmailList = (emails) => {
+  const seenEmails = new Set();
+
+  return normalizeEmailList(emails).filter((email) => {
+    const emailKey = email.toLowerCase();
+    if (seenEmails.has(emailKey)) return false;
+    seenEmails.add(emailKey);
+    return true;
+  });
+};
+
 const normalizeEmailRows = (emails) => {
   if (!Array.isArray(emails)) return [];
 
@@ -526,7 +537,7 @@ export default function WarehouseCheckInScanGunPage({
     updateReceipt(mailListDialog.receiptKey, (receipt) => ({
       row: {
         ...receipt.row,
-        toEmails: selectedToEmails,
+        toEmails: getUniqueEmailList(selectedToEmails),
       },
     }));
     setMailListDialog((prev) => ({ ...prev, open: false }));
