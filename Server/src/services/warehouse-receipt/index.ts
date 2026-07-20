@@ -9,7 +9,8 @@ import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as customerDB from "../../database/maintanance/customer";
 import * as carrierDB from "../../database/maintanance/carrier";
-import { emitAuditLog, emitEmail } from "../../utils/email";
+import * as userDB from "../../database/maintanance/auth";
+import { emitAuditLog, emitEmail, sendStatusUpdateEmail } from "../../utils/email";
 import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptTemp } from "../../entities/warehouse-receipt";
 import { getProDetailFromCsv, validateProCsvData, findProCsvFile } from "../../utils/pro-csv-handler";
 import { createWarehouseReceiptPDF } from "../../utils/warehouseReceiptPDFHandler";
@@ -90,6 +91,7 @@ export async function listWarehouseReceiptsService(
     page: number = 1,
     pageSize: number = 10,
     status?: string,
+    approvalStatus?: string,
     receiptNumber?: string,
     accounting?: boolean,
     filters?: {
@@ -108,7 +110,7 @@ export async function listWarehouseReceiptsService(
 ) {
     const offset = (page - 1) * pageSize;
     let data = [];
-    const { data: receipts, total } = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, status, receiptNumber, accounting, filters);
+    const { data: receipts, total } = await warehouseReceiptDB.listWarehouseReceipts(conn, pageSize, offset, status, approvalStatus, receiptNumber, accounting, filters);
     data = receipts;
 
     data = await Promise.all(
@@ -163,7 +165,9 @@ export async function listWarehouseReceiptsService(
             } | null = null;
 
             // ✅ Step 1: Try warehouse rate first
-            rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.stationId);
+            rate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
+
+            console.log(`Processing receipt ${receipt.receiptNumber} with warehouse rate:`, rate);
 
             // ✅ Step 2: If warehouse rate exists and flat rate applies
             if (rate && receipt.hasFlatRate === "Y" && rate.finalRate) {
@@ -186,6 +190,7 @@ export async function listWarehouseReceiptsService(
                     totalActualWeight += actualWeight;
                     totalDimensionalWeight += dimensionalWeight;
 
+
                     return {
                         pieces,
                         type,
@@ -203,6 +208,7 @@ export async function listWarehouseReceiptsService(
                         minRate: rate.minRate,
                         maxRate: rate.maxRate,
                         baseRate: rate.baseRate,
+                        baseRatePerPound: rate.baseRate / 100, // Assuming rate is in cents per pound
                         finalRate: rate.finalRate, // ✅ override with flat rate
                         rateCalculatedBy: "FLAT_RATE",
                         totalActualWeight,
@@ -251,12 +257,14 @@ export async function listWarehouseReceiptsService(
                 });
 
                 const chargeableWeight = Math.max(totalActualWeight, totalDimensionalWeight);
+                const baseRatePerPound = rate.baseRate / 100; // Assuming rate is in cents per pound
 
                 let rateInformation = {
                     minRate: rate.minRate,
                     maxRate: rate.maxRate,
                     baseRate: rate.baseRate,
-                    finalRate: chargeableWeight * rate.baseRate,
+                    baseRatePerPound,
+                    finalRate: chargeableWeight * baseRatePerPound,
                     rateCalculatedBy:
                         totalActualWeight >= totalDimensionalWeight ? "ACTUAL_WEIGHT" : "DIMENSIONAL_WEIGHT",
 
@@ -749,14 +757,15 @@ function getDocumentFileType(file: { originalname?: string; mimetype?: string })
         case ".png":
             return "PNG";
         default:
-            return file.mimetype || "UNKNOWN";
+            return extension ? extension.replace(".", "").toUpperCase() : "UNKNOWN";
     }
 }
 
 export async function uploadWarehouseReceiptDocumentsService(
     conn: Connection,
     receiptId: number,
-    files: Array<{ filename: string; originalname?: string; mimetype?: string }>
+    files: Array<{ filename: string; originalname?: string; mimetype?: string }>,
+    userId: number
 ) {
     const existingReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
     if (!existingReceipt) {
@@ -773,17 +782,101 @@ export async function uploadWarehouseReceiptDocumentsService(
     try {
         for (const file of files) {
             const storedFileName = file.filename || path.basename(file.originalname || "");
+            console.log("type", getDocumentFileType(file), "file", file);
             const documentId = await warehouseReceiptDB.createWarehouseReceiptDocument(
                 conn,
                 receiptId,
                 storedFileName,
-                getDocumentFileType(file)
+                getDocumentFileType(file),
+                userId
             );
-            documents.push({ documentId, filePath: storedFileName, fileType: getDocumentFileType(file) });
+            documents.push({ documentId: documentId.documentId, filePath: documentId.filePath, fileType: documentId.fileType, uploadedAt: documentId.uploadedAt, uploadedBy: await userDB.getUserName(conn, userId) });
         }
 
         await conn.commit();
         return documents;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
+export async function removeWarehouseReceiptDocumentsService(
+    conn: Connection,
+    receiptId: number,
+    documentIds?: number[]
+) {
+    const existingReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    if (!existingReceipt) {
+        throw new Error(`Receipt with ID ${receiptId} not found`);
+    }
+
+    const existingDocuments = await warehouseReceiptDB.getDocumentsByReceiptId(conn, receiptId);
+    if (!existingDocuments.length) {
+        return {
+            receiptId,
+            removedDocumentIds: [],
+            removedCount: 0,
+            remainingCount: 0,
+            message: "No documents found for this receipt"
+        };
+    }
+
+    const normalizedDocumentIds = Array.from(new Set((documentIds || []).map((id) => Number(id)).filter((id) => !Number.isNaN(id))));
+    const documentsToRemove = normalizedDocumentIds.length > 0
+        ? existingDocuments.filter((document) => normalizedDocumentIds.includes(Number(document.documentId)))
+        : existingDocuments;
+
+    if (!documentsToRemove.length) {
+        throw new Error("No matching documents were found for the provided document IDs");
+    }
+
+    await conn.beginTransaction();
+    try {
+        const removedDocumentIds: number[] = [];
+
+        for (const document of documentsToRemove) {
+            await warehouseReceiptDB.deleteWarehouseReceiptDocument(conn, Number(document.documentId));
+            removedDocumentIds.push(Number(document.documentId));
+        }
+
+        const remainingDocuments = await warehouseReceiptDB.getDocumentsByReceiptId(conn, receiptId);
+        await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { documents: remainingDocuments.length > 0 ? 'Y' : 'N' });
+        await conn.commit();
+
+        for (const document of documentsToRemove) {
+            const filePath = document.filePath?.toString().trim();
+            if (!filePath) continue;
+
+            const candidatePaths = new Set<string>();
+            if (path.isAbsolute(filePath)) {
+                candidatePaths.add(filePath);
+            } else {
+                candidatePaths.add(path.resolve(process.cwd(), filePath));
+                const configuredUploadPath = process.env.WAREHOUSE_DOC_PATH || "uploads/warehouse/documents";
+                candidatePaths.add(path.resolve(process.cwd(), configuredUploadPath, filePath));
+                candidatePaths.add(path.resolve(process.cwd(), "uploads/warehouse/documents", filePath));
+            }
+
+            for (const candidatePath of candidatePaths) {
+                try {
+                    await fs.promises.unlink(candidatePath);
+                    break;
+                } catch (error: any) {
+                    if (error.code !== "ENOENT") {
+                        console.warn(`Failed to delete document file at ${candidatePath}:`, error.message);
+                    }
+                }
+            }
+        }
+
+        return {
+            receiptId,
+            removedDocumentIds,
+            removedCount: removedDocumentIds.length,
+            remainingCount: remainingDocuments.length,
+            message: "Documents removed successfully"
+        };
     } catch (error) {
         await conn.rollback();
         throw error;
@@ -938,7 +1031,6 @@ export async function batchProcessWarehouseReceiptsService(
             }
 
             receipt.status = "ON_HAND";
-            receipt.approvalStatus = "APPROVED";
 
             // Check if this is an update (receipt has receiptId) or create (doesn't have receiptId)
             if (receipt.receiptId && receipt.receiptId !== 0) {
@@ -987,9 +1079,6 @@ export async function batchProcessWarehouseReceiptsService(
                         ...freightData,
                         receiptId
                     });
-
-                    console.log(images);
-
 
                     // Create associated images if provided
                     if (Array.isArray(images)) {
@@ -1355,7 +1444,7 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
     // Validate customer/station exists
     const station = await customerDB.getStationByRmAccountNumber(conn, proDetail.customrAccountNumber);
     if (!station) {
-        throw new Error(`Customer not found with customer name: ${proDetail.customerName}`);
+        throw new Error(`Customer not found with customer name: ${proDetail.customerName} with account number: ${proDetail.customrAccountNumber}`);
     }
 
     // Validate carrier exists
@@ -1603,25 +1692,6 @@ export async function warehouseReceiptAccountHoldRevertService(conn: Connection,
 }
 
 
-export async function updateWarehouseReceiptApprovalStatusService(conn: Connection, receiptId: number, status: string, userId: number) {
-    const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
-    if (!receipt) {
-        throw new Error(`Receipt with ID ${receiptId} not found`);
-    }
-    const data = await warehouseReceiptDB.updateWarehouseReceiptApprovalStatus(conn, receiptId, status);
-
-    emitAuditLog({
-        receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
-        receiptId,
-        proNumber: receipt.proNumber,
-        userId: userId,
-        status: "APPROVAL_STATUS_UPDATED",
-        description: `Receipt approval status updated from ${receipt.status} to ${status}`,
-        level: "INFO"
-    });
-    return data;
-}
-
 export async function warehouseReceiptRateReadyForApprovalService(conn: Connection, receiptId: number, rateDetails: { rate: number, dimFactor: number, baseRate: number, minRate: number, maxRate: number, hasFlatRate: 'Y' | 'N', notesForFlatRate: string | null }, userId: number) {
 
     await conn.beginTransaction();
@@ -1662,6 +1732,16 @@ export async function warehouseReceiptRateReadyForApprovalService(conn: Connecti
             });
         }
 
+        emitAuditLog({
+            receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
+            receiptId,
+            proNumber: receipt.proNumber,
+            userId: userId,
+            status: "READY_FOR_APPROVAL",
+            description: `Rate details updated and ready for approval by user ID ${await userDB.getUserName(conn, userId)}`,
+            level: "INFO"
+        });
+
         await conn.commit();
     }
     catch (err) {
@@ -1674,17 +1754,29 @@ export async function warehouseReceiptRateReadyForApprovalService(conn: Connecti
 export async function warehouseReceiptRateApproveService(conn: Connection, receiptIds: number[], userId: number) {
     await conn.beginTransaction();
     try {
+        const approverName = await userDB.getUserName(conn, userId);
 
-        receiptIds.forEach(async (receiptId) => {
+        for (const receiptId of receiptIds) {
             const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
             if (!receipt) {
                 throw new Error(`Receipt with ID ${receiptId} not found`);
             }
             await warehouseReceiptDB.updateWarehouseReceiptApproval(conn, receiptId, {
                 approvalStatus: 'APPROVED',
-                requestedBy: userId
+                accountOnHold: 'N',
+                approvedBy: userId
             });
-        });
+
+            emitAuditLog({
+                receiptNumber: receipt.receiptNumber ? receipt.receiptNumber : 0,
+                receiptId,
+                proNumber: receipt.proNumber,
+                userId: userId,
+                status: "RATE_APPROVED",
+                description: `Receipt rate approved by user ID ${approverName}`,
+                level: "INFO"
+            });
+        }
 
         await conn.commit();
     }
@@ -1697,6 +1789,7 @@ export async function warehouseReceiptRateApproveService(conn: Connection, recei
 export async function exportWarehouseReceiptsToSpreadsheetService(
     conn: Connection,
     status?: string,
+    approvalStatus?: string,
     receiptNumber?: string,
     accounting?: boolean,
     filters?: {
@@ -1720,6 +1813,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         undefined, // page
         undefined, // pageSize
         status,
+        approvalStatus,
         receiptNumber,
         accounting,
         filters
@@ -1783,4 +1877,75 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
     });
 
     return workbook;
+}
+
+
+export async function sendWarehouseReceiptToCustomEmailService(
+    conn: Connection,
+    receiptId: number,
+    emails: string[],
+    userId: number
+) {
+    const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    if (!receipt) {
+        throw new Error(`Receipt with ID ${receiptId} not found`);
+    }
+
+    const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+    const freightWithImages = await Promise.all(
+        freightInformation.map(async (freight) => ({
+            ...freight,
+            images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
+        }))
+    );
+
+    const [rate, auditLogs, documents, badFreightConditionImages, customerEmails, stationDefaultEmails] = await Promise.all([
+        warehouseReceiptDB.getWarehouseReceiptRate(conn, receiptId),
+        warehouseReceiptDB.getAuditLogsByReceipt(conn, receiptId),
+        warehouseReceiptDB.getDocumentsByReceiptId(conn, receiptId),
+        warehouseReceiptDB.getBadFreightConditionImages(conn, receiptId),
+        customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId),
+        customerDB.getStationDefaultEmails(conn, receipt.stationId)
+    ]);
+
+    const receiptWithDetails = {
+        ...receipt,
+        freightInformation: freightWithImages,
+        rate,
+        auditLogs,
+        uploadedDocuments: documents,
+        badFreightConditionImages,
+        customerEmails,
+        stationDefaultEmails
+    };
+
+    const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
+    const pdfFilePath = await createWarehouseReceiptPDF(receiptWithDetails, false, tempReceiptOutPath);
+    const emailStatus = typeof receiptWithDetails.status === "string" && ["INITIATED", "ON_HAND", "SHIPPED", "DISCARDED", "REJECTED", "ACCEPTED"].includes(receiptWithDetails.status)
+        ? receiptWithDetails.status as any
+        : undefined;
+
+    const attachments = [pdfFilePath];
+
+    if (Array.isArray(documents) && documents.length > 0) {
+        const documentsOutPath = ensureUploadDirExists(process.env.WAREHOUSE_DOC_PATH);
+        const fullDocPaths = documents.map(
+            (doc: any) => path.join(documentsOutPath, doc.filePath)
+        );
+        attachments.push(...fullDocPaths);
+    }
+
+    const attachmentString = attachments.join(";");
+
+    for (const emailRecipient of emails) {
+        // emitEmail will queue email notification asynchronously
+        emitEmail({
+            receiptNumber: receiptWithDetails.receiptNumber,
+            to: emailRecipient,
+            status: emailStatus,
+            hasAttachment: true,
+            attachmentPath: attachmentString
+        });
+    }
+
 }

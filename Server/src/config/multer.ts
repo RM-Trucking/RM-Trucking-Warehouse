@@ -15,9 +15,39 @@ export const FILE_TYPES = {
 };
 
 // File type MIME configurations
+// const MIME_TYPES = {
+//     [FILE_TYPES.IMAGES]: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+//     [FILE_TYPES.DOCUMENTS]: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+// };
+
 const MIME_TYPES = {
-    [FILE_TYPES.IMAGES]: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-    [FILE_TYPES.DOCUMENTS]: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+    [FILE_TYPES.IMAGES]: [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
+    ],
+
+    [FILE_TYPES.DOCUMENTS]: [
+        // PDF
+        'application/pdf',
+
+        // Word
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+
+        // Excel
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+
+        // PowerPoint
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+
+        // Text / CSV
+        'text/plain',
+        'text/csv'
+    ]
 };
 
 // Upload limits

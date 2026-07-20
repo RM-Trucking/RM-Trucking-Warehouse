@@ -25,10 +25,11 @@ export async function getCustomerWithStationDropdown(req: Request, res: Response
 export async function getCustomerDropdown(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const search = (req.query.search as string) || ""; // user types into autocomplete
+        const getAll = req.query.getAll === 'true'; // convert query param to boolean
 
         console.log(`Fetching customer dropdown with search: "${search}"`);
 
-        const dropdownData = await customerService.getCustomerDropdown(conn, search);
+        const dropdownData = await customerService.getCustomerDropdown(conn, search, getAll);
         res.status(200).json({ success: true, data: dropdownData });
     } catch (error) {
         console.error(error);
@@ -43,11 +44,11 @@ export async function getStationDropdown(req: Request, res: Response, conn: Conn
     try {
         const search = (req.query.search as string) || ""; // user types into autocomplete
         const customerId = Number(req.query.customerId)
-
+        const getAll = req.query.getAll === 'true';
         if (!customerId)
             res.status(400).json({ error: 'Missing required fields' });
 
-        const dropdownData = await customerService.getStationDropdown(conn, customerId, search);
+        const dropdownData = await customerService.getStationDropdown(conn, customerId, search, getAll);
         res.status(200).json({ success: true, data: dropdownData });
     } catch (error) {
         console.error(error);

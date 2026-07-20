@@ -74,6 +74,7 @@ export async function listWarehouseReceipts(req: Request, res: Response, conn: C
         const page = parseInt(req.query.page as string) || 1;
         const pageSize = parseInt(req.query.pageSize as string) || 10;
         const status = req.query.status as string | undefined;
+        const approvalStatus = req.query.approvalStatus as string | undefined;
         const receiptNumber = req.query.receiptNumber as string | undefined;
         const accounting = req.query.accounting === 'true' ? true : req.query.accounting === 'false' ? false : undefined;
         const filters = {
@@ -95,6 +96,7 @@ export async function listWarehouseReceipts(req: Request, res: Response, conn: C
             page,
             pageSize,
             status,
+            approvalStatus,
             receiptNumber,
             accounting,
             filters
@@ -188,26 +190,50 @@ function normalizeArrayField(value: any): any[] {
 }
 
 function normalizeEditPayload(body: any) {
-    const rawReceipt = body.receipt !== undefined ? tryParseJSON(body.receipt) : { ...body };
-    const receipt = typeof rawReceipt === "object" && rawReceipt !== null ? rawReceipt : {};
+    const rawReceipt = (body && (body.receipt ? tryParseJSON(body.receipt) : body)) as any;
+    const receipt = typeof rawReceipt === "object" && rawReceipt !== null ? { ...rawReceipt } : {};
 
-    const freightDetails = normalizeArrayField(body.freightDetails).map((item: any) => {
+    // Extract freight-related fields from receipt if they exist there
+    const freightDetailsFromReceipt = normalizeArrayField(receipt.freightDetails).map((item: any) => {
         if (item && typeof item === "string") {
             return tryParseJSON(item);
         }
         return item || {};
     });
 
-    const removeFreightIds = normalizeArrayField(body.removeFreightIds).map((value: any) => Number(value)).filter((value: number) => !isNaN(value));
-    const badFreightImages = normalizeArrayField(body.badFreightImages);
-    const removeBadFreightImagePaths = normalizeArrayField(body.removeBadFreightImagePaths);
+    const removeFreightIdsFromReceipt = normalizeArrayField(receipt.removeFreightIds)
+        .map((value: any) => Number(value))
+        .filter((value: number) => !isNaN(value));
 
-    if (body.receipt === undefined) {
-        delete receipt.freightDetails;
-        delete receipt.removeFreightIds;
-        delete receipt.badFreightImages;
-        delete receipt.removeBadFreightImagePaths;
-    }
+    const badFreightImagesFromReceipt = normalizeArrayField(receipt.badFreightImages);
+    const removeBadFreightImagePathsFromReceipt = normalizeArrayField(receipt.removeBadFreightImagePaths);
+
+    // Extract from top-level body as well
+    const freightDetailsFromBody = normalizeArrayField(body.freightDetails).map((item: any) => {
+        if (item && typeof item === "string") {
+            return tryParseJSON(item);
+        }
+        return item || {};
+    });
+
+    const removeFreightIdsFromBody = normalizeArrayField(body.removeFreightIds)
+        .map((value: any) => Number(value))
+        .filter((value: number) => !isNaN(value));
+
+    const badFreightImagesFromBody = normalizeArrayField(body.badFreightImages);
+    const removeBadFreightImagePathsFromBody = normalizeArrayField(body.removeBadFreightImagePaths);
+
+    // Merge freight details: prioritize from top-level body, fall back to receipt
+    const freightDetails = freightDetailsFromBody.length > 0 ? freightDetailsFromBody : freightDetailsFromReceipt;
+    const removeFreightIds = removeFreightIdsFromBody.length > 0 ? removeFreightIdsFromBody : removeFreightIdsFromReceipt;
+    const badFreightImages = badFreightImagesFromBody.length > 0 ? badFreightImagesFromBody : badFreightImagesFromReceipt;
+    const removeBadFreightImagePaths = removeBadFreightImagePathsFromBody.length > 0 ? removeBadFreightImagePathsFromBody : removeBadFreightImagePathsFromReceipt;
+
+    // Remove freight-related fields from receipt object to keep it clean
+    delete receipt.freightDetails;
+    delete receipt.removeFreightIds;
+    delete receipt.badFreightImages;
+    delete receipt.removeBadFreightImagePaths;
 
     return {
         receipt,
@@ -226,9 +252,45 @@ function getReceiptIdFromRequest(req: Request): number | null {
     return Number.isNaN(parsedValue) ? null : parsedValue;
 }
 
+function normalizeDocumentIds(value: unknown): number[] {
+    if (Array.isArray(value)) {
+        return value.flatMap((item) => normalizeDocumentIds(item));
+    }
+
+    if (typeof value === "number" && !Number.isNaN(value)) {
+        return [value];
+    }
+
+    if (typeof value === "string") {
+        const trimmedValue = value.trim();
+        if (!trimmedValue) return [];
+
+        if (trimmedValue.startsWith("[")) {
+            try {
+                return normalizeDocumentIds(JSON.parse(trimmedValue));
+            } catch {
+                return [];
+            }
+        }
+
+        if (trimmedValue.includes(",")) {
+            return trimmedValue
+                .split(",")
+                .map((item) => Number(item.trim()))
+                .filter((item) => !Number.isNaN(item));
+        }
+
+        const parsedValue = Number(trimmedValue);
+        return Number.isNaN(parsedValue) ? [] : [parsedValue];
+    }
+
+    return [];
+}
+
 export async function uploadWarehouseReceiptDocuments(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const receiptId = getReceiptIdFromRequest(req);
+        const userId = (req as any).user?.userId || (req as any).user?.id;
         if (!receiptId) {
             res.status(400).json({ success: false, message: "receiptId is required" });
             return;
@@ -257,8 +319,9 @@ export async function uploadWarehouseReceiptDocuments(req: Request, res: Respons
             uploadedFiles.map((file) => ({
                 filename: (file as any).filename || path.basename(file.path),
                 originalname: file.originalname,
-                mimetype: file.mimetype
-            }))
+                mimetype: file.mimetype,
+            })),
+            userId
         );
 
         res.status(201).json({
@@ -273,6 +336,29 @@ export async function uploadWarehouseReceiptDocuments(req: Request, res: Respons
     } catch (error: any) {
         console.log(error);
         logger.error("Error uploading warehouse receipt documents", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+export async function removeWarehouseReceiptDocuments(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = getReceiptIdFromRequest(req);
+        if (!receiptId) {
+            res.status(400).json({ success: false, message: "receiptId is required" });
+            return;
+        }
+
+        const documentIds = normalizeDocumentIds(req.body?.documentIds ?? req.query?.documentIds ?? req.body?.documentId);
+        const result = await warehouseReceiptService.removeWarehouseReceiptDocumentsService(conn, receiptId, documentIds);
+
+        res.status(200).json({
+            success: true,
+            message: result.removedCount > 0 ? "Documents removed successfully" : "No documents were removed",
+            data: result
+        });
+    } catch (error: any) {
+        console.log(error);
+        logger.error("Error removing warehouse receipt documents", error);
         res.status(500).json({ success: false, message: error.message });
     }
 }
@@ -1082,10 +1168,11 @@ export async function warehouseReceiptRateReadyForApproval(req: Request, res: Re
 
         res.status(200).json({
             success: true,
-            message: "Warehouse Receipt statuses updated successfully",
+            message: "Warehouse Receipt Rate Now Ready for Approval",
         });
     }
     catch (error: any) {
+        console.log(error);
         logger.error("Error updating warehouse receipt status", error);
         res.status(500).json({ success: false, message: error.message });
     }
@@ -1122,6 +1209,7 @@ export async function exportWarehouseReceiptsToSpreadsheet(
 
         console.log("Exporting warehouse receipts to spreadsheet with query params:", req.query);
         const status = req.query.status as string | undefined;
+        const approvalStatus = req.query.approvalStatus as string | undefined;
         const receiptNumber = req.query.receiptNumber as string | undefined;
         const accounting =
             req.query.accounting === "true"
@@ -1156,6 +1244,7 @@ export async function exportWarehouseReceiptsToSpreadsheet(
         const workbook = await warehouseReceiptService.exportWarehouseReceiptsToSpreadsheetService(
             conn,
             status,
+            approvalStatus,
             receiptNumber,
             accounting,
             filters
@@ -1180,3 +1269,36 @@ export async function exportWarehouseReceiptsToSpreadsheet(
     }
 }
 
+export async function sendWarehouseReceiptToCustomEmail(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = req.query.receiptId;
+        const { emails } = req.body;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+
+        if (!receiptId) {
+            res.status(400).json({ success: false, message: "Receipt ID is required" });
+            return;
+        }
+
+        if (!emails) {
+            res.status(400).json({ success: false, message: "Email is required" });
+            return;
+        }
+
+        await warehouseReceiptService.sendWarehouseReceiptToCustomEmailService(
+            conn,
+            Number(receiptId),
+            emails,
+            userId
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Warehouse Receipt sent to email successfully",
+        });
+    }
+    catch (error: any) {
+        logger.error("Error sending warehouse receipt to custom email", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}

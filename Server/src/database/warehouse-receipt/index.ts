@@ -4,6 +4,12 @@ import { SCHEMA } from "../../config/db2";
 import { getUserName } from "../maintanance";
 import { toUtcDate } from "../../utils/dateFormater";
 
+type WarehouseReceiptListItem = WarehouseReceipt & {
+    createdByName: string | null;
+    approvedByName: string | null;
+    requestedByName: string | null;
+};
+
 /**
  * WAREHOUSE RECEIPT TEMP
  */
@@ -160,7 +166,7 @@ export async function createWarehouseReceipt(
         receipt.receivedBy ?? '',
         receipt.location ?? '',
         receipt.reWeight ?? 0,
-        receipt.approvalStatus ?? 'APPROVED'
+        receipt.approvalStatus ?? null
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -248,6 +254,7 @@ export async function listWarehouseReceipts(
     limit?: number,
     offset?: number,
     status?: string,
+    approvalStatus?: string,
     receiptNumber?: string,
     accounting?: boolean,
     filters?: {
@@ -264,7 +271,7 @@ export async function listWarehouseReceipts(
         customerRefNumber?: string;
     },
     filterLogic: "AND" | "OR" = "AND"
-): Promise<{ data: WarehouseReceipt[]; total: number }> {
+): Promise<{ data: WarehouseReceiptListItem[]; total: number }> {
     let query = `
     SELECT "wr".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
     FROM ${SCHEMA}."Warehouse_Receipt" "wr"
@@ -278,6 +285,11 @@ export async function listWarehouseReceipts(
     if (status) {
         query += ` AND "wr"."status" = ?`;
         params.push(status);
+    }
+
+    if (approvalStatus) {
+        query += ` AND "wr"."approvalStatus" = ?`;
+        params.push(approvalStatus);
     }
 
     if (receiptNumber) {
@@ -370,7 +382,7 @@ export async function listWarehouseReceipts(
 
     const result = await conn.query(query, params) as WarehouseReceipt[];
 
-    const receipts = result.map((row: any) => ({
+    const receipts: WarehouseReceiptListItem[] = await Promise.all(result.map(async (row: any): Promise<WarehouseReceiptListItem> => ({
         ...row,
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
@@ -379,8 +391,15 @@ export async function listWarehouseReceipts(
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
         toEmails: row.toEmails ? JSON.parse(row.toEmails) : [],
         unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
-        class: row.class ? JSON.parse(row.class) : []
-    }));
+        class: row.class ? JSON.parse(row.class) : [],
+        createdByName: row.createdBy ? await getUserName(conn, row.createdBy) : null,
+        approvedByName: row.approvedBy ? await getUserName(conn, row.approvedBy) : null,
+        requestedByName: row.requestedBy ? await getUserName(conn, row.requestedBy) : null,
+        createdAt: row.createdAt ? toUtcDate(row.createdAt) : null,
+        updatedAt: row.updatedAt ? toUtcDate(row.updatedAt) : null,
+        requestedAt: row.requestedAt ? toUtcDate(row.requestedAt) : null,
+        approvedAt: row.approvedAt ? toUtcDate(row.approvedAt) : null,
+    })));
 
     // Total query (same logic)
     let totalQuery = `
@@ -413,7 +432,7 @@ export async function listWarehouseReceipts(
     return { data: receipts, total };
 }
 
-export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number }> {
+export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number, ready: number, pending: number }> {
     let activeCountQuery = `
     SELECT COUNT(*) as "total" 
     FROM ${SCHEMA}."Warehouse_Receipt" "wr" 
@@ -460,6 +479,16 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
     FROM ${SCHEMA}."Warehouse_Receipt" "wr"
     WHERE "wr"."status" = 'ARCHIVED'`;
 
+    let readyCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."approvalStatus" = 'READY'`;
+
+    let pendingCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."approvalStatus" = 'PENDING'`;
+
 
 
     const activeCount = await conn.query(activeCountQuery, params) as { total: number }[];
@@ -471,6 +500,8 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
     const shippedCount = await conn.query(shippedCountQuery, params) as { total: number }[];
     const rejectedCount = await conn.query(rejectedCountQuery, params) as { total: number }[];
     const archivedCount = await conn.query(archivedCountQuery, params) as { total: number }[];
+    const readyCount = await conn.query(readyCountQuery, params) as { total: number }[];
+    const pendingCount = await conn.query(pendingCountQuery, params) as { total: number }[];
 
     return {
         active: activeCount[0]?.total || 0,
@@ -481,7 +512,9 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
         scanned: scannedCount[0]?.total || 0,
         shipped: shippedCount[0]?.total || 0,
         rejected: rejectedCount[0]?.total || 0,
-        archived: archivedCount[0]?.total || 0
+        archived: archivedCount[0]?.total || 0,
+        ready: readyCount[0]?.total || 0,
+        pending: pendingCount[0]?.total || 0
     };
 }
 
@@ -742,9 +775,7 @@ export async function updateWarehouseReceiptForReadyForApproval(conn: Connection
         params.push(updates.requestedBy ?? null);
     }
 
-    if (updates.requestedDate !== undefined) {
-        fields.push(`"requestedAt" = CURRENT_TIMESTAMP`);
-    }
+    fields.push(`"requestedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)`);
 
     if (fields.length === 0) return;
 
@@ -763,6 +794,11 @@ export async function updateWarehouseReceiptApproval(conn: Connection, receiptId
         params.push(updates.approvalStatus ?? null);
     }
 
+    if (updates.accountOnHold !== undefined) {
+        fields.push(`"accountOnHold" = ?`);
+        params.push(updates.accountOnHold == 'Y' ? 'Y' : 'N');
+    }
+
     if (updates.hasFlatRate !== undefined) {
         fields.push(`"hasFlatRate" = ?`);
         params.push(updates.hasFlatRate == 'Y' ? 'Y' : 'N');
@@ -773,14 +809,13 @@ export async function updateWarehouseReceiptApproval(conn: Connection, receiptId
         params.push(updates.notesForFlatRate ?? null);
     }
 
-    if (updates.requestedBy !== undefined) {
+    if (updates.approvedBy !== undefined) {
         fields.push(`"approvedBy" = ?`);
         params.push(updates.approvedBy ?? null);
     }
 
-    if (updates.requestedDate !== undefined) {
-        fields.push(`"approvedAt" = CURRENT_TIMESTAMP`);
-    }
+
+    fields.push(`"approvedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)`);
 
     if (fields.length === 0) return;
 
@@ -817,11 +852,11 @@ export async function createFreightInfo(conn: Connection, freight: Omit<FreightI
         Number(freight.receiptId),
         freight.pieces,
         freight.type,
-        (freight.length || 0) as string | number,
-        (freight.width || 0) as string | number,
-        (freight.height || 0) as string | number,
-        (freight.weight || 0) as string | number,
-        (freight.cubicMeter || 0) as string | number
+        freight.length != null && !isNaN(Number(freight.length)) ? Number(freight.length) : 0,
+        freight.width != null && !isNaN(Number(freight.width)) ? Number(freight.width) : 0,
+        freight.height != null && !isNaN(Number(freight.height)) ? Number(freight.height) : 0,
+        freight.weight != null && !isNaN(Number(freight.weight)) ? Number(freight.weight) : 0,
+        freight.cubicMeter != null && !isNaN(Number(freight.cubicMeter)) ? Number(freight.cubicMeter) : 0
     ];
     const result = await conn.query(query, params) as any[];
     return result[0].freightId;
@@ -1192,10 +1227,12 @@ export async function getAuditLogsByReceipt(conn: Connection, receiptId: number 
  */
 export async function createWarehouseReceiptRate(conn: Connection, rateData: Omit<WarehouseReceiptRate, "rateId">): Promise<number> {
     const query = `
-    INSERT INTO ${SCHEMA}."Warehouse_Receipt_Rate"
-      ("receiptId","rate","dimFactor","baseRate","minRate","maxRate")
-    VALUES (?,?,?,?,?,?)
-    RETURNING "rateId"
+    SELECT "rateId"
+    FROM FINAL TABLE (
+      INSERT INTO ${SCHEMA}."Warehouse_Receipt_Rate"
+        ("receiptId","rate","dimFactor","baseRate","minRate","maxRate")
+      VALUES (?,?,?,?,?,?)
+    )
   `;
     const params: (string | number)[] = [
         Number(rateData.receiptId),
@@ -1270,18 +1307,25 @@ export async function createWarehouseReceiptDocument(
     receiptId: number,
     filePath?: string | null,
     fileType?: string | null,
-): Promise<number> {
+    userId?: number | null
+): Promise<{ documentId: number, filePath: string | null, fileType: string | null, uploadedAt: Date | null, uploadedBy: number | null }> {
     const query = `
-    SELECT "documentId", "filePath", "fileType"
+    SELECT "documentId", "filePath", "fileType" , "uploadedAt", "uploadedBy"
     FROM FINAL TABLE (
       INSERT INTO ${SCHEMA}."Warehouse_Receipt_Documents"
-        ("receiptId", "filePath", "fileType", "uploadedAt")
-      VALUES (?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+        ("receiptId", "filePath", "fileType", "uploadedAt", "uploadedBy")
+      VALUES (?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?)
     )
   `;
 
-    const result = await conn.query(query, [receiptId, filePath ?? null, fileType ?? null] as any[]) as any[];
-    return Number(result[0].documentId);
+    const result = await conn.query(query, [receiptId, filePath ?? null, fileType ?? null, userId ?? null] as any[]) as any[];
+    return {
+        documentId: Number(result[0].documentId),
+        filePath: result[0].filePath,
+        fileType: result[0].fileType,
+        uploadedAt: result[0].uploadedAt ? toUtcDate(result[0].uploadedAt) : null,
+        uploadedBy: result[0].uploadedBy
+    };
 }
 
 
@@ -1292,6 +1336,14 @@ export async function getWarehouseReceiptDocument(
     const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Documents" WHERE "documentId" = ?`;
     const result = await conn.query(query, [documentId]) as any[];
     return result[0] || null;
+}
+
+export async function deleteWarehouseReceiptDocument(
+    conn: Connection,
+    documentId: number | bigint
+): Promise<void> {
+    const query = `DELETE FROM ${SCHEMA}."Warehouse_Receipt_Documents" WHERE "documentId" = ?`;
+    await conn.query(query, [Number(documentId)]);
 }
 
 export async function getDocumentsByReceiptNumber(
@@ -1311,12 +1363,16 @@ export async function getDocumentsByReceiptId(
     conn: Connection,
     receiptId: number | bigint
 ): Promise<WarehouseReceiptDocuments[]> {
-    const query = `SELECT * FROM ${SCHEMA}."Warehouse_Receipt_Documents" WHERE "receiptId" = ? ORDER BY "documentId" DESC`;
+    const query = `SELECT "wrd".* , "u"."userName" as "uploadedByName"
+    FROM ${SCHEMA}."Warehouse_Receipt_Documents" as "wrd"
+    LEFT JOIN ${SCHEMA}."User" "u" ON "u"."userId" = "wrd"."uploadedBy"
+    WHERE "wrd"."receiptId" = ? ORDER BY "wrd"."documentId" DESC`;
     const result = await conn.query(query, [Number(receiptId)]) as any[];
     return result.map((row: any) => ({
         ...row,
         documentId: row.documentId != null ? parseInt(row.documentId) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        uploadedAt: row.uploadedAt ? toUtcDate(row.uploadedAt) : null,
     }));
 }
 

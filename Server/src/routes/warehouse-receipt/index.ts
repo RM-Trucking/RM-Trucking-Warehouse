@@ -40,6 +40,15 @@ router.post("/document-upload", authenticateJWT, uploaders.warehouse.documents.a
     }
 });
 
+router.delete("/document-remove", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.removeWarehouseReceiptDocuments(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 // Print label via ZPL
 router.post("/label-print", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
@@ -84,7 +93,7 @@ router.put("/rate-approve", authenticateJWT, async (req: Request, res: Response)
     try {
         await warehouseReceiptController.warehouseReceiptRateApprove(req, res, conn);
     } finally {
-        if (conn) conn.close();
+        if (conn) await conn.close();
     }
 });
 
@@ -175,6 +184,12 @@ router.patch("/:receiptId/location", authenticateJWT, async (req: Request, res: 
 router.put("/:receiptId/reject", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     await warehouseReceiptController.rejectWarehouseReceipt(req, res, conn);
+    if (conn) conn.close();
+});
+
+router.post("/send-email", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.sendWarehouseReceiptToCustomEmail(req, res, conn);
     if (conn) conn.close();
 });
 

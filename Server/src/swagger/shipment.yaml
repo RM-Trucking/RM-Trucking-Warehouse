@@ -1,0 +1,312 @@
+openapi: 3.0.0
+info:
+  title: Warehouse Shipment API
+  version: 1.0.0
+  description: Create, update, and list warehouse shipment records with containers and receipts.
+
+tags:
+  - name: Shipments
+    description: Warehouse shipment CRUD operations
+
+paths:
+  /api/shipment:
+    get:
+      tags:
+        - Shipments
+      summary: List warehouse shipments
+      description: Returns a paginated list of warehouse shipments with related containers and receipts.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: searchTerm
+          schema:
+            type: string
+          description: Optional search term for barcode or air bill number.
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Shipment list retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentListResponse"
+    post:
+      tags:
+        - Shipments
+      summary: Create warehouse shipment
+      description: Creates a warehouse shipment and optionally links containers and receipts.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShipmentRequest"
+      responses:
+        "201":
+          description: Shipment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Missing required fields
+        "500":
+          description: Server error
+
+  /api/shipment/{id}:
+    get:
+      tags:
+        - Shipments
+      summary: Get warehouse shipment by ID
+      description: Retrieves a shipment along with its containers and receipts.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Shipment retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "404":
+          description: Shipment not found
+    put:
+      tags:
+        - Shipments
+      summary: Update warehouse shipment
+      description: Updates the shipment and replaces the related containers and receipts when supplied.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateShipmentRequest"
+      responses:
+        "200":
+          description: Shipment updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Invalid shipment id
+        "500":
+          description: Server error
+
+components:
+  schemas:
+    ShipmentContainer:
+      type: object
+      properties:
+        container:
+          type: string
+          example: "CNT-1001"
+    ShipmentReceipt:
+      type: object
+      properties:
+        receiptId:
+          type: integer
+          example: 123456
+    WarehouseShipment:
+      type: object
+      properties:
+        shipmentId:
+          type: integer
+          example: 1
+        shipmentType:
+          type: string
+          enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+        barcodeNumber:
+          type: string
+          example: "SHIP-1001"
+        customerId:
+          type: integer
+          example: 10
+        stationId:
+          type: integer
+          example: 20
+        consigneeId:
+          type: integer
+          example: 30
+        airBillNumber:
+          type: string
+          example: "AB-001"
+        booking:
+          type: string
+          example: "BK-2026"
+        customerRefNumber:
+          type: string
+          example: "CR-001"
+        additionalRefNumber:
+          type: string
+          example: "AR-001"
+        pieces:
+          type: integer
+          example: 5
+        weight:
+          type: number
+          example: 250.5
+        instructions:
+          type: string
+          example: "Fragile"
+        createdBy:
+          type: integer
+          example: 100
+        updatedBy:
+          type: integer
+          example: 100
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShipmentContainer"
+        receipts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShipmentReceipt"
+    CreateShipmentRequest:
+      type: object
+      required:
+        - shipmentType
+        - barcodeNumber
+        - customerId
+        - stationId
+        - consigneeId
+        - pieces
+        - weight
+      properties:
+        shipmentType:
+          type: string
+          enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+        barcodeNumber:
+          type: string
+        customerId:
+          type: integer
+        stationId:
+          type: integer
+        consigneeId:
+          type: integer
+        airBillNumber:
+          type: string
+        booking:
+          type: string
+        customerRefNumber:
+          type: string
+        additionalRefNumber:
+          type: string
+        pieces:
+          type: integer
+        weight:
+          type: number
+        instructions:
+          type: string
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShipmentContainer"
+        receipts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShipmentReceipt"
+    UpdateShipmentRequest:
+      type: object
+      properties:
+        shipmentType:
+          type: string
+          enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+        barcodeNumber:
+          type: string
+        customerId:
+          type: integer
+        stationId:
+          type: integer
+        consigneeId:
+          type: integer
+        airBillNumber:
+          type: string
+        booking:
+          type: string
+        customerRefNumber:
+          type: string
+        additionalRefNumber:
+          type: string
+        pieces:
+          type: integer
+        weight:
+          type: number
+        instructions:
+          type: string
+        isCanceled:
+          type: string
+          enum: [Y, N]
+        isShipped:
+          type: string
+          enum: [Y, N]
+        isScanned:
+          type: string
+          enum: [Y, N]
+        pickupEntry:
+          type: string
+          enum: [Y, N]
+        pickupEntryNumber:
+          type: string
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShipmentContainer"
+        receipts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShipmentReceipt"
+    ShipmentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/WarehouseShipment"
+    ShipmentListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseShipment"
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+            page:
+              type: integer
+            pageSize:
+              type: integer

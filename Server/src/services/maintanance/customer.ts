@@ -36,12 +36,12 @@ export async function getCustomerWithStationDropdownService(
     return enrichedResult;
 }
 
-export async function getCustomerDropdown(conn: Connection, search: string): Promise<{ customerId: number, customerName: string }[]> {
-    const customers = await customerDB.getCustomerDropdown(conn, search)
+export async function getCustomerDropdown(conn: Connection, search: string, getAll: boolean): Promise<{ customerId: number, customerName: string }[]> {
+    const customers = await customerDB.getCustomerDropdown(conn, search, getAll)
     return customers;
 }
 
-export async function getStationDropdown(conn: Connection, customerId: number, search: string): Promise<{ stationId: number, stationName: string }[]> {
-    const customers = await customerDB.getStationDropdown(conn, customerId, search)
+export async function getStationDropdown(conn: Connection, customerId: number, search: string, getAll: boolean): Promise<{ stationId: number, stationName: string }[]> {
+    const customers = await customerDB.getStationDropdown(conn, customerId, search, getAll)
     return customers;
 }

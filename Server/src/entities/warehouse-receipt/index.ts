@@ -245,4 +245,5 @@ export interface WarehouseReceiptDocuments {
     filePath?: string;
     fileType?: string;
     uploadedAt?: Date;
+    uploadedBy?: number;
 }

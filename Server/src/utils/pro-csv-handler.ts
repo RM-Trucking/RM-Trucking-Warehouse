@@ -105,7 +105,7 @@ export async function getProDetailFromCsv(proNumber: string): Promise<ProCsvData
         const filePath = await findProCsvFile(proNumber);
 
         if (!filePath) {
-            throw new Error(`Error: No file found.`);
+            throw new Error(`No file found for PRO ${proNumber}.`);
         }
 
         const fileOutput = await readCsvContent(filePath);
@@ -114,11 +114,11 @@ export async function getProDetailFromCsv(proNumber: string): Promise<ProCsvData
 
         // Validate file has data
         if (!fileOutput.length) {
-            throw new Error(`Error: No data found in CSV file.`);
+            throw new Error(`No data found in CSV file for PRO ${proNumber}.`);
         }
 
         if (fileOutput.length > 1) {
-            throw new Error(`Error: Excessive data found in CSV file.`);
+            throw new Error(`Excessive data found in CSV file for PRO ${proNumber}  .`);
         }
 
         return fileOutput[0];
@@ -135,51 +135,51 @@ export function validateProCsvData(data: ProCsvData): { valid: boolean; errors: 
 
     // Validate Pro Number
     if (!data.proNumber) {
-        errors.push(`Error: Missing Pro Number in CSV file.`);
+        errors.push(`Missing Pro Number in CSV file.`);
     }
 
     // Validate Driver Number
     if (!data.driverNumber) {
-        errors.push(`Error: Missing Driver Number in CSV file.`);
+        errors.push(`Missing Driver Number in CSV file.`);
     }
 
     // Validate Shipper Account Number
     if (!data.shipperAccountNumber) {
-        errors.push(`Error: Missing Shipper Account Number in CSV file.`);
+        errors.push(`Missing Shipper Account Number in CSV file.`);
     }
 
     // Validate Shipper Name
     if (!data.shipperName) {
-        errors.push(`Error: Missing Shipper Name in CSV file.`);
+        errors.push(`Missing Shipper Name in CSV file.`);
     }
 
     // Validate Freight Forwarder Account Number
     if (!data.fwdrAccountNumber) {
-        errors.push(`Error: Missing Freight Forwarder Account Number in CSV file.`);
+        errors.push(`Missing Freight Forwarder Account Number in CSV file.`);
     }
 
     // Validate Freight Forwarder Name
     if (!data.fwdrName) {
-        errors.push(`Error: Missing Freight Forwarder Name in CSV file.`);
+        errors.push(`Missing Freight Forwarder Name in CSV file.`);
     }
 
     // Validate Carrier Name
     if (!data.carrierName) {
-        errors.push(`Error: Missing Carrier Name in CSV file.`);
+        errors.push(`Missing Carrier Name in CSV file.`);
     }
 
     // Validate Pieces
     if (!data.pieces) {
-        errors.push(`Error: Missing Pieces count in CSV file.`);
+        errors.push(`Missing Pieces count in CSV file.`);
     } else if (Number.isNaN(data.pieces)) {
-        errors.push(`Error: Invalid Pieces value in CSV file.`);
+        errors.push(`Invalid Pieces value in CSV file.`);
     }
 
     // Validate Weight
     if (!data.weight) {
-        errors.push(`Error: Missing Weight in CSV file.`);
+        errors.push(`Missing Weight in CSV file.`);
     } else if (Number.isNaN(data.weight)) {
-        errors.push(`Error: Invalid Weight value in CSV file.`);
+        errors.push(`Invalid Weight value in CSV file.`);
     }
 
     return {

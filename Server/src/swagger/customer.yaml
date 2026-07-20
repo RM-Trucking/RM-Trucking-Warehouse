@@ -84,6 +84,12 @@ paths:
           schema:
             type: string
           description: Search string used to filter customers by name
+        - in: query
+          name: getAll
+          required: false
+          schema:
+            type: boolean
+          description: If true, returns all customers regardless of active status. If false or omitted, returns only active customers.
       responses:
         "200":
           description: List of customers matching the search criteria
@@ -151,6 +157,12 @@ paths:
           schema:
             type: string
           description: Search string used to filter customers by name
+        - in: query
+          name: getAll
+          required: false
+          schema:
+            type: boolean
+          description: If true, returns all stations regardless of active status. If false or omitted, returns only active stations.
       responses:
         "200":
           description: List of customers matching the search criteria

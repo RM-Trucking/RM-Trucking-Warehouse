@@ -136,14 +136,24 @@ export async function getStationRateDetails(
     return result.length > 0 ? result[0] : null;
 }
 
-export async function getCustomerDropdown(conn: Connection, search: string): Promise<{ customerId: number; customerName: string }[]> {
+export async function getCustomerDropdown(conn: Connection, search: string, getAll: boolean): Promise<{ customerId: number; customerName: string }[]> {
 
     let query = `
     SELECT "customerId", "customerName"
     FROM ${SCHEMA}."Customer"
-    WHERE "activeStatus" = 'Y'
+    WHERE 1=1
     `
     const params: any[] = [];
+
+    if (getAll === false) {
+        query += ` AND "activeStatus" = ?`;
+        params.push('Y');
+    }
+
+    if (getAll === true) {
+        query += ` AND "activeStatus" IN (?, ?)`;
+        params.push('Y', 'N');
+    }
 
     if (search && search.trim().length > 0) {
         query += ` AND LOWER("customerName") LIKE ?`;
@@ -157,14 +167,24 @@ export async function getCustomerDropdown(conn: Connection, search: string): Pro
 
 }
 
-export async function getStationDropdown(conn: Connection, customerId: number, search: string): Promise<{ stationId: number; stationName: string }[]> {
+export async function getStationDropdown(conn: Connection, customerId: number, search: string, getAll: boolean): Promise<{ stationId: number; stationName: string }[]> {
 
     let query = `
     SELECT "stationId", "stationName"
     FROM ${SCHEMA}."Station"
-    WHERE "activeStatus" = 'Y' AND "customerId" = ${customerId}
+    WHERE "customerId" = ${customerId}
     `
     const params: any[] = [];
+
+    if (getAll === false) {
+        query += ` AND "activeStatus" = ?`;
+        params.push('Y');
+    }
+
+    if (getAll === true) {
+        query += ` AND "activeStatus" IN (?, ?)`;
+        params.push('Y', 'N');
+    }
 
     if (search && search.trim().length > 0) {
         query += ` AND LOWER("stationName") LIKE ?`;

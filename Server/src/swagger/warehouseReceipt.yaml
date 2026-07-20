@@ -330,6 +330,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/document-remove:
+    delete:
+      tags:
+        - Receipts
+      summary: Remove warehouse receipt documents
+      description: "Remove one or more supporting documents for a warehouse receipt. Accepts receiptId and either a single documentId or an array of documentIds. If documentIds is omitted, all documents for the receipt will be removed."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - receiptId
+              properties:
+                receiptId:
+                  type: integer
+                  description: Warehouse receipt ID whose documents should be removed.
+                  example: 100000001
+                documentIds:
+                  oneOf:
+                    - type: integer
+                      example: 12
+                    - type: array
+                      items:
+                        type: integer
+                      example: [12, 13]
+                  description: A single document ID or an array of document IDs to remove.
+                documentId:
+                  type: integer
+                  description: Single document ID to remove when documentIds is not provided.
+                  example: 12
+      responses:
+        "200":
+          description: Documents removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Documents removed successfully"
+                  data:
+                    type: object
+                    properties:
+                      receiptId:
+                        type: integer
+                        example: 100000001
+                      removedDocumentIds:
+                        type: array
+                        items:
+                          type: integer
+                        example: [12, 13]
+                      removedCount:
+                        type: integer
+                        example: 2
+                      remainingCount:
+                        type: integer
+                        example: 0
+        "400":
+          description: Missing receiptId or invalid document IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt:
     post:
       tags:
@@ -439,6 +523,12 @@ paths:
                 ARCHIVED,
               ]
           description: Filter by receipt status
+        - in: query
+          name: approvalStatus
+          schema:
+            type: string
+            enum: [PENDING, READY]
+          description: Filter by receipt approval status
         - in: query
           name: receiptNumber
           schema:
@@ -577,6 +667,12 @@ paths:
                 ARCHIVED,
               ]
           description: Filter by receipt status
+        - in: query
+          name: approvalStatus
+          schema:
+            type: string
+            enum: [PENDING, READY]
+          description: Filter by receipt approval status
         - in: query
           name: receiptNumber
           schema:
@@ -1452,6 +1548,64 @@ paths:
                     example: "Warehouse Receipt statuses updated successfully"
         "400":
           description: Invalid request - missing receiptIds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/warehouse-receipt/send-email:
+    post:
+      tags:
+        - Receipts
+      summary: Send warehouse receipt PDF to custom email recipients
+      description: "Generate the warehouse receipt PDF and send it as an attachment to one or more email addresses for the specified receipt. The receipt ID is passed as a query parameter and the recipient emails are passed in the request body."
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: receiptId
+          required: true
+          schema:
+            type: integer
+          description: Warehouse receipt ID to send
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - emails
+              properties:
+                emails:
+                  type: array
+                  items:
+                    type: string
+                  example: ["customer@example.com", "ops@example.com"]
+            example:
+              emails: ["customer@example.com", "ops@example.com"]
+      responses:
+        "200":
+          description: Warehouse receipt sent to email successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Warehouse Receipt sent to email successfully"
+        "400":
+          description: Missing receiptId or emails
           content:
             application/json:
               schema:
