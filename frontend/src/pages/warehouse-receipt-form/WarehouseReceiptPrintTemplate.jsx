@@ -3,9 +3,42 @@ import { Box, Typography } from '@mui/material';
 import RMLogo from '../../assets/RM.png';
 
 const ROWS_PER_PAGE = 20;
+const INCH_TO_METER = 0.0254;
 const isYes = (value) => ['Y', 'YES', 'TRUE', '1'].includes(String(value ?? '').trim().toUpperCase());
 const valueOrBlank = (value) => value ?? '';
-const getItemCubicMeter = (item = {}) => item.cubicMeter ?? item.cbm ?? '';
+const formatDecimalValue = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return numberValue.toFixed(2);
+};
+const getItemCubicMeter = (item = {}) => {
+  const cubicMeter = item.cubicMeter;
+  const cbm = item.cbm;
+  const hasDimensions = [item.length, item.width, item.height].every(
+    (value) => value !== undefined && value !== null && value !== '' && Number.isFinite(Number(value))
+  );
+
+  if (hasDimensions) {
+    const calculatedCbm = Number(item.length) * INCH_TO_METER
+      * Number(item.width) * INCH_TO_METER
+      * Number(item.height) * INCH_TO_METER;
+
+    if (calculatedCbm > 0) {
+      return calculatedCbm;
+    }
+  }
+
+  if (cubicMeter !== undefined && cubicMeter !== null && cubicMeter !== '' && Number(cubicMeter) !== 0) {
+    return cubicMeter;
+  }
+
+  if (cbm !== undefined && cbm !== null && cbm !== '') {
+    return cbm;
+  }
+
+  return cubicMeter ?? '';
+};
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -50,11 +83,11 @@ const SplitItemTables = ({ rows, pageIndex }) => (
                   <td style={{ fontWeight: 700 }}>{!item.isEmpty ? itemNumber : ''}</td>
                   <td>{valueOrBlank(item.pieces)}</td>
                   <td>{valueOrBlank(item.type)}</td>
-                  <td>{valueOrBlank(item.length)}</td>
-                  <td>{valueOrBlank(item.width)}</td>
-                  <td>{valueOrBlank(item.height)}</td>
-                  <td style={{ fontWeight: 700 }}>{valueOrBlank(item.weight)}</td>
-                  <td>{valueOrBlank(getItemCubicMeter(item))}</td>
+                  <td>{formatDecimalValue(item.length)}</td>
+                  <td>{formatDecimalValue(item.width)}</td>
+                  <td>{formatDecimalValue(item.height)}</td>
+                  <td style={{ fontWeight: 700 }}>{formatDecimalValue(item.weight)}</td>
+                  <td>{formatDecimalValue(getItemCubicMeter(item))}</td>
                 </tr>
               );
             })}
@@ -146,9 +179,9 @@ function ReceiptPage({ receipt, rows, allRows, pageIndex, totalPages }) {
             <Box>
               <InfoRow label="PACKAGE ID" value={receipt.packageId} />
               <InfoRow label="PIECES (Customer Info)" value={totalPieces} />
-              <InfoRow label="WEIGHT (Customer Info)" value={totalWeight} />
-              <InfoRow label="RE WEIGHT" value={receipt.reWeight ?? receipt.reweight} />
-              <InfoRow label="CBM (m³)" value={totalCbm} />
+              <InfoRow label="WEIGHT (Customer Info)" value={formatDecimalValue(totalWeight)} />
+              <InfoRow label="RE WEIGHT" value={formatDecimalValue(receipt.reWeight ?? receipt.reweight)} />
+              <InfoRow label="CBM (m³)" value={formatDecimalValue(totalCbm)} />
             </Box>
           </Box>
         </Box>
@@ -165,11 +198,11 @@ function ReceiptPage({ receipt, rows, allRows, pageIndex, totalPages }) {
                   <td style={{ fontWeight: 700 }}>{item.freightId || !item.isEmpty ? pageIndex * ROWS_PER_PAGE + index + 1 : ''}</td>
                   <td>{valueOrBlank(item.pieces)}</td>
                   <td>{valueOrBlank(item.type)}</td>
-                  <td>{valueOrBlank(item.length)}</td>
-                  <td>{valueOrBlank(item.width)}</td>
-                  <td>{valueOrBlank(item.height)}</td>
-                  <td style={{ fontWeight: 700 }}>{valueOrBlank(item.weight)}</td>
-                  <td>{valueOrBlank(getItemCubicMeter(item))}</td>
+                  <td>{formatDecimalValue(item.length)}</td>
+                  <td>{formatDecimalValue(item.width)}</td>
+                  <td>{formatDecimalValue(item.height)}</td>
+                  <td style={{ fontWeight: 700 }}>{formatDecimalValue(item.weight)}</td>
+                  <td>{formatDecimalValue(getItemCubicMeter(item))}</td>
                 </tr>
               ))}
             </tbody>

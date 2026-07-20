@@ -255,6 +255,13 @@ const formatMeasurement = (value) => {
   return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
 };
 
+const formatTwoDecimalMeasurement = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return Number(numberValue.toFixed(2));
+};
+
 const normalizeEmailList = (value) => {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (!value) return [];
@@ -4617,11 +4624,11 @@ export default function WarehouseReceiptFormPage() {
                               inputProps={{ inputMode: 'decimal' }}
                               sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 } }}
                             />
-                          ) : value}
+                          ) : formatTwoDecimalMeasurement(value)}
                         </TableCell>
                       ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {formatMeasurement(calculateItemCbm(item))}
+                        {formatTwoDecimalMeasurement(calculateItemCbm(item))}
                       </TableCell>
                       <TableCell
                         sx={{
@@ -5363,11 +5370,11 @@ export default function WarehouseReceiptFormPage() {
                               inputProps={{ inputMode: 'decimal' }}
                               sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 }, '& .MuiFormHelperText-root': { m: 0, fontSize: 10 } }}
                             />
-                          ) : value}
+                          ) : formatTwoDecimalMeasurement(value)}
                         </TableCell>
                       ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {formatMeasurement(calculateItemCbm(item))}
+                        {formatTwoDecimalMeasurement(calculateItemCbm(item))}
                       </TableCell>
                       <TableCell
                         sx={{
