@@ -34,6 +34,7 @@ import {
 import Iconify from '../../components/iconify';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import rmLogo from '../../assets/RM.png';
+import WarehouseReceiptPrintTemplate from '../warehouse-receipt-form/WarehouseReceiptPrintTemplate';
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchCustomers } from '../../redux/slices/enroute';
 import { getIdVerificationData } from '../../redux/slices/idVerification';
@@ -252,6 +253,13 @@ const formatMeasurement = (value) => {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return value;
   return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
+};
+
+const formatTwoDecimalMeasurement = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return value;
+  return Number(numberValue.toFixed(2));
 };
 
 const normalizeEmailList = (value) => {
@@ -516,6 +524,7 @@ const buildWarehouseReceiptViewState = (row = {}, warehouseReceiptGridState) => 
       noteThreadId: receipt.noteThreadId,
       rateInformation: receipt.rateInformation,
       hasFlatRate: receipt.hasFlatRate,
+      notesForFlatRate: receipt.notesForFlatRate,
     },
     receipts: [
       {
@@ -1206,6 +1215,7 @@ export default function WarehouseReceiptFormPage() {
   const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
+  const [printReceipt, setPrintReceipt] = useState(null);
   const [ratesDialogOpen, setRatesDialogOpen] = useState(false);
   const [ratesNoticeOpen, setRatesNoticeOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
@@ -1269,6 +1279,12 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
+  useEffect(() => {
+    const handleAfterPrint = () => setPrintReceipt(null);
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => window.removeEventListener('afterprint', handleAfterPrint);
+  }, []);
+
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
   const totalWeight = activeForm.items.reduce(
     (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
@@ -1280,6 +1296,16 @@ export default function WarehouseReceiptFormPage() {
   const weightInland = getRowValue(row, ['weightInland', 'weight'], '');
   const activeFreightInfo = { ...createFreightInfo(), ...(activeForm.freightInfo || {}) };
   const isReceiptDetailsEditable = !isWarehouseReceiptView;
+
+  const handlePrintWarehouseReceipt = () => {
+    const receipt = activeForm?.row?.rawData || activeForm?.row;
+    if (!receipt) return;
+
+    setPrintReceipt(receipt);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.print());
+    });
+  };
 
   useEffect(() => {
     if (isWarehouseReceiptEdit) {
@@ -3200,6 +3226,9 @@ export default function WarehouseReceiptFormPage() {
   const getActiveHasFlatRate = () =>
     isYes(activeForm?.row?.hasFlatRate ?? viewReceiptSummary?.hasFlatRate ?? getActiveRateInformation().hasFlatRate);
 
+  const getActiveNotesForFlatRate = () =>
+    activeForm?.row?.notesForFlatRate ?? viewReceiptSummary?.notesForFlatRate ?? '';
+
   const handleOpenRatesDialog = () => {
     if (!hasActiveRateInformation()) {
       setRatesNoticeOpen(true);
@@ -4595,11 +4624,11 @@ export default function WarehouseReceiptFormPage() {
                               inputProps={{ inputMode: 'decimal' }}
                               sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 } }}
                             />
-                          ) : value}
+                          ) : formatTwoDecimalMeasurement(value)}
                         </TableCell>
                       ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {formatMeasurement(calculateItemCbm(item))}
+                        {formatTwoDecimalMeasurement(calculateItemCbm(item))}
                       </TableCell>
                       <TableCell
                         sx={{
@@ -4922,7 +4951,7 @@ export default function WarehouseReceiptFormPage() {
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleViewAction('This feature will be available soon')}
+                    onClick={handlePrintWarehouseReceipt}
                     disabled={disableViewHeaderActions}
                     sx={{ ...actionBtnSx, height: 26, flex: 1, fontSize: 12 }}
                   >
@@ -5341,11 +5370,11 @@ export default function WarehouseReceiptFormPage() {
                               inputProps={{ inputMode: 'decimal' }}
                               sx={{ minWidth: 58, '& input': { fontSize: 12, py: 0.2 }, '& .MuiFormHelperText-root': { m: 0, fontSize: 10 } }}
                             />
-                          ) : value}
+                          ) : formatTwoDecimalMeasurement(value)}
                         </TableCell>
                       ))}
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {formatMeasurement(calculateItemCbm(item))}
+                        {formatTwoDecimalMeasurement(calculateItemCbm(item))}
                       </TableCell>
                       <TableCell
                         sx={{
@@ -6231,7 +6260,7 @@ export default function WarehouseReceiptFormPage() {
             <TextField
               variant="standard"
               label="Notes"
-              value={rateInformation.notes || ''}
+              value={getActiveNotesForFlatRate()}
               size="small"
               InputProps={{ readOnly: true }}
               sx={{
@@ -6766,6 +6795,7 @@ export default function WarehouseReceiptFormPage() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {printReceipt && <WarehouseReceiptPrintTemplate data={printReceipt} />}
       <Divider />
     </Box>
   );

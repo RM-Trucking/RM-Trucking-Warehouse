@@ -51,6 +51,7 @@ const toGridRow = (receipt = {}) => {
     receiptId: receipt.receiptId,
     receiptNumber: receipt.receiptNumber,
     sendToTellSystem: receipt.sendToTellSystem,
+    approvalStatus: receipt.approvalStatus,
     status: formatStatus(receipt.status),
     carrier: receipt.carrierName || '',
     customer: [receipt.customerName, receipt.stationName].filter(Boolean).join(' | '),
@@ -264,7 +265,7 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', receiptNumber = '', filters = {} } = {}) {
+export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', approvalStatus = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
   return async () => {
     dispatch(slice.actions.startLoading());
     try {
@@ -277,9 +278,15 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
         params.set('status', status);
       }
 
+      if (approvalStatus) {
+        params.set('approvalStatus', approvalStatus);
+      }
+
       if (receiptNumber) {
         params.set('receiptNumber', receiptNumber);
       }
+
+      params.set('accounting', accounting ? 'true' : 'false');
 
       Object.entries(filters || {}).forEach(([key, value]) => {
         const cleanValue = String(value ?? '').trim();
@@ -303,13 +310,17 @@ export function getWarehouseReceipts({ page = 1, pageSize = 10, status = '', rec
   };
 }
 
-export function exportWarehouseReceiptSpreadsheet({ status = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
+export function exportWarehouseReceiptSpreadsheet({ status = '', approvalStatus = '', receiptNumber = '', accounting = false, filters = {} } = {}) {
   return async () => {
     try {
       const params = new URLSearchParams();
 
       if (status) {
         params.set('status', status);
+      }
+
+      if (approvalStatus) {
+        params.set('approvalStatus', approvalStatus);
       }
 
       if (receiptNumber) {
@@ -371,6 +382,203 @@ export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
   };
 }
 
+export function putWarehouseReceiptsOnAccountHold(receiptIds = []) {
+  return async () => {
+    const validReceiptIds = receiptIds.filter((receiptId) => receiptId !== null && receiptId !== undefined && receiptId !== '');
+
+    if (!validReceiptIds.length) {
+      return { error: true, message: 'At least one receipt ID is required for account hold' };
+    }
+
+    try {
+      const response = await axios.put('/warehouse-receipt/account-hold', {
+        receiptIds: validReceiptIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to place warehouse receipt on account hold';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function revertWarehouseReceiptsFromAccountHold(receiptIds = []) {
+  return async () => {
+    const validReceiptIds = receiptIds.filter((receiptId) => receiptId !== null && receiptId !== undefined && receiptId !== '');
+
+    if (!validReceiptIds.length) {
+      return { error: true, message: 'At least one receipt ID is required to revert account hold' };
+    }
+
+    try {
+      const response = await axios.put('/warehouse-receipt/account-hold-revert', {
+        receiptIds: validReceiptIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to revert warehouse receipt from account hold';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function sendWarehouseReceiptEmail({ receiptId, emails = [] } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required to send email' };
+    }
+
+    const validEmails = [...new Set(emails.map((email) => String(email || '').trim()).filter(Boolean))];
+    if (!validEmails.length) return { error: true, message: 'At least one email is required' };
+
+    try {
+      const response = await axios.post(
+        `/warehouse-receipt/send-email?receiptId=${encodeURIComponent(receiptId)}`,
+        { emails: validEmails }
+      );
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to send warehouse receipt email',
+      };
+    }
+  };
+}
+
+export function uploadWarehouseReceiptDocuments({ receiptId, files = [] } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required to upload documents' };
+    }
+
+    if (!files.length) {
+      return { error: true, message: 'Select at least one document to upload' };
+    }
+
+    const formData = new FormData();
+    formData.append('receiptId', receiptId);
+    files.forEach((file) => formData.append('files', file));
+
+    try {
+      const response = await axios.post('/warehouse-receipt/document-upload', formData);
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to upload warehouse receipt documents',
+      };
+    }
+  };
+}
+
+export function getWarehouseReceiptDocument(filePath) {
+  return async () => {
+    if (!filePath) return { error: true, message: 'Document file path is required' };
+
+    try {
+      const response = await axios.get(
+        `/uploads/warehouse/documents/${encodeURIComponent(filePath)}`,
+        { responseType: 'blob' }
+      );
+      return { blob: response.data, contentType: response.headers?.['content-type'] || response.data?.type || '' };
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to load warehouse receipt document',
+      };
+    }
+  };
+}
+
+export function removeWarehouseReceiptDocument({ receiptId, documentId } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required to remove the document' };
+    }
+    if (documentId === null || documentId === undefined || documentId === '') {
+      return { error: true, message: 'Document ID is required to remove the document' };
+    }
+
+    try {
+      const response = await axios.delete('/warehouse-receipt/document-remove', {
+        data: {
+          receiptId,
+          documentIds: documentId,
+          documentId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to remove warehouse receipt document',
+      };
+    }
+  };
+}
+
+export function markWarehouseReceiptRateReadyForApproval({ receiptId, rateDetails } = {}) {
+  return async () => {
+    if (receiptId === null || receiptId === undefined || receiptId === '') {
+      return { error: true, message: 'Receipt ID is required for rate approval' };
+    }
+
+    try {
+      const response = await axios.post(
+        `/warehouse-receipt/rate-ready-for-approval?receiptId=${encodeURIComponent(receiptId)}`,
+        {
+          rateDetails,
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to mark warehouse receipt rate ready for approval';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
+export function approveWarehouseReceiptRates(receiptIds = []) {
+  return async () => {
+    const validReceiptIds = receiptIds.filter((receiptId) => receiptId !== null && receiptId !== undefined && receiptId !== '');
+
+    if (!validReceiptIds.length) {
+      return { error: true, message: 'At least one receipt ID is required for rate approval' };
+    }
+
+    try {
+      const response = await axios.put('/warehouse-receipt/rate-approve', {
+        receiptIds: validReceiptIds,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to approve warehouse receipt rates';
+
+      return { error: true, message: errorMessage };
+    }
+  };
+}
+
 export function updateWarehouseReceipt({ receiptId, payload } = {}) {
   return async () => {
     if (!receiptId) {
@@ -414,7 +622,7 @@ export function searchWarehouseReceiptCustomers(searchTerm) {
 
     try {
       const response = await axios.get(
-        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}`
+        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}&getAll=true`
       );
       const customers = Array.isArray(response.data?.data) ? response.data.data : [];
 
@@ -446,7 +654,7 @@ export function searchWarehouseReceiptStations(customerId, searchTerm) {
         params.set('search', cleanSearchTerm);
       }
 
-      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}`);
+      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}&getAll=true`);
       const stations = Array.isArray(response.data?.data) ? response.data.data : [];
 
       dispatch(slice.actions.getStationOptionsSuccess(stations));

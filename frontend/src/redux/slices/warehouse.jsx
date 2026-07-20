@@ -323,11 +323,16 @@ export function searchWarehouseReceiptProDetail(proNumber) {
             let errorMessage = 'Error searching warehouse receipt PRO detail';
 
             if (error.response?.status === 404) {
+                const responseMessage = error.response?.data?.message || error.response?.data?.error;
+                if (responseMessage) {
+                    dispatch(slice.actions.receiptSearchError(responseMessage));
+                    return { error: true, message: responseMessage };
+                }
                 dispatch(slice.actions.receiptSearchNotFound());
                 return null;
             }
 
-            errorMessage = error.response?.data?.message || error.message || errorMessage;
+            errorMessage = error.response?.data?.message || error.response?.data?.error || error.message || errorMessage;
             dispatch(slice.actions.receiptSearchError(errorMessage));
             return { error: true, message: errorMessage };
         }

@@ -4975,7 +4975,9 @@ export default function WarehouseCheckInPage({
         fullWidth
       >
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
-          No Data Available
+          {searchType === "rmDriver" && warehouseReceiptSearch.error
+            ? "Error"
+            : "No Data Available"}
           <IconButton
             onClick={() => {
               setNoDataDialogOpen(false);
@@ -4989,15 +4991,21 @@ export default function WarehouseCheckInPage({
           </IconButton>
         </DialogTitle>
         <DialogContent dividers>
-          <Typography sx={{ fontSize: 14 }}>
-            No data available for PRO number{" "}
-            <strong>
-              {warehouseReceiptSearch.data?.proNumber ||
-                noDataSearchValue ||
-                searchValue}
-            </strong>
-            .
-          </Typography>
+          {searchType === "rmDriver" && warehouseReceiptSearch.error ? (
+            <Typography sx={{ fontSize: 14 }}>
+              {warehouseReceiptSearch.error}
+            </Typography>
+          ) : (
+            <Typography sx={{ fontSize: 14 }}>
+              No data available for PRO number{" "}
+              <strong>
+                {warehouseReceiptSearch.data?.proNumber ||
+                  noDataSearchValue ||
+                  searchValue}
+              </strong>
+              .
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 2, pb: 2 }}>
           <Button
