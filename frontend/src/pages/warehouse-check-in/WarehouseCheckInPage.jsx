@@ -1218,6 +1218,11 @@ export default function WarehouseCheckInPage({
     const normalizedRow = {
       ...row,
       driverName: getRowValue(row, ["driverName", "driver"], ""),
+      piecesInland: getRowValue(
+        row,
+        "piecesInland",
+        getRowValue(warehouseReceiptSearch.data, "piecesInland", ""),
+      ),
       customerEmails:
         row.customerEmails || warehouseReceiptSearch.data.customerEmails || [],
       toEmails: row.toEmails || warehouseReceiptSearch.data.toEmails || [],
@@ -4201,19 +4206,22 @@ export default function WarehouseCheckInPage({
                                         size="small"
                                         value={item.pieces}
                                         onChange={(e) => {
+                                          const nextPieces = e.target.value
+                                            .replace(/\D/g, "")
+                                            .slice(0, 5);
                                           updateItem(
                                             pr.key,
                                             form.id,
                                             item.id,
                                             "pieces",
-                                            e.target.value,
+                                            nextPieces,
                                           );
                                           clearItemError(
                                             pr.key,
                                             form.id,
                                             item.id,
                                             "pieces",
-                                            e.target.value,
+                                            nextPieces,
                                           );
                                         }}
                                         error={
@@ -4234,7 +4242,11 @@ export default function WarehouseCheckInPage({
                                             )
                                           ] || " "
                                         }
-                                        inputProps={{ style: { fontSize: 13 } }}
+                                        inputProps={{
+                                          inputMode: "numeric",
+                                          pattern: "[0-9]*",
+                                          style: { fontSize: 13 },
+                                        }}
                                       />
                                     </Stack>
 

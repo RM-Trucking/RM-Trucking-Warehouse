@@ -2490,7 +2490,7 @@ export default function WarehouseRecieptPage() {
         <DialogContent sx={{ p: 2 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
             <Typography sx={{ fontSize: 16, fontWeight: 700 }}>
-              Upload Document - {uploadedDocumentsDialog.row?.receiptNumber || uploadedDocumentsDialog.row?.rawData?.receiptNumber || ''}
+              Uploaded Documents - {uploadedDocumentsDialog.row?.receiptNumber || uploadedDocumentsDialog.row?.rawData?.receiptNumber || ''}
             </Typography>
             <IconButton size="small" onClick={handleCloseUploadedDocuments} disabled={Boolean(uploadedDocumentLoadingPath) || uploadedDocumentRemovingId !== null} sx={{ p: 0.2, color: '#111' }}>
               <CloseIcon sx={{ fontSize: 20 }} />
