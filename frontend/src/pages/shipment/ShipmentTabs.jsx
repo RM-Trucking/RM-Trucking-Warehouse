@@ -3,16 +3,14 @@ import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
-    Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent
+    Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
+    FormControlLabel
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useReactToPrint } from 'react-to-print';
-import { useDispatch, useSelector } from '../../../../../RM-Trucking/frontend/src/redux/store';
-
-// Replace these with your actual shipment redux slice imports
-import { setCurrentCarrierTab } from '../../../../../RM-Trucking/frontend/src/redux/slices/carrier';
-// import { getShipmentData } from '../../../../../RM-Trucking/frontend/src/redux/slices/shipment'; 
+import { useDispatch, useSelector } from '../../redux/store';
+import { getShipmentData } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
@@ -24,38 +22,22 @@ import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 
 // ----------------------------------------------------------------------
 
-const DUMMY_SHIPMENT_DATA_MAP = {
-    active: [
-        { rmNumber: 'AIR-001', customer: 'Ventana Serra LLC', station: 'MIA', billNumber: '00103252026' },
-        { rmNumber: 'AIR-002', customer: 'Atlantic Cargo', station: 'JFK', billNumber: '15745001982' },
-        { rmNumber: 'AIR-003', customer: 'Pacific Freight', station: 'LAX', billNumber: '93300124567' },
-        { rmNumber: 'AIR-004', customer: 'Northline Logistics', station: 'ORD', billNumber: '44092837165' },
-    ],
-    inactive: [
-        { rmNumber: 'LCL-001', customer: 'Ocean Lane', station: 'NYC', billNumber: 'LCL-8891001' },
-        { rmNumber: 'LCL-002', customer: 'Harbor Freight Group', station: 'SAV', billNumber: 'LCL-8891002' },
-        { rmNumber: 'LCL-003', customer: 'Bluewater Lines', station: 'HOU', billNumber: 'LCL-8891003' },
-        { rmNumber: 'LCL-004', customer: 'PortLink Logistics', station: 'LGB', billNumber: 'LCL-8891004' },
-    ],
-    incomplete: [
-        { rmNumber: 'FCL-001', customer: 'Pacific Containers', station: 'LAX', billNumber: 'FCL-7745001' },
-        { rmNumber: 'FCL-002', customer: 'Trans Atlantic Cargo', station: 'MIA', billNumber: 'FCL-7745002' },
-        { rmNumber: 'FCL-003', customer: 'Gateway Shipping', station: 'SEA', billNumber: 'FCL-7745003' },
-        { rmNumber: 'FCL-004', customer: 'Prime Marine Lines', station: 'OAK', billNumber: 'FCL-7745004' },
-    ],
-};
-
 ShipmentTabs.propTypes = {};
 
 export default function ShipmentTabs({ }) {
     const dispatch = useDispatch();
     const navigate = useNavigate();
     
-    // Hypothetical Redux state for shipments (Adjust 'shipmentdata' to match your actual store)
-    // const { shipmentData, isLoading, pagination, searchStr } = useSelector((state) => state.shipmentdata);
+    const {
+        shipmentData: apiShipmentData,
+        isLoading,
+        pagination,
+    } = useSelector((state) => state.shipmentdata);
     
     const [currentTab, setCurrentTab] = useState('active');
-    const [openForm, setOpenForm] = useState(null);
+    const [airStatusFilters, setAirStatusFilters] = useState([
+        'scan', 'shipment', 'pickup', 'ofd', 'pod'
+    ]);
     // const [selectedRowData, setSelectedRowData] = useState(null);
     const [openPOD, setOpenPOD] = useState(false);
     const [selectedPODRow, setSelectedPODRow] = useState(null);
@@ -64,13 +46,22 @@ export default function ShipmentTabs({ }) {
     const printRef = useRef();
     const [printData, setPrintData] = useState(null);
     
-    // --- TEMPORARY FALLBACKS ---
-    // Remove these once your Redux state is connected
-    const shipmentData = DUMMY_SHIPMENT_DATA_MAP[currentTab] || [];
-    const isLoading = false;
-    const pagination = { page: 1, pageSize: 10, totalRecords: shipmentData.length };
-    const searchStr = '';
-    // ---------------------------
+    const shipmentTypeMap = { active: 'AIR', inactive: 'LCL', incomplete: 'FCL' };
+    const shipmentData = apiShipmentData
+        .filter((shipment) => shipment.shipmentType === shipmentTypeMap[currentTab])
+        .map((shipment) => ({
+            ...shipment,
+            rmNumber: shipment.barcodeNumber,
+            customer: shipment.customerName || shipment.customerId,
+            station: shipment.stationName || shipment.stationId,
+            billNumber: shipment.airBillNumber || shipment.booking || '',
+            pickupNumber: shipment.pickupEntryNumber || '',
+            scanStatus: shipment.isScanned === 'Y',
+            shipmentStatus: shipment.isShipped === 'Y',
+            pickupStatus: shipment.pickupEntry === 'Y',
+            ofdStatus: shipment.isOfd === 'Y',
+            podStatus: shipment.isPod === 'Y',
+        }));
 
     // Local state for the DataGrid pagination model
     const [paginationModel, setPaginationModel] = useState({
@@ -90,16 +81,6 @@ export default function ShipmentTabs({ }) {
         handlePrint();
     };
 
-    // useEffect(() => {
-    //     // Fetch shipment data using slice
-    //     dispatch(getShipmentData({ page: 1, size: 10 }));
-    // }, [dispatch]);
-
-    // Log shipment data for checking
-    useEffect(() => {
-        console.log('Shipment Data:', shipmentData);
-    }, [shipmentData]);
-
     const TABS = [
         { value: 'active', label: 'Air Form' },
         { value: 'inactive', label: 'LCL Form' },
@@ -114,8 +95,6 @@ export default function ShipmentTabs({ }) {
 
     const OnTabChange = (newValue) => {
         setCurrentTab(newValue);
-        // If you are tracking the tab in Redux:
-        dispatch(setCurrentCarrierTab(newValue));
     };
 
     const handleAction = (rowData) => {
@@ -162,19 +141,17 @@ const handleClosePickupForm = () => {
         });
     };
 
-    // 1. Fetch data whenever the tab changes
+    // Fetch the current server-side page.
     useEffect(() => {
-        // Example Redux Dispatch:
-        // dispatch(getShipmentData({ 
-        //     pageNo: 1, 
-        //     pageSize: paginationModel.pageSize, 
-        //     searchStr: searchStr, 
-        //     status: currentTab 
-        // }));
-        
-        // Reset local pagination to page 0 when switching tabs
-        setPaginationModel(prev => ({ ...prev, page: 0 }));
-    }, [currentTab, searchStr, dispatch]);
+        dispatch(getShipmentData({
+            pageNo: paginationModel.page + 1,
+            pageSize: paginationModel.pageSize,
+        }));
+    }, [dispatch, paginationModel.page, paginationModel.pageSize]);
+
+    useEffect(() => {
+        setPaginationModel((prev) => ({ ...prev, page: 0 }));
+    }, [currentTab]);
 
     // 2. Sync DataGrid pagination model with Redux pagination state
     useEffect(() => {
@@ -191,8 +168,28 @@ const handleClosePickupForm = () => {
         });
     }, [pagination?.page, pagination?.pageSize]);
 
+    const statusOptions = [
+        { value: 'scan', label: 'Scan', header: 'Scan Status' },
+        { value: 'shipment', label: 'Shipment', header: 'Shipment Status' },
+        { value: 'pickup', label: 'Pickup', header: 'Pickup Status' },
+        { value: 'ofd', label: 'OFD', header: 'OFD Status' },
+        { value: 'pod', label: 'POD', header: 'POD Status' },
+    ];
+
+    const handleStatusFilterChange = (value) => {
+        setAirStatusFilters([value]);
+    };
+
+    const renderStatus = (complete) => (
+        <Iconify
+            icon={complete ? 'eva:checkmark-circle-2-fill' : 'mdi:clock'}
+            width={18}
+            sx={{ color: complete ? '#54ad72' : '#e5ae00' }}
+        />
+    );
+
     // Define DataGrid columns
-    const columns = [
+    const baseColumns = [
         {
             field: 'rmNumber',
             headerName: 'RM Number',
@@ -216,22 +213,55 @@ const handleClosePickupForm = () => {
         },
         {
             field: 'billNumber',
-            headerName: 'Bill Number',
+            headerName: currentTab === 'active' ? 'Air Bill No' : 'Bill Number',
             flex: 1,
             minWidth: 150,
             headerAlign: 'left',
         },
-        {
+    ];
+
+    const airStatusColumns = statusOptions
+        .filter((status) => airStatusFilters.includes(status.value))
+        .map((status) => ({
+            field: `${status.value}Status`,
+            headerName: status.header,
+            minWidth: 130,
+            flex: 0.8,
+            align: 'center',
+            headerAlign: 'center',
+            sortable: true,
+            renderCell: (params) => renderStatus(Boolean(params.value)),
+        }));
+
+    const pickupNumberColumn = {
+        field: 'pickupNumber',
+        headerName: 'Pickup No',
+        minWidth: 130,
+        flex: 0.8,
+    };
+
+    const actionColumn = {
             field: 'action',
             headerName: 'Action',
             width: 180,
+            minWidth: 180,
             headerAlign: 'center',
             align: 'center',
             sortable: false,
             filterable: false,
+            disableColumnMenu: true,
+            headerClassName: 'sticky-action-header',
+            cellClassName: 'sticky-action-cell',
             renderCell: (params) => {
                 return (
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Box
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '100%',
+                        }}
+                    >
                         <IconButton
                             size="small"
                             onClick={(e) => { e.stopPropagation(); handleAction(params.row); }}
@@ -248,13 +278,6 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
-                            onClick={(e) => { e.stopPropagation(); handleHandExtended(params.row); }}
-                            sx={{ color: '#A22' }}
-                        >
-                            <Iconify icon="mdi:hand-extended" width={20} />
-                        </IconButton>
-                        <IconButton
-                            size="small"
                             onClick={(e) => { e.stopPropagation(); handleFileDocumentBox(params.row); }}
                             sx={{ color: '#A22' }}
                         >
@@ -263,8 +286,11 @@ const handleClosePickupForm = () => {
                     </Box>
                 );
             },
-        }
-    ];
+        };
+
+    const columns = currentTab === 'active'
+        ? [...baseColumns, ...airStatusColumns, pickupNumberColumn, actionColumn]
+        : [...baseColumns, actionColumn];
 
     return (
         <>
@@ -312,12 +338,32 @@ const handleClosePickupForm = () => {
                 </Box>
                 <Divider sx={{ borderColor: 'rgba(143, 143, 143, 1)', mb: 2 }} />
 
-                <Box sx={{ width: "100%", flex: 1, mt: 2 }}>
+                {currentTab === 'active' && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                        {statusOptions.map((status) => (
+                            <FormControlLabel
+                                key={status.value}
+                                label={status.label}
+                                control={(
+                                    <Checkbox
+                                        size="small"
+                                        checked={airStatusFilters.includes(status.value)}
+                                        onChange={() => handleStatusFilterChange(status.value)}
+                                        sx={{ color: '#8a8a8a', '&.Mui-checked': { color: '#173b70' } }}
+                                    />
+                                )}
+                                sx={{ mr: 1, '& .MuiFormControlLabel-label': { fontSize: 13 } }}
+                            />
+                        ))}
+                    </Box>
+                )}
+
+                <Box sx={{ width: "100%", flex: 1, mt: currentTab === 'active' ? 0 : 2 }}>
                     <DataGrid
                         rows={shipmentData}
                         columns={columns}
                         loading={isLoading}
-                        getRowId={(row) => row.rmNumber} // Ensure this maps to a unique ID from your API
+                        getRowId={(row) => row.shipmentId}
                         autoHeight
                         disableRowSelectionOnClick
                         
@@ -331,19 +377,28 @@ const handleClosePickupForm = () => {
                         // Handle user interactions with the pagination controls
                         onPaginationModelChange={(newModel) => {
                             setPaginationModel(newModel);
-                            
-                            // Dispatch API call for the new page
-                            // dispatch(getShipmentData({
-                            //     pageNo: newModel.page + 1,
-                            //     pageSize: newModel.pageSize,
-                            //     searchStr: searchStr,
-                            //     status: currentTab
-                            // }));
                         }}
                         
                         sx={{
                             '& .MuiDataGrid-columnHeaders': {
                                 backgroundColor: '#dbdbdb',
+                            },
+                            '& .sticky-action-header': {
+                                position: 'sticky',
+                                right: 0,
+                                zIndex: 4,
+                                backgroundColor: '#dbdbdb',
+                                boxShadow: '-4px 0 6px -4px rgba(0, 0, 0, 0.35)',
+                            },
+                            '& .sticky-action-cell': {
+                                position: 'sticky',
+                                right: 0,
+                                zIndex: 3,
+                                backgroundColor: '#fff',
+                                boxShadow: '-4px 0 6px -4px rgba(0, 0, 0, 0.25)',
+                            },
+                            '& .MuiDataGrid-row:hover .sticky-action-cell': {
+                                backgroundColor: '#f5f5f5',
                             },
                         }}
                     />
