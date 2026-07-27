@@ -181,6 +181,9 @@ const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.height)) *
   INCH_TO_METER;
 
+const calculateRoundedItemCbm = (item) =>
+  Number(calculateItemCbm(item).toFixed(2));
+
 const formatMeasurement = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number) || number === 0) return 0;
@@ -1963,7 +1966,7 @@ export default function WarehouseCheckInPage({
     };
     const selectedOptions = form?.freightOptions || [];
     const freightDetails = (form?.items || []).map((item) => {
-      const cubicMeter = formatMeasurement(calculateItemCbm(item));
+      const cubicMeter = calculateRoundedItemCbm(item);
 
       return {
         pieces: toNumberOrNull(item.pieces),
@@ -1989,7 +1992,7 @@ export default function WarehouseCheckInPage({
     );
     const cubicMeter = formatMeasurement(
       freightDetails.reduce(
-        (sum, item) => sum + Number(item.cubicMeter || 0),
+        (sum, item) => sum + Number(item.pieces || 0) * Number(item.cubicMeter || 0),
         0,
       ),
     );
