@@ -186,6 +186,23 @@ const getRateDisplayValue = (value) => {
   return Number.isInteger(numberValue) ? numberValue : Number(numberValue.toFixed(3));
 };
 
+const clampAccountingCost = (cost, minRate, maxRate) => {
+  const numericCost = Number(cost);
+  if (!Number.isFinite(numericCost)) return cost;
+
+  const hasMinRate = minRate !== undefined && minRate !== null && minRate !== '';
+  const hasMaxRate = maxRate !== undefined && maxRate !== null && maxRate !== '';
+  const numericMinRate = Number(minRate);
+  const numericMaxRate = Number(maxRate);
+  const costWithMinimum = hasMinRate && Number.isFinite(numericMinRate)
+    ? Math.max(numericCost, numericMinRate)
+    : numericCost;
+
+  return hasMaxRate && Number.isFinite(numericMaxRate)
+    ? Math.min(costWithMinimum, numericMaxRate)
+    : costWithMinimum;
+};
+
 const formatRateApprovalDate = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -1517,7 +1534,11 @@ export default function WarehouseRecieptPage() {
     );
     const calculatedRate = accountingRatesDialog.hasFlatRate
       ? Number(rateInformation.finalRate)
-      : (baseRate / 100) * higherWeight;
+      : clampAccountingCost(
+          (baseRate / 100) * higherWeight,
+          rateInformation.minRate,
+          rateInformation.maxRate
+        );
     const toRateNumberOrNull = (value) => {
       if (value === null || value === undefined || value === '') return null;
       const numberValue = Number(value);
@@ -1859,7 +1880,11 @@ export default function WarehouseRecieptPage() {
               hasFlatRate
                 ? rateInformation.finalRate
                 : Number.isFinite(baseRate) && higherWeight > 0
-                  ? getRateDisplayValue((baseRate / 100) * higherWeight)
+                  ? getRateDisplayValue(clampAccountingCost(
+                      (baseRate / 100) * higherWeight,
+                      rateInformation.minRate,
+                      rateInformation.maxRate
+                    ))
                   : '';
             const baseRatePerLb = Number.isFinite(baseRate) ? getRateDisplayValue(baseRate / 100) : '';
             const rateCalculatedBy = hasFlatRate
@@ -2490,7 +2515,7 @@ export default function WarehouseRecieptPage() {
         <DialogContent sx={{ p: 2 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
             <Typography sx={{ fontSize: 16, fontWeight: 700 }}>
-              Upload Document - {uploadedDocumentsDialog.row?.receiptNumber || uploadedDocumentsDialog.row?.rawData?.receiptNumber || ''}
+              Uploaded Documents - {uploadedDocumentsDialog.row?.receiptNumber || uploadedDocumentsDialog.row?.rawData?.receiptNumber || ''}
             </Typography>
             <IconButton size="small" onClick={handleCloseUploadedDocuments} disabled={Boolean(uploadedDocumentLoadingPath) || uploadedDocumentRemovingId !== null} sx={{ p: 0.2, color: '#111' }}>
               <CloseIcon sx={{ fontSize: 20 }} />

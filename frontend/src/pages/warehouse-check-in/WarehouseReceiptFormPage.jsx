@@ -261,6 +261,12 @@ const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.height)) *
   INCH_TO_METER;
 
+const calculateRoundedItemCbm = (item) =>
+  Number(calculateItemCbm(item).toFixed(2));
+
+const calculateTotalItemCbm = (item) =>
+  Number(item.pieces || 0) * calculateRoundedItemCbm(item);
+
 const formatMeasurement = (value) => {
   if (value === undefined || value === null || value === '') return '';
   const numberValue = Number(value);
@@ -1310,7 +1316,7 @@ export default function WarehouseReceiptFormPage() {
     (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
     0
   );
-  const totalCbm = activeForm.items.reduce((sum, item) => sum + calculateItemCbm(item), 0);
+  const totalCbm = activeForm.items.reduce((sum, item) => sum + calculateTotalItemCbm(item), 0);
   const row = activeForm.row || {};
   const piecesInland = getRowValue(row, ['piecesInland', 'pieces'], '');
   const weightInland = getRowValue(row, ['weightInland', 'weight'], '');
@@ -2065,7 +2071,7 @@ export default function WarehouseReceiptFormPage() {
       const freightInfo = { ...createFreightInfo(), ...(form.freightInfo || {}) };
       const customerSelection = form.customerSelection || {};
       const freightDetails = (form.items || []).map((item) => {
-        const cubicMeter = formatMeasurement(calculateItemCbm(item));
+        const cubicMeter = calculateRoundedItemCbm(item);
         const existingImages = getFreightDetailImageNames(item.images);
 
         return {
@@ -2086,7 +2092,10 @@ export default function WarehouseReceiptFormPage() {
         0
       );
       const cubicMeter = formatMeasurement(
-        freightDetails.reduce((sum, item) => sum + Number(item.cubicMeter || 0), 0)
+        freightDetails.reduce(
+          (sum, item) => sum + Number(item.pieces || 0) * Number(item.cubicMeter || 0),
+          0
+        )
       );
       const receiptId = options.forceNewReceipts
         ? 0
@@ -2174,7 +2183,7 @@ export default function WarehouseReceiptFormPage() {
         width: toDecimal10_2NumberOrNull(item.width),
         height: toDecimal10_2NumberOrNull(item.height),
         weight: toDecimal10_2NumberOrNull(item.weight),
-        cubicMeter: formatMeasurement(calculateItemCbm(item)),
+        cubicMeter: calculateRoundedItemCbm(item),
         images: existingImages,
         removeImagePaths: item.removeImagePaths || [],
       };
@@ -2186,7 +2195,10 @@ export default function WarehouseReceiptFormPage() {
       0
     );
     const cubicMeter = formatMeasurement(
-      freightDetails.reduce((sum, item) => sum + Number(item.cubicMeter || 0), 0)
+      freightDetails.reduce(
+        (sum, item) => sum + Number(item.pieces || 0) * Number(item.cubicMeter || 0),
+        0
+      )
     );
 
     return {
@@ -4316,7 +4328,10 @@ export default function WarehouseReceiptFormPage() {
       (sum, { item }) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
       0
     );
-    const splitTotalCbm = splitFormItems.reduce((sum, { item }) => sum + calculateItemCbm(item), 0);
+    const splitTotalCbm = splitFormItems.reduce(
+      (sum, { item }) => sum + calculateTotalItemCbm(item),
+      0
+    );
     const isSplitGeneratedForm = Boolean(splitTempReceiptNumbers[splitTabValue]);
     const splitDetails = isSplitGeneratedForm ? ensureSplitFormDetails(splitTabValue, splitFormDetails) : null;
     const splitRow = isSplitGeneratedForm ? splitDetails.row : row;
@@ -4552,7 +4567,7 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField label="Pieces" value={splitPiecesInland} required />
                   <DisplayField label="Weight" value={splitWeightInland} required />
                   <DisplayField label="RE Weight" value={splitTotalWeight} required />
-                  <DisplayField label="CBM (m3)" value={formatCubicMeterForItemTable(splitTotalCbm)} required />
+                  <DisplayField label="Total CBM (m³)" value={formatCubicMeterForItemTable(splitTotalCbm)} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
@@ -5291,7 +5306,7 @@ export default function WarehouseReceiptFormPage() {
                   <DisplayField label="Pieces" value={piecesInland} required />
                   <DisplayField label="Weight" value={weightInland} required />
                   <DisplayField label="RE Weight" value={totalWeight} required />
-                  <DisplayField label="CBM (m³)" value={formatCubicMeterForItemTable(totalCbm)} required />
+                  <DisplayField label="Total CBM (m³)" value={formatCubicMeterForItemTable(totalCbm)} required />
                   <Box sx={{ flex: 1 }} />
                 </Stack>
               </Stack>
@@ -6222,6 +6237,7 @@ export default function WarehouseReceiptFormPage() {
             const ratesTotal = getRatesTotal();
             const rateCalculatedBy = String(rateInformation.rateCalculatedBy || '').replace(/_/g, ' ');
             const hasBaseRate = rateInformation.baseRate !== undefined && rateInformation.baseRate !== null && rateInformation.baseRate !== '';
+            const hasBaseRatePerPound = rateInformation.baseRatePerPound !== undefined && rateInformation.baseRatePerPound !== null && rateInformation.baseRatePerPound !== '';
             const hasMinRate = rateInformation.minRate !== undefined && rateInformation.minRate !== null && rateInformation.minRate !== '';
             const hasMaxRate = rateInformation.maxRate !== undefined && rateInformation.maxRate !== null && rateInformation.maxRate !== '';
             const hasFlatRate = getActiveHasFlatRate();
@@ -6325,11 +6341,11 @@ export default function WarehouseReceiptFormPage() {
             Total Estimated Cost - <Box component="span" sx={{ fontWeight: 700 }}>{ratesTotal.estimatedCost ? `$${ratesTotal.estimatedCost}` : ''}</Box>{rateCalculatedBy ? ` (Calculated based on ${rateCalculatedBy})` : ''}
           </Typography>
 
-          {(hasBaseRate || hasMinRate || hasMaxRate) && (
+          {(hasBaseRate || hasBaseRatePerPound || hasMinRate || hasMaxRate) && (
             <Box sx={{ mt: 1.5, ml: 1.2, bgcolor: '#dff0fa', borderRadius: 1, px: 1.5, py: 1.1, width: { xs: '100%', sm: 395 }, boxSizing: 'border-box' }}>
-              {hasBaseRate && (
+              {hasBaseRatePerPound && (
                 <Typography sx={{ fontSize: 13 }}>
-                  Calculated Based on <Box component="span" sx={{ fontWeight: 700 }}>${getRateDisplayValue(rateInformation.baseRate)}</Box> per lbs.
+                  Calculated Based on <Box component="span" sx={{ fontWeight: 700 }}>${getRateDisplayValue(rateInformation.baseRatePerPound)}</Box> per lbs.
                 </Typography>
               )}
               {(hasMinRate || hasMaxRate) && (

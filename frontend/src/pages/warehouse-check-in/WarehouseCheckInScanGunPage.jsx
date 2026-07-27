@@ -120,6 +120,9 @@ const getScanReceiptNumber = (row = {}) =>
 const getScanCarrier = (row = {}) =>
   getScanRowValue(row, ['carrier', 'carrierName']);
 
+const getScanPieces = (row = {}) =>
+  getScanRowValue(row, 'piecesInland');
+
 const getScanCustomer = (row = {}) => {
   const customer = getScanRowValue(row, ['customer', 'customerName'], '');
   if (!customer) return '-';
@@ -309,10 +312,15 @@ function ScanItem({
             value={item[field]}
             error={receiptErrors[receipt.key]?.items?.[getItemErrorKey(field)]}
             onChange={(event) => {
-              updateItem(receipt.key, form.id, item.id, field, event.target.value);
-              clearItemError(receipt.key, form.id, item.id, field, event.target.value);
+              const nextValue = field === 'pieces'
+                ? event.target.value.replace(/\D/g, '').slice(0, 5)
+                : event.target.value;
+              updateItem(receipt.key, form.id, item.id, field, nextValue);
+              clearItemError(receipt.key, form.id, item.id, field, nextValue);
             }}
-            inputProps={isDecimal ? { inputMode: 'decimal' } : undefined}
+            inputProps={field === 'pieces'
+              ? { inputMode: 'numeric', pattern: '[0-9]*' }
+              : isDecimal ? { inputMode: 'decimal' } : undefined}
           />
         ))}
       </Box>
@@ -749,6 +757,8 @@ export default function WarehouseCheckInScanGunPage({
                   <Typography sx={{ fontSize: 12 }}>{getScanCarrier(receipt.row)}</Typography>
                   <Typography sx={{ fontSize: 11, color: '#555' }}>Customer</Typography>
                   <Typography sx={{ fontSize: 12 }}>{getScanCustomer(receipt.row)}</Typography>
+                  <Typography sx={{ fontSize: 11, color: '#555' }}>Pieces</Typography>
+                  <Typography sx={{ fontSize: 12 }}>{getScanPieces(receipt.row)}</Typography>
                 </Box>
               </Box>
 

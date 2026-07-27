@@ -181,6 +181,9 @@ const calculateItemCbm = (item) =>
   Number(formatDecimal10_2Input(item.height)) *
   INCH_TO_METER;
 
+const calculateRoundedItemCbm = (item) =>
+  Number(calculateItemCbm(item).toFixed(2));
+
 const formatMeasurement = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number) || number === 0) return 0;
@@ -1218,6 +1221,11 @@ export default function WarehouseCheckInPage({
     const normalizedRow = {
       ...row,
       driverName: getRowValue(row, ["driverName", "driver"], ""),
+      piecesInland: getRowValue(
+        row,
+        "piecesInland",
+        getRowValue(warehouseReceiptSearch.data, "piecesInland", ""),
+      ),
       customerEmails:
         row.customerEmails || warehouseReceiptSearch.data.customerEmails || [],
       toEmails: row.toEmails || warehouseReceiptSearch.data.toEmails || [],
@@ -1958,7 +1966,7 @@ export default function WarehouseCheckInPage({
     };
     const selectedOptions = form?.freightOptions || [];
     const freightDetails = (form?.items || []).map((item) => {
-      const cubicMeter = formatMeasurement(calculateItemCbm(item));
+      const cubicMeter = calculateRoundedItemCbm(item);
 
       return {
         pieces: toNumberOrNull(item.pieces),
@@ -1984,7 +1992,7 @@ export default function WarehouseCheckInPage({
     );
     const cubicMeter = formatMeasurement(
       freightDetails.reduce(
-        (sum, item) => sum + Number(item.cubicMeter || 0),
+        (sum, item) => sum + Number(item.pieces || 0) * Number(item.cubicMeter || 0),
         0,
       ),
     );
@@ -4201,19 +4209,22 @@ export default function WarehouseCheckInPage({
                                         size="small"
                                         value={item.pieces}
                                         onChange={(e) => {
+                                          const nextPieces = e.target.value
+                                            .replace(/\D/g, "")
+                                            .slice(0, 5);
                                           updateItem(
                                             pr.key,
                                             form.id,
                                             item.id,
                                             "pieces",
-                                            e.target.value,
+                                            nextPieces,
                                           );
                                           clearItemError(
                                             pr.key,
                                             form.id,
                                             item.id,
                                             "pieces",
-                                            e.target.value,
+                                            nextPieces,
                                           );
                                         }}
                                         error={
@@ -4234,7 +4245,11 @@ export default function WarehouseCheckInPage({
                                             )
                                           ] || " "
                                         }
-                                        inputProps={{ style: { fontSize: 13 } }}
+                                        inputProps={{
+                                          inputMode: "numeric",
+                                          pattern: "[0-9]*",
+                                          style: { fontSize: 13 },
+                                        }}
                                       />
                                     </Stack>
 
