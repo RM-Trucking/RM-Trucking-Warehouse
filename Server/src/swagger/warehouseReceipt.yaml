@@ -1362,6 +1362,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/warehouse-receipt/for-shipment:
+    post:
+      tags:
+        - Receipts
+      summary: Fetch a warehouse receipt for shipment creation using flexible filters
+      description: |
+        Retrieve a single warehouse receipt to use as the basis for creating a shipment. All request parameters are optional and may be combined.
+        Supported filters:
+        - `receiptNumber` (integer)
+        - `startDate` / `endDate` (ISO date strings)
+        - `proNumbers` (array of PRO numbers)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentReceiptRequest'
+            example:
+              receiptNumber: 100000031
+              startDate: "2026-04-01T00:00:00Z"
+              endDate: "2026-04-30T23:59:59Z"
+              proNumbers: ["PRO12345", "PRO67890"]
+      responses:
+        "200":
+          description: Receipt found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ShipmentReceiptResponse'
+        "404":
+          description: No matching receipt found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/warehouse-receipt/label-print:
     post:
       tags:
@@ -2206,6 +2261,58 @@ components:
           format: date-time
         createdBy:
           type: integer
+
+    ShipmentReceiptRequest:
+      type: object
+      properties:
+        receiptNumber:
+          type: integer
+          nullable: true
+          example: 100000031
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-04-01T00:00:00Z"
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-04-30T23:59:59Z"
+        proNumbers:
+          type: array
+          items:
+            type: string
+          nullable: true
+          example: ["PRO12345", "PRO67890"]
+
+    ShipmentReceiptResponse:
+      type: object
+      properties:
+        receiptId:
+          type: integer
+          example: 100000031
+        receiptNumber:
+          type: integer
+          example: 100000031
+        proNumber:
+          type: string
+          example: "PRO12345"
+        carrierName:
+          type: string
+          example: "ABC Logistics"
+        customerName:
+          type: string
+          example: "Acme Corp"
+        stationName:
+          type: string
+          example: "Station A"
+        toEmails:
+          type: array
+          items:
+            type: string
+          nullable: true
+          example: ["user@example.com"]
 
     FreightUpdateItem:
       type: object

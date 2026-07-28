@@ -17,7 +17,8 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
         res.status(201).json({ success: true, message: "Shipment created successfully", data: shipment });
     } catch (error: any) {
         console.error(error);
-        res.status(500).json({ success: false, message: error.message || "Failed to create shipment" });
+        const statusCode = error?.name === "ValidationError" || error?.message?.toLowerCase().includes("duplicate") ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to create shipment" });
     }
 }
 
@@ -82,6 +83,29 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
         res.status(200).json({ success: true, message: "Shipment updated successfully", data: shipment });
     } catch (error: any) {
         console.error(error);
-        res.status(500).json({ success: false, message: error.message || "Failed to update shipment" });
+        const statusCode = error?.name === "ValidationError" || error?.message?.toLowerCase().includes("duplicate") ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to update shipment" });
+    }
+}
+
+export async function scanFreight(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentIdParam = req.query.id as string | undefined;
+        const barcodeValue = req.query.barcodeValue as string | undefined;
+        const shipmentId = shipmentIdParam ? parseInt(shipmentIdParam, 10) : NaN;
+
+        if (!shipmentId || !barcodeValue) {
+            res.status(400).json({ success: false, message: "shipmentId and barcodeValue are required" });
+            return;
+        }
+
+        const updatedShipment = await shipmentService.scanFreight(conn, shipmentId, barcodeValue);
+        res.status(200).json({ success: true, message: "Freight scanned successfully", data: updatedShipment });
+
+    } catch (error: any) {
+
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to scan freight" });
     }
 }

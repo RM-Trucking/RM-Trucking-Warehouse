@@ -19,6 +19,16 @@ router.post("/temp", authenticateJWT, async (req: Request, res: Response) => {
     if (conn) conn.close();
 });
 
+// Fetch a receipt for shipment creation using optional filters
+router.post("/for-shipment", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.getReceiptForShipment(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 // Batch process V2 (Hybrid Image Uploads): Update reference receipt and create multiple new receipts
 // Supports standard JSON, multipart/form-data with actual file images, and Base64 strings sent as text fields
 // Accepts both freight and bad freight images in same request using different field names

@@ -184,7 +184,7 @@ export async function listWarehouseReceiptsService(
                         type = "UNKNOWN",
                     } = freight;
 
-                    const actualWeight = weight;
+                    const actualWeight = pieces * weight;
                     const dimensionalWeight = (pieces * length * width * height) / DIM_FACTOR;
 
                     totalActualWeight += actualWeight;
@@ -239,7 +239,7 @@ export async function listWarehouseReceiptsService(
                         type = "UNKNOWN",
                     } = freight;
 
-                    const actualWeight = weight;
+                    const actualWeight = pieces * weight;
                     const dimensionalWeight = (pieces * length * width * height) / DIM_FACTOR;
 
                     totalActualWeight += actualWeight;
@@ -1075,6 +1075,8 @@ export async function batchProcessWarehouseReceiptsService(
                 for (const freight of freightDetails) {
                     const { images, ...freightData } = freight;
 
+                    console.log("Creating freight info for receipt ID:", receiptId, "with data:", freightData, "and images:", images);
+
                     const freightId = await warehouseReceiptDB.createFreightInfo(conn, {
                         ...freightData,
                         receiptId
@@ -1192,6 +1194,9 @@ export async function batchProcessWarehouseReceiptsService(
                 for (const freight of freightDetails) {
 
                     const { images, ...freightData } = freight;
+
+                    console.log("Creating freight info for receipt ID:", receiptId, "with data:", freightData, "and images:", images);
+
                     const freightId = await warehouseReceiptDB.createFreightInfo(conn, {
                         ...freightData,
                         receiptId
@@ -1948,4 +1953,24 @@ export async function sendWarehouseReceiptToCustomEmailService(
         });
     }
 
+}
+
+/**
+ * GET RECEIPT FOR SHIPMENT CREATION
+ * Accepts optional filters: receiptNumber, startDate, endDate, proNumbers (array)
+ */
+export async function getWarehouseReceiptForShipmentService(
+    conn: Connection,
+    filters: { receiptNumber?: number; startDate?: string; endDate?: string; proNumbers?: string[] }
+) {
+    const receiptNumber = filters.receiptNumber;
+    const startDate = filters.startDate;
+    const endDate = filters.endDate;
+    const proNumbers = Array.isArray(filters.proNumbers) ? filters.proNumbers : (filters.proNumbers ? [String(filters.proNumbers)] : undefined);
+
+    const result = await warehouseReceiptDB.getWarehouseReceiptForShipment(conn, receiptNumber, startDate, endDate, proNumbers as any);
+    if (!result) return null;
+
+    // Normalize numeric fields and JSON fields
+    return result;
 }

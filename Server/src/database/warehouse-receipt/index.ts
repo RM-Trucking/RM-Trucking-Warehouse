@@ -208,6 +208,66 @@ export async function getWarehouseReceiptById(
 }
 
 
+export async function getWarehouseReceiptForShipment(
+    conn: Connection,
+    receiptNumber?: number,
+    startDate?: string,
+    endDate?: string,
+    proNumber?: string[],
+): Promise<{ receiptId: number; receiptNumber: number; proNumber: string; carrierName: string; customerName: string; stationName: string; verificationId: number; customerId: number; stationId: number; carrierId: number; piecesInland: number; reWeight: number }[] | null> {
+
+    let query = `
+        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight"
+        FROM ${SCHEMA}."Warehouse_Receipt" "wh"
+        LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
+        LEFT JOIN ${SCHEMA}."Station" "s" ON "wh"."stationId" = "s"."stationId" 
+        WHERE "status" = 'ON_HAND'
+    `;
+
+    let params: any[] = [];
+
+    if (receiptNumber) {
+        query += ` AND "wh"."receiptNumber" LIKE ?`;
+        params.push(`%${receiptNumber}%`);
+    }
+
+    if (startDate) {
+        query += ` AND "wh"."createdAt" >= CAST(? AS TIMESTAMP)`;
+        params.push(startDate);
+    }
+
+    if (endDate) {
+        query += ` AND "wh"."createdAt" <= CAST(? AS TIMESTAMP)`;
+        params.push(endDate);
+    }
+
+    if (proNumber && proNumber.length > 0) {
+        const placeholders = proNumber.map(() => '?').join(', ');
+        query += ` AND "wh"."proNumber" IN (${placeholders})`;
+        params.push(...proNumber);
+    }
+
+    console.log("Executing getWarehouseReceiptForShipment query:", query, "with params:", params);
+
+
+    const result = await conn.query(query, params) as any[];
+
+    if (!result || result.length === 0) {
+        return null;
+    }
+
+
+    return result.map((row: any) => ({
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+    }));
+}
+
+
+
 export async function getWarehouseReceiptsByVerification(
     conn: Connection,
     verificationId: number
@@ -416,9 +476,22 @@ export async function listWarehouseReceipts(
         totalParams.push(status);
     }
 
+    if (approvalStatus) {
+        totalQuery += ` AND "wr"."approvalStatus" = ?`;
+        totalParams.push(approvalStatus);
+    }
+
     if (receiptNumber) {
         totalQuery += ` AND "wr"."receiptNumber" LIKE ?`;
         totalParams.push(`%${receiptNumber}%`);
+    }
+
+    if (accounting) {
+        totalQuery += ` AND "wr"."accountOnHold" = 'Y'`;
+    }
+
+    if (!accounting) {
+        totalQuery += ` AND "wr"."accountOnHold" = 'N'`;
     }
 
     if (specialConditions.length > 0) {
@@ -843,22 +916,25 @@ export async function createFreightInfo(conn: Connection, freight: Omit<FreightI
         SELECT "freightId"
         FROM FINAL TABLE (
             INSERT INTO ${SCHEMA}."Warehouse_Receipt_Freight_Info"
-            ("receiptId","pieces","type","length","width","height","weight","cubicMeter")
+            ("receiptId", "pieces", "type", "length", "width", "height", "weight", "cubicMeter")
             VALUES (?,?,?,?,?,?,?,?)
         )
         `;
 
-    const params: (string | number)[] = [
+    const params: (string | number | null)[] = [
         Number(freight.receiptId),
         freight.pieces,
         freight.type,
-        freight.length != null && !isNaN(Number(freight.length)) ? Number(freight.length) : 0,
-        freight.width != null && !isNaN(Number(freight.width)) ? Number(freight.width) : 0,
-        freight.height != null && !isNaN(Number(freight.height)) ? Number(freight.height) : 0,
-        freight.weight != null && !isNaN(Number(freight.weight)) ? Number(freight.weight) : 0,
-        freight.cubicMeter != null && !isNaN(Number(freight.cubicMeter)) ? Number(freight.cubicMeter) : 0
+        freight.length != null ? Number(freight.length) : null,
+        freight.width != null ? Number(freight.width) : null,
+        freight.height != null ? Number(freight.height) : null,
+        freight.weight != null ? Number(freight.weight) : null,
+        freight.cubicMeter != null ? Number(freight.cubicMeter) : null
     ];
-    const result = await conn.query(query, params) as any[];
+
+    console.log("Executing createFreightInfo query:", query);
+    console.log("With parameters:", params);
+    const result = await conn.query(query, params as any) as any[];
     return result[0].freightId;
 }
 
@@ -879,9 +955,42 @@ export async function getFreightInfoById(conn: Connection, freightId: number | b
     return result[0] || null;
 }
 
+export async function getFreightInfosForScanByReceipt(
+    conn: Connection,
+    receiptId: number | bigint
+): Promise<Array<{ freightId: number | null; freightBarcodeValue: string | null; isScanned: string | null }>> {
+    const query = `
+        SELECT "freightId", "freightBarcodeValue", "isScanned"
+        FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info"
+        WHERE "receiptId" = ?
+    `;
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+
+    return result.map((row: any) => ({
+        freightId: row.freightId != null ? parseInt(row.freightId) : null,
+        freightBarcodeValue: row.freightBarcodeValue ?? null,
+        isScanned: row.isScanned ?? null,
+    }));
+}
+
+export async function markFreightAsScanned(conn: Connection, freightId: number | bigint): Promise<boolean> {
+    const query = `
+        SELECT 1 AS "updated"
+        FROM FINAL TABLE (
+            UPDATE ${SCHEMA}."Warehouse_Receipt_Freight_Info"
+            SET "isScanned" = 'Y'
+            WHERE "freightId" = ?
+              AND COALESCE("isScanned", 'N') <> 'Y'
+        )
+    `;
+
+    const result = await conn.query(query, [Number(freightId)]) as any[];
+    return Array.isArray(result) && result.length > 0;
+}
+
 export async function updateFreightInfo(conn: Connection, freightId: number | bigint, updates: any): Promise<void> {
     const fields: string[] = [];
-    const params: (string | number)[] = [];
+    const params: (string | number | string[])[] = [];
 
     if (updates.pieces !== undefined) {
         fields.push(`"pieces" = ?`);
@@ -903,13 +1012,17 @@ export async function updateFreightInfo(conn: Connection, freightId: number | bi
         fields.push(`"weight" = ?`);
         params.push(updates.weight);
     }
+    if (updates.isScanned !== undefined) {
+        fields.push(`"isScanned" = ?`);
+        params.push(updates.isScanned === true ? 'Y' : updates.isScanned === false ? 'N' : updates.isScanned);
+    }
 
     if (fields.length === 0) return;
 
     const query = `UPDATE ${SCHEMA}."Warehouse_Receipt_Freight_Info" SET ${fields.join(', ')} WHERE "freightId" = ?`;
     params.push(Number(freightId));
 
-    await conn.query(query, params);
+    await conn.query(query, params as any);
 }
 
 export async function deleteFreightInfo(conn: Connection, freightId: number | bigint): Promise<void> {
