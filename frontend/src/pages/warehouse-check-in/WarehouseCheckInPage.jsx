@@ -38,6 +38,7 @@ import {
   searchWarehouseReceiptProDetail,
   clearReceiptSearch,
   createTempWarehouseReceipt,
+  createTempFreightInfo,
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
   fetchPrintersDropdown,
@@ -126,8 +127,9 @@ const createParcelErrors = () => ({
 });
 
 // ─── Helpers to create blank form / item ────────────────────────────
-const createItem = (id) => ({
+const createItem = (id, freightBarcodeValue = null) => ({
   id,
+  freightBarcodeValue,
   pieces: "",
   type: "",
   length: "",
@@ -918,6 +920,7 @@ export default function WarehouseCheckInPage({
   const barcodeControlsRef = useRef(null);
   const draftRestoredRef = useRef(false);
   const searchLoadingRef = useRef(false);
+  const freightBarcodeRequestKeysRef = useRef(new Set());
   const {
     warehouseReceiptSearch,
     cargoApiDropdown,
@@ -1214,9 +1217,45 @@ export default function WarehouseCheckInPage({
     warehouseReceiptSearch.error,
   ]);
 
-  const handleProceed = (row) => {
+  const getTempFreightBarcodeValue = async () => {
+    const responseBody = await dispatch(createTempFreightInfo());
+    const freightBarcodeValue = responseBody?.data?.freightBarcodeValue;
+
+    if (
+      responseBody?.error ||
+      responseBody?.success === false ||
+      freightBarcodeValue === null ||
+      freightBarcodeValue === undefined
+    ) {
+      throw new Error(
+        responseBody?.message || "Failed to create temporary freight info",
+      );
+    }
+
+    return freightBarcodeValue;
+  };
+
+  const handleProceed = async (row) => {
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
+    const requestKey = `proceed-${key}`;
+    if (freightBarcodeRequestKeysRef.current.has(requestKey)) return;
+    freightBarcodeRequestKeysRef.current.add(requestKey);
+
+    let freightBarcodeValue;
+    try {
+      freightBarcodeValue = await getTempFreightBarcodeValue();
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error?.message || "Failed to create temporary freight info",
+        severity: "error",
+      });
+      return;
+    } finally {
+      freightBarcodeRequestKeysRef.current.delete(requestKey);
+    }
+
     setSavedResults(warehouseReceiptSearch.data);
     const normalizedRow = {
       ...row,
@@ -1255,7 +1294,12 @@ export default function WarehouseCheckInPage({
         receivedBy: "",
         location: "OH",
         sectionCollapsed: false,
-        forms: [createForm(1, null, formDefaults)],
+        forms: [
+          {
+            ...createForm(1, null, formDefaults),
+            items: [createItem(1, freightBarcodeValue)],
+          },
+        ],
       },
     ]);
     setIsSearchDisabled(true);
@@ -1460,6 +1504,17 @@ export default function WarehouseCheckInPage({
       }
 
       const receiptNumber = response?.data?.receiptNumber;
+      let freightBarcodeValue;
+      try {
+        freightBarcodeValue = await getTempFreightBarcodeValue();
+      } catch (error) {
+        setSnackbar({
+          open: true,
+          message: error?.message || "Failed to create temporary freight info",
+          severity: "error",
+        });
+        return;
+      }
       const formDefaults = {
         destination: getRowValue(
           receipt.row,
@@ -1477,7 +1532,14 @@ export default function WarehouseCheckInPage({
           ...p.forms.map((form) =>
             collapseExistingForms ? { ...form, collapsed: true } : form,
           ),
-          createForm(getNextFormId(p.forms), receiptNumber, formDefaults),
+          {
+            ...createForm(
+              getNextFormId(p.forms),
+              receiptNumber,
+              formDefaults,
+            ),
+            items: [createItem(1, freightBarcodeValue)],
+          },
         ],
       }));
       setSnackbar({
@@ -1509,14 +1571,36 @@ export default function WarehouseCheckInPage({
       ),
     }));
 
-  const addItem = (key, formId) =>
-    updateReceipt(key, (p) => ({
-      forms: p.forms.map((f) =>
-        f.id === formId
-          ? { ...f, items: [...f.items, createItem(getNextItemId(f.items))] }
-          : f,
-      ),
-    }));
+  const addItem = async (key, formId) => {
+    const requestKey = `item-${key}-${formId}`;
+    if (freightBarcodeRequestKeysRef.current.has(requestKey)) return;
+    freightBarcodeRequestKeysRef.current.add(requestKey);
+
+    try {
+      const freightBarcodeValue = await getTempFreightBarcodeValue();
+      updateReceipt(key, (p) => ({
+        forms: p.forms.map((f) =>
+          f.id === formId
+            ? {
+                ...f,
+                items: [
+                  ...f.items,
+                  createItem(getNextItemId(f.items), freightBarcodeValue),
+                ],
+              }
+            : f,
+        ),
+      }));
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error?.message || "Failed to create temporary freight info",
+        severity: "error",
+      });
+    } finally {
+      freightBarcodeRequestKeysRef.current.delete(requestKey);
+    }
+  };
 
   const removeItem = (key, formId, itemId) =>
     updateReceipt(key, (p) => ({
@@ -1527,7 +1611,9 @@ export default function WarehouseCheckInPage({
           return {
             ...f,
             items: f.items.map((i) =>
-              i.id === itemId ? { ...createItem(i.id) } : i,
+              i.id === itemId
+                ? { ...createItem(i.id, i.freightBarcodeValue) }
+                : i,
             ),
           };
         }
@@ -1969,6 +2055,7 @@ export default function WarehouseCheckInPage({
       const cubicMeter = calculateRoundedItemCbm(item);
 
       return {
+        freightBarcodeValue: item.freightBarcodeValue,
         pieces: toNumberOrNull(item.pieces),
         type: toValueOrNull(item.type),
         weight: toDecimal10_2NumberOrNull(item.weight),
@@ -4191,6 +4278,18 @@ export default function WarehouseCheckInPage({
                                       >
                                         Item {iIdx + 1}
                                       </Typography>
+                                      {item.freightBarcodeValue != null && (
+                                        <Typography
+                                          sx={{
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            color: "#A22",
+                                            whiteSpace: "nowrap",
+                                          }}
+                                        >
+                                          {item.freightBarcodeValue}
+                                        </Typography>
+                                      )}
                                     </Stack>
 
                                     {/* Pieces */}
