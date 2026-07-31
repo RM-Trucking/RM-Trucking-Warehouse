@@ -42,10 +42,11 @@ const getConsigneeOptionLabel = (option) => {
         option.airlineNumber,
         option.airlineCode,
         option.airlineName,
+        option.airportCode,
         option.city,
         option.state,
     ]
-        .map((value) => value ?? '')
+        .filter((value) => value !== undefined && value !== null && value !== '')
         .join(' - ');
 };
 
@@ -58,9 +59,11 @@ const getShipmentReceiptOptionLabel = (option) => {
 
 NewAirShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
+    rowData: PropTypes.object,
+    viewMode: PropTypes.bool,
 };
 
-export default function NewAirShipmentForm({ handleClose }) {
+export default function NewAirShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const dispatch = useDispatch();
     const {
         customerOptions,
@@ -78,24 +81,38 @@ export default function NewAirShipmentForm({ handleClose }) {
 
     // Define default values based on the Air Shipment image mockup
     const defaultValues = {
-        rmProNo: '',
-        customer: null,
-        station: null,
-        airBill: '',
-        consignee: null,
-        booking: '',
-        customerRefNumber: '',
-        additionalRefNo: '',
-        instructions: '',
-        containers: [{ containerNo: '' }],
-        warehouses: [{ warehouseNo: null, pieces: '', weight: '' }],
+        rmProNo: rowData?.barcodeNumber || '',
+        customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || '' } : null,
+        station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || '' } : null,
+        airBill: rowData?.airBillNumber || '',
+        consignee: rowData ? {
+            airlineId: rowData.consigneeId || rowData.airlineId,
+            airlineName: rowData.airlineName || '',
+            airlineCode: rowData.airlineCode || '',
+            airlineNumber: rowData.airlineNumber || '',
+            airportCode: rowData.airportCode || '',
+        } : null,
+        booking: rowData?.booking || '',
+        customerRefNumber: rowData?.customerRefNumber || '',
+        additionalRefNo: rowData?.additionalRefNumber || '',
+        instructions: rowData?.instructions || '',
+        containers: rowData?.containers?.length
+            ? rowData.containers.map((item) => ({ containerNo: item.container || item.containerNo || '' }))
+            : [{ containerNo: '' }],
+        warehouses: rowData?.receipts?.length
+            ? rowData.receipts.map((item) => ({
+                warehouseNo: item,
+                pieces: item.pieces ?? item.piecesInland ?? '',
+                weight: item.weight ?? item.reWeight ?? '',
+            }))
+            : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
     };
 
     const { control, handleSubmit, watch, setValue, clearErrors } = useForm({ defaultValues });
 
-    const [barcodeValue, setBarcodeValue] = useState('');
-    const [customerSearchValue, setCustomerSearchValue] = useState('');
-    const [stationSearchValue, setStationSearchValue] = useState('');
+    const [barcodeValue, setBarcodeValue] = useState(viewMode ? rowData?.barcodeNumber || '' : '');
+    const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || '');
+    const [stationSearchValue, setStationSearchValue] = useState(rowData?.stationName || rowData?.station || '');
     const [warehouseAlertOpen, setWarehouseAlertOpen] = useState(false);
     const [duplicateReceiptAlertOpen, setDuplicateReceiptAlertOpen] = useState(false);
     const [pendingReceiptSelection, setPendingReceiptSelection] = useState(null);
@@ -259,10 +276,12 @@ export default function NewAirShipmentForm({ handleClose }) {
 
     return (
         <ShipmentFormLayout
-            title="New Air Shipment Form"
+            title={viewMode ? 'View Air Shipment Form' : 'New Air Shipment Form'}
             handleClose={handleClose}
             onSubmit={handleSubmit(onSubmit)}
             submitLoading={createShipmentLoading}
+            showSubmit={!viewMode}
+            readOnly={viewMode}
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false} // Hides the barcode to match the Air mockup

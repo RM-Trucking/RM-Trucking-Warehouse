@@ -14,7 +14,6 @@ import { getShipmentData } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
-import ProofofDelivery from './ProofofDelivery';
 import AirPickupEntryForm from './AirPickupEntryForm';
 import LCLPickupEntryForm from './LCLPickupEntryForm';
 import FCLPickupEntryForm from './FCLPickupEntryForm';
@@ -24,7 +23,7 @@ import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 
 ShipmentTabs.propTypes = {};
 
-export default function ShipmentTabs({ }) {
+export default function ShipmentTabs({ onViewShipment }) {
     const dispatch = useDispatch();
     const navigate = useNavigate();
     
@@ -39,8 +38,6 @@ export default function ShipmentTabs({ }) {
         'scan', 'shipment', 'pickup', 'ofd', 'pod'
     ]);
     // const [selectedRowData, setSelectedRowData] = useState(null);
-    const [openPOD, setOpenPOD] = useState(false);
-    const [selectedPODRow, setSelectedPODRow] = useState(null);
     // const [openPickupFormType, setOpenPickupFormType] = useState(null);
     const [activeForm, setActiveForm] = useState({ type: null, data: null });
     const printRef = useRef();
@@ -98,14 +95,7 @@ export default function ShipmentTabs({ }) {
     };
 
     const handleAction = (rowData) => {
-        console.log('Action clicked for:', rowData.rmNumber);
-        setSelectedPODRow(rowData);
-        setOpenPOD(true);
-    };
-
-    const handleClosePOD = () => {
-        setOpenPOD(false);
-        setSelectedPODRow(null);
+        onViewShipment(rowData);
     };
 
      const handleHandExtended = (rowData) => {
@@ -405,20 +395,6 @@ const handleClosePickupForm = () => {
                 </Box>
             </ErrorBoundary>
 
-            {/* Proof of Delivery Dialog */}
-            <Dialog
-                open={openPOD}
-                onClose={handleClosePOD}
-                maxWidth="lg"
-                fullWidth
-                disableRestoreFocus
-                TransitionProps={{ onExited: () => setSelectedPODRow(null) }}
-            >
-                <DialogContent sx={{ p: 0 }}>
-                    {selectedPODRow && <ProofofDelivery rowData={selectedPODRow} handleClose={handleClosePOD} />}
-                </DialogContent>
-            </Dialog>
-
          <Dialog
     // Open only if we have a type
     open={Boolean(activeForm.type)} 
@@ -460,3 +436,7 @@ const handleClosePickupForm = () => {
         
     );
 }
+
+ShipmentTabs.propTypes = {
+    onViewShipment: PropTypes.func.isRequired,
+};

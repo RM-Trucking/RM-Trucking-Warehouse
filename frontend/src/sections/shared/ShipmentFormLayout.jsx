@@ -15,6 +15,7 @@ export default function ShipmentFormLayout({
     showCancel = true,
     showSubmit = true,
     submitLoading = false,
+    readOnly = false,
     plain = false,
     topInfoPanel,
     stickyHeader = false,
@@ -100,14 +101,16 @@ export default function ShipmentFormLayout({
 
             {/* Render the Grey Top Info Panel if provided */}
             {topInfoPanel && (
-                <Box sx={{ mb: 3 }}>
+                <Box component="fieldset" disabled={readOnly} sx={{ mb: 3, border: 0, p: 0, minWidth: 0 }}>
                     {topInfoPanel}
                 </Box>
             )}
 
             {/* Main Form Content */}
             <Box component="form" sx={{ bgcolor: '#fff', p: 3, borderRadius: 2, border: '1px solid #e0e0e0' }}>
-                {children}
+                <Box component="fieldset" disabled={readOnly} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
+                    {children}
+                </Box>
             </Box>
         </Box>
     );
@@ -124,6 +127,7 @@ ShipmentFormLayout.propTypes = {
     showCancel: PropTypes.bool,
     showSubmit: PropTypes.bool,
     submitLoading: PropTypes.bool,
+    readOnly: PropTypes.bool,
     plain: PropTypes.bool,
     topInfoPanel: PropTypes.node,
     stickyHeader: PropTypes.bool,
