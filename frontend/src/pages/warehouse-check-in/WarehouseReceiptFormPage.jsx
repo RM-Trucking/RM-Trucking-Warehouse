@@ -6091,7 +6091,11 @@ export default function WarehouseReceiptFormPage() {
                             cursor: 'zoom-in',
                           }}
                         />
-                      {!isMobileReceiptForm && isReceiptDetailsEditable && (
+                      {!isMobileReceiptForm && (
+                        isReceiptDetailsEditable ||
+                        Boolean(imageDialog.splitItemContext) ||
+                        Number.isInteger(imageDialog.splitFormIndex)
+                      ) && (
                         <IconButton
                           size="small"
                           title="Remove image"

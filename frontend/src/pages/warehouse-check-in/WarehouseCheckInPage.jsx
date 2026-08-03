@@ -2420,6 +2420,17 @@ export default function WarehouseCheckInPage({
       }
 
       const tempReceiptNumber = tempResponse?.data?.receiptNumber;
+      let freightBarcodeValue;
+      try {
+        freightBarcodeValue = await getTempFreightBarcodeValue();
+      } catch (error) {
+        setSnackbar({
+          open: true,
+          message: error?.message || "Failed to create temporary freight info",
+          severity: "error",
+        });
+        return;
+      }
       const nextReceiptErrors = {
         ...receiptErrors,
         [receiptKey]: {
@@ -2433,10 +2444,13 @@ export default function WarehouseCheckInPage({
           ? {
               ...currentReceipt,
               forms: [
-                createForm(
-                  getNextFormId(currentReceipt.forms),
-                  tempReceiptNumber,
-                ),
+                {
+                  ...createForm(
+                    getNextFormId(currentReceipt.forms),
+                    tempReceiptNumber,
+                  ),
+                  items: [createItem(1, freightBarcodeValue)],
+                },
               ],
             }
           : currentReceipt,
