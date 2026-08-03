@@ -14,6 +14,15 @@ router.get("/", authenticateJWT, async (req: Request, res: Response) => {
     }
 });
 
+router.get("/scan-freight", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.scanFreight(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
@@ -40,5 +49,6 @@ router.put("/:id", authenticateJWT, async (req: Request, res: Response) => {
         if (conn) conn.close();
     }
 });
+
 
 export default router;

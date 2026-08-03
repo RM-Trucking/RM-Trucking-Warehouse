@@ -1302,3 +1302,37 @@ export async function sendWarehouseReceiptToCustomEmail(req: Request, res: Respo
         res.status(500).json({ success: false, message: error.message });
     }
 }
+
+/**
+ * POST /warehouse-receipt/for-shipment
+ * Body: { receiptNumber?: number, startDate?: string, endDate?: string, proNumbers?: string[] }
+ */
+export async function getReceiptForShipment(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const body = (req.body && typeof req.body === 'string') ? tryParseJSON(req.body) : req.body || {};
+
+        const receiptNumber = body.receiptNumber ?? req.query.receiptNumber ?? null;
+        const startDate = body.startDate ?? req.query.startDate ?? undefined;
+        const endDate = body.endDate ?? req.query.endDate ?? undefined;
+        const rawProNumbers = body.proNumbers ?? req.query.proNumbers ?? req.query.proNumber ?? undefined;
+        const proNumbers = normalizeArrayField(rawProNumbers);
+
+        const filters: any = {};
+        if (receiptNumber !== undefined && receiptNumber !== null && receiptNumber !== '') filters.receiptNumber = Number(receiptNumber);
+        if (startDate) filters.startDate = String(startDate);
+        if (endDate) filters.endDate = String(endDate);
+        if (proNumbers && proNumbers.length > 0) filters.proNumbers = proNumbers.map((p: any) => String(p));
+
+        const data = await warehouseReceiptService.getWarehouseReceiptForShipmentService(conn, filters);
+
+        if (!data) {
+            res.status(404).json({ success: false, message: 'No matching receipt found' });
+            return;
+        }
+
+        res.status(200).json({ success: true, data });
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}

@@ -230,7 +230,14 @@ function ScanItem({
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 0.75 }}>
         <Stack direction="row" alignItems="center" spacing={0.7} sx={{ minWidth: 0 }}>
           <Iconify icon="mdi:package-variant-closed" width={18} />
-          <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Item {itemIndex + 1}</Typography>
+          <Stack spacing={0.1}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Item {itemIndex + 1}</Typography>
+            {item.freightBarcodeValue != null && (
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#A22', whiteSpace: 'nowrap' }}>
+                {item.freightBarcodeValue}
+              </Typography>
+            )}
+          </Stack>
           <Button
             size="small"
             variant="contained"

@@ -20,15 +20,13 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "instructions",
                 "createdAt",
                 "createdBy",
-                "updatedAt",
-                "updatedBy",
                 "isCanceled",
                 "isShipped",
                 "isScanned",
                 "pickupEntry",
                 "pickupEntryNumber"
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?)
         )
     `;
 
@@ -46,7 +44,6 @@ export async function createShipment(conn: Connection, payload: any, userId: num
         payload.weight,
         payload.instructions,
         payload.createdBy ?? userId,
-        payload.updatedBy ?? userId,
         "N",
         "N",
         "N",
@@ -87,31 +84,12 @@ export async function updateShipment(conn: Connection, shipmentId: number, paylo
 
 export async function getShipmentById(conn: Connection, shipmentId: number): Promise<any | null> {
     const query = `
-        SELECT
-            "shipmentId",
-            "shipmentType",
-            "barcodeNumber",
-            "customerId",
-            "stationId",
-            "consigneeId",
-            "airBillNumber",
-            "booking",
-            "customerRefNumber",
-            "additionalRefNumber",
-            "pieces",
-            "weight",
-            "instructions",
-            "createdAt",
-            "createdBy",
-            "updatedAt",
-            "updatedBy",
-            "isCanceled",
-            "isShipped",
-            "isScanned",
-            "pickupEntry",
-            "pickupEntryNumber"
-        FROM ${SCHEMA}."Warehouse_Shipment"
-        WHERE "shipmentId" = ?
+        SELECT ws.*, cus."customerName", st."stationName", air."airlineName", air."airlineCode", air."airlineNumber", air."airportCode"
+        FROM ${SCHEMA}."Warehouse_Shipment" as ws
+        LEFT JOIN ${SCHEMA}."Customer" as cus ON ws."customerId" = cus."customerId"
+        LEFT JOIN ${SCHEMA}."Station" as st ON ws."stationId" = st."stationId"
+        LEFT JOIN ${SCHEMA}."Airline" as air ON ws."consigneeId" = air."airlineId"
+        WHERE ws."shipmentId" = ?
     `;
 
     const result = await conn.query(query, [shipmentId]) as any[];
@@ -124,29 +102,7 @@ export async function listShipments(conn: Connection, filters: { searchTerm?: st
     const offset = (page - 1) * pageSize;
 
     let query = `
-        SELECT
-            "shipmentId",
-            "shipmentType",
-            "barcodeNumber",
-            "customerId",
-            "stationId",
-            "consigneeId",
-            "airBillNumber",
-            "booking",
-            "customerRefNumber",
-            "additionalRefNumber",
-            "pieces",
-            "weight",
-            "instructions",
-            "createdAt",
-            "createdBy",
-            "updatedAt",
-            "updatedBy",
-            "isCanceled",
-            "isShipped",
-            "isScanned",
-            "pickupEntry",
-            "pickupEntryNumber"
+        SELECT "shipmentId"
         FROM ${SCHEMA}."Warehouse_Shipment"
         WHERE 1 = 1
     `;
@@ -194,6 +150,9 @@ export async function replaceContainers(conn: Connection, shipmentId: number, co
     }
 
     const query = `INSERT INTO ${SCHEMA}."Warehouse_Shipment_Containers" ("shipmentId", "container") VALUES (?, ?)`;
+
+    console.log(`Inserting ${containers.length} containers for shipmentId ${shipmentId}`);
+
     for (const container of containers) {
         await conn.query(query, [shipmentId, container.container]);
     }
@@ -213,11 +172,51 @@ export async function replaceReceipts(conn: Connection, shipmentId: number, rece
 }
 
 export async function getContainersByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
-    const query = `SELECT "containerId", "shipmentId", "container" FROM ${SCHEMA}."Warehouse_Shipment_Containers" WHERE "shipmentId" = ?`;
+    const query = `SELECT "containerId", "shipmentId", "container" 
+    FROM ${SCHEMA}."Warehouse_Shipment_Containers" 
+    WHERE "shipmentId" = ?`;
     return await conn.query(query, [shipmentId]) as any[];
 }
 
 export async function getReceiptsByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
-    const query = `SELECT "shipmentReceiptId", "shipmentId", "receiptId" FROM ${SCHEMA}."Warehouse_Shipment_Receipts" WHERE "shipmentId" = ?`;
-    return await conn.query(query, [shipmentId]) as any[];
+    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."status", wr."piecesInland", wr."weightInland", wr."reWeight"
+    FROM ${SCHEMA}."Warehouse_Shipment_Receipts" as wsr 
+    LEFT JOIN ${SCHEMA}."Warehouse_Receipt" as wr ON wsr."receiptId" = wr."receiptId"
+    WHERE wsr."shipmentId" = ?`;
+    const result = await conn.query(query, [shipmentId]) as any[];
+
+    return result.map(row => ({
+        ...row,
+        shipmentReceiptId: row.shipmentReceiptId,
+        shipmentId: row.shipmentId,
+        receiptId: parseInt(row.receiptId),
+        receiptNumber: parseInt(row.receiptNumber),
+    }));
+}
+
+
+export async function checkShipmentUniqueFields(
+    conn: Connection,
+    { barcodeNumber }:
+        { barcodeNumber?: string },
+    terminalId?: number // optional, so we can exclude current record on update
+): Promise<string | null> {
+    const queries: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (barcodeNumber) {
+        const normalizedBarcode = String(barcodeNumber).trim();
+        if (normalizedBarcode) {
+            queries.push(`SELECT TRIM("barcodeNumber") AS "conflictField" FROM "${SCHEMA}"."Warehouse_Shipment" WHERE UPPER(TRIM("barcodeNumber")) = UPPER(?) AND "shipmentId" <> ?`);
+            params.push(normalizedBarcode, terminalId ?? -1);
+        }
+    }
+
+    if (queries.length === 0) return null;
+
+    const query = queries.join(' UNION ALL ');
+
+    const result = await conn.query(query, params) as { conflictField: string }[];
+
+    return result.length ? result[0].conflictField : null;
 }

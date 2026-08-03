@@ -162,6 +162,7 @@ export interface UpdateWarehouseReceipt {
 export interface FreightInfo {
     freightId: number | bigint;
     receiptId: number | bigint;
+    freightBarcodeValue: string;
     pieces: number;
     type: string;
     length?: number;
@@ -169,6 +170,7 @@ export interface FreightInfo {
     height?: number;
     weight?: number;
     cubicMeter?: number;
+    isScanned: 'Y' | 'N';
 }
 
 export interface CreateFreightInfo {

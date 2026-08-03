@@ -1584,6 +1584,7 @@ export default function WarehouseRecieptPage() {
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
           freightId: item.freightId,
+          freightBarcodeValue: item.freightBarcodeValue,
           pieces: item.pieces,
           type: item.type,
           length: item.length,
@@ -1902,8 +1903,9 @@ export default function WarehouseRecieptPage() {
                   <TextField
                     variant="standard"
                     label="Dim Factor"
-                    value={getRateDisplayValue(rateInformation.dimFactor)}
+                    value={rateInformation.dimFactor ?? ''}
                     onChange={(event) => handleAccountingRateChange('dimFactor', event.target.value)}
+                    inputProps={{ inputMode: 'decimal' }}
                     InputProps={{ readOnly: hasFlatRate }}
                     required={!hasFlatRate}
                     error={accountingRatesDialog.dimFactorError}
@@ -1917,8 +1919,9 @@ export default function WarehouseRecieptPage() {
                   <TextField
                     variant="standard"
                     label="Base Rate"
-                    value={getRateDisplayValue(rateInformation.baseRate)}
+                    value={rateInformation.baseRate ?? ''}
                     onChange={(event) => handleAccountingRateChange('baseRate', event.target.value)}
+                    inputProps={{ inputMode: 'decimal' }}
                     InputProps={{ readOnly: hasFlatRate }}
                     required={!hasFlatRate}
                     error={accountingRatesDialog.baseRateError}
@@ -1944,8 +1947,9 @@ export default function WarehouseRecieptPage() {
                   <TextField
                     variant="standard"
                     label="Flat Rate"
-                    value={getRateDisplayValue(rateInformation.finalRate)}
+                    value={rateInformation.finalRate ?? ''}
                     onChange={(event) => handleAccountingRateChange('finalRate', event.target.value)}
+                    inputProps={{ inputMode: 'decimal' }}
                     size="small"
                     required={hasFlatRate}
                     error={Boolean(accountingRatesDialog.flatRateError)}

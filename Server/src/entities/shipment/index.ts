@@ -48,5 +48,11 @@ export type UpdateWarehouseShipment = Partial<Omit<WarehouseShipment, 'shipmentI
 
 export interface WarehouseShipmentWithRelations extends WarehouseShipment {
     containers: WarehouseShipmentContainers[];
-    receipts: WarehouseShipmentReceipts[];
+    receipts: WarehouseShipmentReceipts & {
+        receiptNumber: string;
+        status: string;
+        piecesInland: number;
+        weightInland: number;
+        reWeight: number;
+    }[];
 }

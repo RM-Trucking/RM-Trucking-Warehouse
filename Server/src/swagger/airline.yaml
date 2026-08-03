@@ -1,0 +1,71 @@
+openapi: 3.0.0
+info:
+  title: Airline API
+  version: 1.0.0
+  description: API documentation for Airline dropdown endpoints
+
+tags:
+  - name: Airline
+    description: Operations related to airline data
+
+paths:
+  /api/maintenance/airline/export-dropdown:
+    get:
+      tags:
+        - Airline
+      summary: Get airlines for export dropdown
+      description: Returns a list of airlines with scenarioType 'EXPORT', ordered by name.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+          required: false
+          description: Optional search term to filter airline names (case-insensitive)
+      responses:
+        "200":
+          description: Successful response with airline dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        airlineId:
+                          type: integer
+                          example: 12
+                        airlineName:
+                          type: string
+                          example: "Air Example"
+                        iataCode:
+                          type: string
+                          example: "AE"
+        "400":
+          description: Failed to fetch airline dropdown data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Database connection error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
