@@ -69,7 +69,7 @@ const ConditionRow = ({ label, checked, value, columns = '42% 58%', multiline = 
   </Box>
 );
 
-const SplitItemTables = ({ rows, pageIndex }) => (
+const SplitItemTables = ({ rows }) => (
   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.7 }}>
     {[rows.slice(0, 10), rows.slice(10, 20)].map((tableRows, tableIndex) => (
       <Box key={tableIndex} sx={{ border: '1px solid #aaa' }}>
@@ -77,10 +77,9 @@ const SplitItemTables = ({ rows, pageIndex }) => (
           <thead><tr><th>Item</th><th>Pcs</th><th>Type</th><th>Length</th><th>Width</th><th>Height</th><th>Weight</th><th style={{ fontSize: '8.75px' }}>CBM(m³)</th></tr></thead>
           <tbody>
             {tableRows.map((item, rowIndex) => {
-              const itemNumber = pageIndex * ROWS_PER_PAGE + tableIndex * 10 + rowIndex + 1;
               return (
                 <tr key={rowIndex} style={{ height: '22px' }}>
-                  <td style={{ fontWeight: 700 }}>{!item.isEmpty ? itemNumber : ''}</td>
+                  <td style={{ fontWeight: 700 }}>{!item.isEmpty ? valueOrBlank(item.freightBarcodeValue) : ''}</td>
                   <td>{valueOrBlank(item.pieces)}</td>
                   <td>{valueOrBlank(item.type)}</td>
                   <td>{formatDecimalValue(item.length)}</td>
@@ -186,7 +185,7 @@ function ReceiptPage({ receipt, rows, allRows, pageIndex, totalPages }) {
           </Box>
         </Box>
 
-        <SplitItemTables rows={rows} pageIndex={pageIndex} />
+        <SplitItemTables rows={rows} />
 
         {/* Legacy full-width table retained only as a non-rendered reference. */}
         <Box sx={{ display: 'none', border: '1px solid #aaa' }}>
@@ -195,7 +194,7 @@ function ReceiptPage({ receipt, rows, allRows, pageIndex, totalPages }) {
             <tbody>
               {Array.from({ length: ROWS_PER_PAGE }, (_, index) => rows[index] || {}).map((item, index) => (
                 <tr key={index} style={{ height: '18px' }}>
-                  <td style={{ fontWeight: 700 }}>{item.freightId || !item.isEmpty ? pageIndex * ROWS_PER_PAGE + index + 1 : ''}</td>
+                  <td style={{ fontWeight: 700 }}>{!item.isEmpty ? valueOrBlank(item.freightBarcodeValue) : ''}</td>
                   <td>{valueOrBlank(item.pieces)}</td>
                   <td>{valueOrBlank(item.type)}</td>
                   <td>{formatDecimalValue(item.length)}</td>

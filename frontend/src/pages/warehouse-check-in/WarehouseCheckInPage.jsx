@@ -4263,33 +4263,35 @@ export default function WarehouseCheckInPage({
                                       direction="row"
                                       alignItems="center"
                                       spacing={0.5}
-                                      sx={{ minWidth: 64, pt: "22px" }}
+                                      sx={{ minWidth: 90, pt: "22px" }}
                                     >
                                       <Iconify
                                         icon="mdi:package-variant-closed"
                                         width={22}
                                         sx={{ color: "#555" }}
                                       />
-                                      <Typography
-                                        sx={{
-                                          fontSize: 12,
-                                          whiteSpace: "nowrap",
-                                        }}
-                                      >
-                                        Item {iIdx + 1}
-                                      </Typography>
-                                      {item.freightBarcodeValue != null && (
+                                      <Stack spacing={0.1}>
                                         <Typography
                                           sx={{
                                             fontSize: 12,
-                                            fontWeight: 700,
-                                            color: "#A22",
                                             whiteSpace: "nowrap",
                                           }}
                                         >
-                                          {item.freightBarcodeValue}
+                                          Item {iIdx + 1}
                                         </Typography>
-                                      )}
+                                        {item.freightBarcodeValue != null && (
+                                          <Typography
+                                            sx={{
+                                              fontSize: 12,
+                                              fontWeight: 700,
+                                              color: "#A22",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                          >
+                                            {item.freightBarcodeValue}
+                                          </Typography>
+                                        )}
+                                      </Stack>
                                     </Stack>
 
                                     {/* Pieces */}

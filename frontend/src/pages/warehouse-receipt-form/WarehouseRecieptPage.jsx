@@ -1584,6 +1584,7 @@ export default function WarehouseRecieptPage() {
       ? receipt.freightInformation.map((item, index) => ({
           id: item.freightId || index + 1,
           freightId: item.freightId,
+          freightBarcodeValue: item.freightBarcodeValue,
           pieces: item.pieces,
           type: item.type,
           length: item.length,
