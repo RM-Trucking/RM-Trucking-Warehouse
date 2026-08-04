@@ -40,7 +40,6 @@ import { searchCustomers } from '../../redux/slices/enroute';
 import { getIdVerificationData } from '../../redux/slices/idVerification';
 import {
   clearWarehouseCheckInDraft,
-  createTempFreightInfo,
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
@@ -1249,7 +1248,6 @@ export default function WarehouseReceiptFormPage() {
   const [ratesNoticeOpen, setRatesNoticeOpen] = useState(false);
   const [statusHistoryDialogOpen, setStatusHistoryDialogOpen] = useState(false);
   const [statusHistoryLinkLoadingId, setStatusHistoryLinkLoadingId] = useState('');
-  const [addFreightItemLoading, setAddFreightItemLoading] = useState(false);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [splitMailDialogOpen, setSplitMailDialogOpen] = useState(false);
   const [splitMailFormIndex, setSplitMailFormIndex] = useState(null);
@@ -1273,7 +1271,6 @@ export default function WarehouseReceiptFormPage() {
   const [splitTempReceiptLoading, setSplitTempReceiptLoading] = useState(false);
   const [splitSubmitLoading, setSplitSubmitLoading] = useState(false);
   const [splitCargoApiLoadingItems, setSplitCargoApiLoadingItems] = useState({});
-  const [splitItemBarcodeLoadingFormIndex, setSplitItemBarcodeLoadingFormIndex] = useState(null);
   const [splitPackageDropdownAnchor, setSplitPackageDropdownAnchor] = useState(null);
   const [splitPackageDropdownContext, setSplitPackageDropdownContext] = useState({ formIndex: null, itemId: null });
   const [splitItemUploadContext, setSplitItemUploadContext] = useState({ formIndex: null, itemId: null });
@@ -1483,28 +1480,7 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
-  const handleAddActiveFreightItem = async () => {
-    if (addFreightItemLoading) return;
-    setAddFreightItemLoading(true);
-
-    const response = await dispatch(createTempFreightInfo());
-    const freightBarcodeValue = response?.data?.freightBarcodeValue;
-
-    if (
-      response?.error ||
-      response?.success === false ||
-      freightBarcodeValue === null ||
-      freightBarcodeValue === undefined
-    ) {
-      setSnackbar({
-        open: true,
-        message: response?.message || 'Failed to create temporary freight info',
-        severity: 'error',
-      });
-      setAddFreightItemLoading(false);
-      return;
-    }
-
+  const handleAddActiveFreightItem = () => {
     setReceiptForms((prev) =>
       prev.map((form) => {
         if (form.id !== activeTab) return form;
@@ -1517,12 +1493,11 @@ export default function WarehouseReceiptFormPage() {
           ...form,
           items: [
             ...(form.items || []),
-            { id: nextId, freightId: 0, freightBarcodeValue, pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
+            { id: nextId, freightId: 0, freightBarcodeValue: '', pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
           ],
         };
       })
     );
-    setAddFreightItemLoading(false);
   };
 
   const updateActiveFreightItemField = (itemId, field, value) => {
@@ -1809,31 +1784,14 @@ export default function WarehouseReceiptFormPage() {
     }
   };
 
-  const addSplitRecalculateItem = async (formIndex) => {
-    if (splitItemBarcodeLoadingFormIndex !== null) return;
-    setSplitItemBarcodeLoadingFormIndex(formIndex);
-
-    const response = await dispatch(createTempFreightInfo());
-    const freightBarcodeValue = response?.data?.freightBarcodeValue;
-
-    if (response?.error || response?.success === false || freightBarcodeValue == null) {
-      setSnackbar({
-        open: true,
-        message: response?.message || 'Failed to create temporary freight info',
-        severity: 'error',
-      });
-      setSplitItemBarcodeLoadingFormIndex(null);
-      return;
-    }
-
+  const addSplitRecalculateItem = (formIndex) => {
     setSplitRecalculateFormItems((prev) =>
       prev.map((items, index) =>
         index === formIndex
-          ? [...items, createSplitRecalculateItem(getNextSplitItemId(items), freightBarcodeValue)]
+          ? [...items, createSplitRecalculateItem(getNextSplitItemId(items), '')]
           : items
       )
     );
-    setSplitItemBarcodeLoadingFormIndex(null);
   };
 
   const removeSplitRecalculateItem = (formIndex, itemId) => {
@@ -2127,7 +2085,7 @@ export default function WarehouseReceiptFormPage() {
         const existingImages = getFreightDetailImageNames(item.images);
 
         return {
-          freightBarcodeValue: item.freightBarcodeValue,
+          freightBarcodeValue: '',
           pieces: toNumberOrNull(item.pieces),
           type: toValueOrNull(item.type),
           weight: toDecimal10_2NumberOrNull(item.weight),
@@ -2230,7 +2188,7 @@ export default function WarehouseReceiptFormPage() {
 
       return {
         freightId: toNumberOrNull(item.freightId) || 0,
-        freightBarcodeValue: item.freightBarcodeValue,
+        freightBarcodeValue: '',
         pieces: toNumberOrNull(item.pieces),
         type: toValueOrNull(item.type),
         length: toDecimal10_2NumberOrNull(item.length),
@@ -3005,53 +2963,20 @@ export default function WarehouseReceiptFormPage() {
     const receiptNumber = await createSplitTempReceiptNumber();
     if (!receiptNumber) return;
 
-    setSplitTempReceiptLoading(true);
-    const freightResponse = await dispatch(createTempFreightInfo());
-    const freightBarcodeValue = freightResponse?.data?.freightBarcodeValue;
-
-    if (freightResponse?.error || freightResponse?.success === false || freightBarcodeValue == null) {
-      setSnackbar({
-        open: true,
-        message: freightResponse?.message || 'Failed to create temporary freight info',
-        severity: 'error',
-      });
-      setSplitTempReceiptLoading(false);
-      return;
-    }
-
     setSplitTempReceiptNumbers([receiptNumber]);
     setSplitFormDetails([createEmptySplitFormDetails(activeForm.row)]);
     setSplitExistingFormItems([[]]);
-    setSplitRecalculateFormItems([[createSplitRecalculateItem(1, freightBarcodeValue)]]);
+    setSplitRecalculateFormItems([[createSplitRecalculateItem(1, '')]]);
     setSplitRecalculateItemErrors({});
     setSplitExistingItemErrors({});
     setSplitExistingFormErrors({});
     setSplitDimensionMode('recalculate');
     setSplitStep(1);
-    setSplitTempReceiptLoading(false);
   };
 
   const handleAddSplitForm = async () => {
     const receiptNumber = await createSplitTempReceiptNumber();
     if (!receiptNumber) return;
-
-    let freightBarcodeValue = null;
-
-    if (splitDimensionMode === 'recalculate') {
-      setSplitTempReceiptLoading(true);
-      const freightResponse = await dispatch(createTempFreightInfo());
-      freightBarcodeValue = freightResponse?.data?.freightBarcodeValue;
-
-      if (freightResponse?.error || freightResponse?.success === false || freightBarcodeValue == null) {
-        setSnackbar({
-          open: true,
-          message: freightResponse?.message || 'Failed to create temporary freight info',
-          severity: 'error',
-        });
-        setSplitTempReceiptLoading(false);
-        return;
-      }
-    }
 
     setSplitTempReceiptNumbers((prev) => [...prev, receiptNumber]);
     setSplitFormDetails((prev) => [...prev, createEmptySplitFormDetails(activeForm.row)]);
@@ -3060,7 +2985,7 @@ export default function WarehouseReceiptFormPage() {
     setSplitExistingFormItems((prev) => [...prev, []]);
     setSplitRecalculateFormItems((prev) => [
       ...prev,
-      [createSplitRecalculateItem(1, freightBarcodeValue)],
+      [createSplitRecalculateItem(1, '')],
     ]);
     setSplitRecalculateItemErrors({});
     setSplitExistingFormErrors({});
@@ -3987,12 +3912,9 @@ export default function WarehouseReceiptFormPage() {
                     variant="contained"
                     size="small"
                     onClick={() => addSplitRecalculateItem(formIndex)}
-                    disabled={splitItemBarcodeLoadingFormIndex !== null}
                     sx={{ ...actionBtnSx, mt: 1.2, height: 24, minWidth: 74, fontSize: 11 }}
                   >
-                    {splitItemBarcodeLoadingFormIndex === formIndex
-                      ? <CircularProgress size={14} color="inherit" />
-                      : 'Add Item'}
+                    Add Item
                   </Button>
                 </Box>
               );
@@ -4714,7 +4636,7 @@ export default function WarehouseReceiptFormPage() {
                   {splitFormItems.map(({ item, originalIndex }, index) => (
                     <TableRow key={`${item.id || originalIndex}-${index}`}>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
-                        {item.freightBarcodeValue ?? ''}
+                        {item.freightBarcodeValue || String(index + 1)}
                       </TableCell>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
                         {isWarehouseReceiptEdit && isReceiptDetailsEditable ? (
@@ -5596,10 +5518,9 @@ export default function WarehouseReceiptFormPage() {
                     variant="contained"
                     size="small"
                     onClick={handleAddActiveFreightItem}
-                    disabled={addFreightItemLoading}
                     sx={{ ...actionBtnSx, height: 26, minWidth: 86, fontSize: 11 }}
                   >
-                    {addFreightItemLoading ? <CircularProgress size={14} color="inherit" /> : 'Add Items'}
+                    Add Items
                   </Button>
                 </Stack>
               )}
