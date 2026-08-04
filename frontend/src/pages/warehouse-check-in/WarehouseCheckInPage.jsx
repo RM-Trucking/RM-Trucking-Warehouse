@@ -38,7 +38,6 @@ import {
   searchWarehouseReceiptProDetail,
   clearReceiptSearch,
   createTempWarehouseReceipt,
-  createTempFreightInfo,
   fetchCargoApiDropdown,
   fetchCargoApiDimensions,
   fetchPrintersDropdown,
@@ -920,7 +919,6 @@ export default function WarehouseCheckInPage({
   const barcodeControlsRef = useRef(null);
   const draftRestoredRef = useRef(false);
   const searchLoadingRef = useRef(false);
-  const freightBarcodeRequestKeysRef = useRef(new Set());
   const {
     warehouseReceiptSearch,
     cargoApiDropdown,
@@ -1217,44 +1215,9 @@ export default function WarehouseCheckInPage({
     warehouseReceiptSearch.error,
   ]);
 
-  const getTempFreightBarcodeValue = async () => {
-    const responseBody = await dispatch(createTempFreightInfo());
-    const freightBarcodeValue = responseBody?.data?.freightBarcodeValue;
-
-    if (
-      responseBody?.error ||
-      responseBody?.success === false ||
-      freightBarcodeValue === null ||
-      freightBarcodeValue === undefined
-    ) {
-      throw new Error(
-        responseBody?.message || "Failed to create temporary freight info",
-      );
-    }
-
-    return freightBarcodeValue;
-  };
-
   const handleProceed = async (row) => {
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
-    const requestKey = `proceed-${key}`;
-    if (freightBarcodeRequestKeysRef.current.has(requestKey)) return;
-    freightBarcodeRequestKeysRef.current.add(requestKey);
-
-    let freightBarcodeValue;
-    try {
-      freightBarcodeValue = await getTempFreightBarcodeValue();
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: error?.message || "Failed to create temporary freight info",
-        severity: "error",
-      });
-      return;
-    } finally {
-      freightBarcodeRequestKeysRef.current.delete(requestKey);
-    }
 
     setSavedResults(warehouseReceiptSearch.data);
     const normalizedRow = {
@@ -1297,7 +1260,7 @@ export default function WarehouseCheckInPage({
         forms: [
           {
             ...createForm(1, null, formDefaults),
-            items: [createItem(1, freightBarcodeValue)],
+            items: [createItem(1, "")],
           },
         ],
       },
@@ -1504,17 +1467,6 @@ export default function WarehouseCheckInPage({
       }
 
       const receiptNumber = response?.data?.receiptNumber;
-      let freightBarcodeValue;
-      try {
-        freightBarcodeValue = await getTempFreightBarcodeValue();
-      } catch (error) {
-        setSnackbar({
-          open: true,
-          message: error?.message || "Failed to create temporary freight info",
-          severity: "error",
-        });
-        return;
-      }
       const formDefaults = {
         destination: getRowValue(
           receipt.row,
@@ -1538,7 +1490,7 @@ export default function WarehouseCheckInPage({
               receiptNumber,
               formDefaults,
             ),
-            items: [createItem(1, freightBarcodeValue)],
+            items: [createItem(1, "")],
           },
         ],
       }));
@@ -1571,35 +1523,17 @@ export default function WarehouseCheckInPage({
       ),
     }));
 
-  const addItem = async (key, formId) => {
-    const requestKey = `item-${key}-${formId}`;
-    if (freightBarcodeRequestKeysRef.current.has(requestKey)) return;
-    freightBarcodeRequestKeysRef.current.add(requestKey);
-
-    try {
-      const freightBarcodeValue = await getTempFreightBarcodeValue();
-      updateReceipt(key, (p) => ({
-        forms: p.forms.map((f) =>
-          f.id === formId
-            ? {
-                ...f,
-                items: [
-                  ...f.items,
-                  createItem(getNextItemId(f.items), freightBarcodeValue),
-                ],
-              }
-            : f,
-        ),
-      }));
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: error?.message || "Failed to create temporary freight info",
-        severity: "error",
-      });
-    } finally {
-      freightBarcodeRequestKeysRef.current.delete(requestKey);
-    }
+  const addItem = (key, formId) => {
+    updateReceipt(key, (p) => ({
+      forms: p.forms.map((f) =>
+        f.id === formId
+          ? {
+              ...f,
+              items: [...f.items, createItem(getNextItemId(f.items), "")],
+            }
+          : f,
+      ),
+    }));
   };
 
   const removeItem = (key, formId, itemId) =>
@@ -2055,7 +1989,7 @@ export default function WarehouseCheckInPage({
       const cubicMeter = calculateRoundedItemCbm(item);
 
       return {
-        freightBarcodeValue: item.freightBarcodeValue,
+        freightBarcodeValue: "",
         pieces: toNumberOrNull(item.pieces),
         type: toValueOrNull(item.type),
         weight: toDecimal10_2NumberOrNull(item.weight),
@@ -2420,17 +2354,6 @@ export default function WarehouseCheckInPage({
       }
 
       const tempReceiptNumber = tempResponse?.data?.receiptNumber;
-      let freightBarcodeValue;
-      try {
-        freightBarcodeValue = await getTempFreightBarcodeValue();
-      } catch (error) {
-        setSnackbar({
-          open: true,
-          message: error?.message || "Failed to create temporary freight info",
-          severity: "error",
-        });
-        return;
-      }
       const nextReceiptErrors = {
         ...receiptErrors,
         [receiptKey]: {
@@ -2449,7 +2372,7 @@ export default function WarehouseCheckInPage({
                     getNextFormId(currentReceipt.forms),
                     tempReceiptNumber,
                   ),
-                  items: [createItem(1, freightBarcodeValue)],
+                  items: [createItem(1, "")],
                 },
               ],
             }
@@ -2912,6 +2835,14 @@ export default function WarehouseCheckInPage({
   };
 
   const completeHandleNext = (nextErrors, receiptForms = []) => {
+    const numberedReceiptForms = receiptForms.map((form) => ({
+      ...form,
+      items: (form.items || []).map((item, index) => ({
+        ...item,
+        freightBarcodeValue: String(index + 1),
+      })),
+    }));
+
     dispatch(
       setWarehouseCheckInDraft(
         {
@@ -2926,14 +2857,14 @@ export default function WarehouseCheckInPage({
           parcelForm,
           parcelErrors,
           proceededReceipts,
-          ...(receiptForms.length ? { receiptForms } : {}),
+          ...(numberedReceiptForms.length ? { receiptForms: numberedReceiptForms } : {}),
         },
         draftKey,
       ),
     );
 
     navigate(PATH_DASHBOARD.warehouseReceiptForm, {
-      state: { receipts: proceededReceipts, receiptForms, title, draftKey },
+      state: { receipts: proceededReceipts, receiptForms: numberedReceiptForms, title, draftKey },
     });
   };
 
@@ -3092,7 +3023,7 @@ export default function WarehouseCheckInPage({
           currentReceiptForms,
           false,
         )
-      : [];
+      : currentReceiptForms;
 
     completeHandleNext(nextErrors, receiptForms);
   };
