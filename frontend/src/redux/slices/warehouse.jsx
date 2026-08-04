@@ -353,20 +353,6 @@ export function createTempWarehouseReceipt(payload) {
     };
 }
 
-// Create temporary freight info and return its barcode value
-export function createTempFreightInfo() {
-    return async () => {
-        try {
-            const response = await axios.get('/warehouse-receipt/freight-info-temp');
-            return response.data;
-        } catch (error) {
-            console.error('Error creating temporary freight info:', error);
-            const errorMessage = error.response?.data?.message || error.message || error.error || 'Failed to create temporary freight info';
-            return { error: true, message: errorMessage };
-        }
-    };
-}
-
 // Submit Warehouse Receipt batch
 export function submitWarehouseReceiptBatch(payload, options = {}) {
     return async () => {
