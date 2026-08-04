@@ -127,16 +127,12 @@ export default function IdVerificationFormPage() {
   // Fetch data when pagination/pageSize changes
  // Fetch data when pagination/pageSize changes
   useEffect(() => {
-    const requestFilters = getRequestFilterParams(appliedFilterParams, searchValue);
-
     dispatch(getIdVerificationData({
       page: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
-      filters: requestFilters,
-      filterLogic: Object.keys(requestFilters).length ? appliedLogicOperator.toUpperCase() : '',
     }));
     // ❌ REMOVED: Do not set isInitialMount.current = false here.
-  }, [paginationModel.page, paginationModel.pageSize, appliedFilterParams, appliedLogicOperator, searchValue]);
+  }, [dispatch, paginationModel.page, paginationModel.pageSize]);
 
   // Debounced search effect - skip on initial mount
   useEffect(() => {
