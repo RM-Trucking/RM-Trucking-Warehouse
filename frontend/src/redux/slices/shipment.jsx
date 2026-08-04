@@ -12,6 +12,8 @@ const initialState = {
     shipmentSuccess: false,
     createShipmentLoading: false,
     createShipmentError: null,
+    scanFreightLoading: false,
+    scanFreightError: null,
     shipmentData: [],
     shipmentSearchStr: '',
     exportAirlineOptions: [],
@@ -84,6 +86,28 @@ const slice = createSlice({
         createShipmentError(state, action) {
             state.createShipmentLoading = false;
             state.createShipmentError = action.payload;
+        },
+        startScanFreight(state) {
+            state.scanFreightLoading = true;
+            state.scanFreightError = null;
+        },
+        scanFreightSuccess(state, action) {
+            state.scanFreightLoading = false;
+            state.scanFreightError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        scanFreightError(state, action) {
+            state.scanFreightLoading = false;
+            state.scanFreightError = action.payload;
         },
         // get shipment success
         getShipmentDataSuccess(state, action) {
@@ -167,6 +191,24 @@ export function postShipment(payload) {
                 error?.error ||
                 (typeof error === 'string' ? error : 'Failed to create shipment');
             dispatch(slice.actions.createShipmentError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function scanShipmentFreight({ id, barcodeValue }) {
+    return async () => {
+        dispatch(slice.actions.startScanFreight());
+        try {
+            const response = await axios.post('shipment/scan-freight', null, {
+                params: { id, barcodeValue },
+            });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.scanFreightSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to scan freight';
+            dispatch(slice.actions.scanFreightError(message));
             return { success: false, error: message };
         }
     };

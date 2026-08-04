@@ -14,14 +14,36 @@ import { getShipmentData } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
-import AirPickupEntryForm from './AirPickupEntryForm';
-import LCLPickupEntryForm from './LCLPickupEntryForm';
-import FCLPickupEntryForm from './FCLPickupEntryForm';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
+import ShipmentScanStatus from './ShipmentScanStatus';
 
 // ----------------------------------------------------------------------
 
 ShipmentTabs.propTypes = {};
+
+function ScanActionIcon({ width = 20 }) {
+    return (
+        <Box
+            component="svg"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            sx={{ width, height: width, display: 'block' }}
+        >
+            <path
+                d="M5 7V4h14v3M3 12h18M5 17v3h14v-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+            />
+        </Box>
+    );
+}
+
+ScanActionIcon.propTypes = {
+    width: PropTypes.number,
+};
 
 export default function ShipmentTabs({ onViewShipment }) {
     const dispatch = useDispatch();
@@ -98,18 +120,9 @@ export default function ShipmentTabs({ onViewShipment }) {
         onViewShipment(rowData);
     };
 
-     const handleHandExtended = (rowData) => {
-    const typeMap = {
-        active: 'air',
-        inactive: 'lcl',
-        incomplete: 'fcl',
+    const handleHandExtended = (rowData) => {
+        setActiveForm({ type: 'scanStatus', data: rowData });
     };
-
-    setActiveForm({
-        type: typeMap[currentTab] || null,
-        data: rowData
-    });
-};
 
 const handleClosePickupForm = () => {
     setActiveForm({ type: null, data: null });
@@ -268,10 +281,21 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
-                            onClick={(e) => { e.stopPropagation(); handleFileDocumentBox(params.row); }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (params.row.isScanned === 'N') {
+                                    handleHandExtended(params.row);
+                                } else {
+                                    handleFileDocumentBox(params.row);
+                                }
+                            }}
                             sx={{ color: '#A22' }}
                         >
-                            <Iconify icon="mdi:file-document-box" width={20} />
+                            {params.row.isScanned === 'N' ? (
+                                <ScanActionIcon width={20} />
+                            ) : (
+                                <Iconify icon="mdi:file-document-box" width={20} />
+                            )}
                         </IconButton>
                     </Box>
                 );
@@ -405,22 +429,10 @@ const handleClosePickupForm = () => {
     disableRestoreFocus 
 >
     <DialogContent sx={{ p: 0 }}>
-        {activeForm.type === 'air' && (
-            <AirPickupEntryForm 
-                handleClose={handleClosePickupForm} 
-                rowData={activeForm.data} 
-            />
-        )}
-        {activeForm.type === 'lcl' && (
-            <LCLPickupEntryForm 
-                handleClose={handleClosePickupForm} 
-                rowData={activeForm.data} 
-            />
-        )}
-        {activeForm.type === 'fcl' && (
-            <FCLPickupEntryForm 
-                handleClose={handleClosePickupForm} 
-                rowData={activeForm.data} 
+        {activeForm.type === 'scanStatus' && (
+            <ShipmentScanStatus
+                shipment={activeForm.data}
+                onClose={handleClosePickupForm}
             />
         )}
     </DialogContent>

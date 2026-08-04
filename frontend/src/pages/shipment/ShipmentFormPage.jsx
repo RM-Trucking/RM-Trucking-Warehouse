@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
   DialogContent
@@ -21,6 +22,12 @@ import OceanFCLForm from './OceanFCLForm';
 // ----------------------------------------------------------------------
 
 export default function ShipmentFormPage() {
+  const location = useLocation();
+
+  return <ShipmentFormPageContent key={location.state?.shipmentGridResetKey || 'shipment-form'} />;
+}
+
+function ShipmentFormPageContent() {
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [showAirShipmentForm, setShowAirShipmentForm] = useState(false);
   const [showOceanLCLForm, setShowOceanLCLForm] = useState(false);

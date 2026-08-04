@@ -108,7 +108,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
     };
 
-    const { control, handleSubmit, watch, setValue, clearErrors } = useForm({ defaultValues });
+    const { control, handleSubmit, setValue, clearErrors } = useForm({ defaultValues });
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? rowData?.barcodeNumber || '' : '');
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || '');
@@ -119,6 +119,9 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const [submitError, setSubmitError] = useState('');
     const [warehouseReceiptError, setWarehouseReceiptError] = useState(false);
     const [receiptInputValues, setReceiptInputValues] = useState({});
+    const [savedContainerRows, setSavedContainerRows] = useState(() => new Set());
+    const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
+    const [rowSaveError, setRowSaveError] = useState('');
     const receiptSearchTimers = useRef({});
 
     const rmProValue = useWatch({ control, name: 'rmProNo' });
@@ -232,11 +235,56 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
         name: "warehouses"
     });
 
-    const watchedWarehouses = watch('warehouses');
+    const watchedWarehouses = useWatch({ control, name: 'warehouses' });
+    const watchedContainers = useWatch({ control, name: 'containers' });
     const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
     const totalWeight = watchedWarehouses.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
 
+    const markContainerUnsaved = (rowId) => {
+        setSavedContainerRows((previous) => {
+            const next = new Set(previous);
+            next.delete(rowId);
+            return next;
+        });
+    };
+
+    const markWarehouseUnsaved = (rowId) => {
+        setSavedWarehouseRows((previous) => {
+            const next = new Set(previous);
+            next.delete(rowId);
+            return next;
+        });
+    };
+
+    const saveContainerRow = (rowId, index) => {
+        if (!String(watchedContainers[index]?.containerNo || '').trim()) {
+            setRowSaveError('Enter a Container number before saving the row.');
+            return;
+        }
+        setSavedContainerRows((previous) => new Set(previous).add(rowId));
+    };
+
+    const saveWarehouseRow = (rowId, index) => {
+        if (!watchedWarehouses[index]?.warehouseNo?.receiptId) {
+            setRowSaveError('Select a Warehouse receipt before saving the row.');
+            return;
+        }
+        setSavedWarehouseRows((previous) => new Set(previous).add(rowId));
+    };
+
     const onSubmit = async (data) => {
+        const hasUnsavedContainerRows = containerFields.some((item) => !savedContainerRows.has(item.id));
+        const hasUnsavedWarehouseRows = warehouseFields.some((item) => !savedWarehouseRows.has(item.id));
+
+        if (hasUnsavedContainerRows || hasUnsavedWarehouseRows) {
+            const unsavedTables = [
+                hasUnsavedContainerRows ? 'Container' : '',
+                hasUnsavedWarehouseRows ? 'Warehouse' : '',
+            ].filter(Boolean).join(' and ');
+            setRowSaveError(`Save all ${unsavedTables} rows before submitting the form.`);
+            return;
+        }
+
         const selectedReceipts = data.warehouses
             .filter((item) => item.warehouseNo?.receiptId)
             .map((item) => ({ receiptId: Number(item.warehouseNo.receiptId) }));
@@ -488,22 +536,43 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                     </Box>
                                     <Box sx={{ width: '65%' }}>
                                         <Controller name={`containers.${index}.containerNo`} control={control} render={({ field }) => (
-                                            <StyledTextField {...field} fullWidth size="small" sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }} />
+                                            <StyledTextField
+                                                {...field}
+                                                onChange={(event) => {
+                                                    field.onChange(event);
+                                                    markContainerUnsaved(item.id);
+                                                }}
+                                                fullWidth
+                                                size="small"
+                                                sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }}
+                                            />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '20%', textAlign: 'center' }}>
-                                        {index === containerFields.length - 1 ? (
-                                            <IconButton size="small" onClick={() => appendContainer({ containerNo: '' })} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}>
-                                                <Iconify icon="akar-icons:plus" width={16} />
-                                            </IconButton>
-                                        ) : (
-                                            <IconButton size="small" onClick={() => removeContainer(index)} sx={{ color: '#000' }}>
-                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
-                                            </IconButton>
-                                        )}
+                                    <Box sx={{ width: '20%', display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                                        <IconButton size="small" onClick={() => removeContainer(index)} sx={{ color: '#000' }}>
+                                            <Iconify icon="mingcute:delete-2-fill" width={18} />
+                                        </IconButton>
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => saveContainerRow(item.id, index)}
+                                            color={savedContainerRows.has(item.id) ? 'success' : 'default'}
+                                            sx={savedContainerRows.has(item.id) ? undefined : { color: '#000' }}
+                                        >
+                                            <Iconify icon="material-symbols:save" width={18} />
+                                        </IconButton>
                                     </Box>
                                 </Stack>
                             ))}
+                            <Box sx={{ p: 1, textAlign: 'right' }}>
+                                <IconButton
+                                    size="small"
+                                    disabled={containerFields.length > 0 && !savedContainerRows.has(containerFields[containerFields.length - 1]?.id)}
+                                    onClick={() => appendContainer({ containerNo: '' })}
+                                    sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
+                                >
+                                    <Iconify icon="akar-icons:plus" width={16} />
+                                </IconButton>
+                            </Box>
                         </Box>
                     </Grid>
 
@@ -546,7 +615,10 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                     }));
                                                     handleReceiptSearch(item.id, newInputValue, reason);
                                                 }}
-                                                onChange={(event, newValue) => handleReceiptSelection(index, item.id, newValue)}
+                                                onChange={(event, newValue) => {
+                                                    markWarehouseUnsaved(item.id);
+                                                    handleReceiptSelection(index, item.id, newValue);
+                                                }}
                                                 loadingText="Searching warehouse receipts..."
                                                 noOptionsText="Type a receipt number"
                                                 renderOption={(props, option) => (
@@ -620,19 +692,32 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                             />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '10%', textAlign: 'center' }}>
-                                        {index === warehouseFields.length - 1 ? (
-                                            <IconButton size="small" onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })} sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '2px', '&:hover': { bgcolor: '#8b1c1c' } }}>
-                                                <Iconify icon="akar-icons:plus" width={16} />
-                                            </IconButton>
-                                        ) : (
-                                            <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000' }}>
-                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
-                                            </IconButton>
-                                        )}
+                                    <Box sx={{ width: '10%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
+                                        <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
+                                            <Iconify icon="mingcute:delete-2-fill" width={18} />
+                                        </IconButton>
+                                        <IconButton
+                                            size="small"
+                                            onClick={() => saveWarehouseRow(item.id, index)}
+                                            color={savedWarehouseRows.has(item.id) ? 'success' : 'default'}
+                                            sx={{ p: 0.5, color: savedWarehouseRows.has(item.id) ? 'success.main' : '#000' }}
+                                        >
+                                            <Iconify icon="material-symbols:save" width={18} />
+                                        </IconButton>
                                     </Box>
                                 </Stack>
                             ))}
+
+                            <Box sx={{ p: 1, textAlign: 'right' }}>
+                                <IconButton
+                                    size="small"
+                                    disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
+                                    onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
+                                    sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
+                                >
+                                    <Iconify icon="akar-icons:plus" width={16} />
+                                </IconButton>
+                            </Box>
 
                             <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
                                 <Box sx={{ width: '10%' }} />
@@ -649,6 +734,18 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                     </Grid>
                 </Grid>
             </Stack>
+            <Snackbar
+                open={Boolean(rowSaveError)}
+                autoHideDuration={3500}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setRowSaveError('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="warning" variant="filled" onClose={() => setRowSaveError('')}>
+                    {rowSaveError}
+                </Alert>
+            </Snackbar>
             <Snackbar
                 open={warehouseAlertOpen}
                 autoHideDuration={3500}
