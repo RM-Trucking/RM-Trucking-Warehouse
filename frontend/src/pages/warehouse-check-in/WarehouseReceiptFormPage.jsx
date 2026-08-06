@@ -5379,7 +5379,7 @@ export default function WarehouseReceiptFormPage() {
                     const getItemError = (field) =>
                       receiptInfoErrors[activeForm.id]?.items?.[`${item.id}-${field}`] || '';
                     const scannedRowColor = isWarehouseReceiptView && String(item.isScanned || '').trim().toUpperCase() === 'Y'
-                      ? '#e8f5e9'
+                      ? '#c8e6c9'
                       : '#fff';
 
                     return (
