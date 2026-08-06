@@ -281,7 +281,7 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                                 <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                                <TableCell sx={{ fontWeight: 700, textAlign: 'left' }}>Action</TableCell>
+                                <TableCell sx={{ fontWeight: 700, textAlign: 'left', position: 'sticky', right: 0, zIndex: 2, bgcolor: '#d7d7d7', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.35)' }}>Action</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -312,7 +312,7 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                                                 {status}
                                             </Box>
                                         </TableCell>
-                                        <TableCell align="left">
+                                        <TableCell align="left" sx={{ position: 'sticky', right: 0, zIndex: 1, bgcolor: '#fff', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.3)' }}>
                                             <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-start">
                                                 <IconButton size="small" aria-label={`Split receipt ${receipt.receiptNumber || ''}`} sx={{ color: '#111', p: 0.25 }}>
                                                     <SplitActionIcon />

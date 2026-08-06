@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
     Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
-    FormControlLabel
+    FormControlLabel, useMediaQuery
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -16,6 +16,7 @@ import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shar
 import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
+import ShipmentScanGunPage from './ShipmentScanGunPage';
 
 // ----------------------------------------------------------------------
 
@@ -48,6 +49,7 @@ ScanActionIcon.propTypes = {
 export default function ShipmentTabs({ onViewShipment }) {
     const dispatch = useDispatch();
     const navigate = useNavigate();
+    const isScanGunScreen = useMediaQuery('(max-width:599.95px)', { noSsr: true });
     
     const {
         shipmentData: apiShipmentData,
@@ -305,6 +307,20 @@ const handleClosePickupForm = () => {
     const columns = currentTab === 'active'
         ? [...baseColumns, ...airStatusColumns, pickupNumberColumn, actionColumn]
         : [...baseColumns, actionColumn];
+
+    if (isScanGunScreen) {
+        return (
+            <ShipmentScanGunPage
+                currentTab={currentTab}
+                onTabChange={OnTabChange}
+                rows={shipmentData}
+                loading={isLoading}
+                paginationModel={paginationModel}
+                rowCount={parseInt(pagination?.totalRecords || '0', 10)}
+                onPaginationModelChange={setPaginationModel}
+            />
+        );
+    }
 
     return (
         <>
