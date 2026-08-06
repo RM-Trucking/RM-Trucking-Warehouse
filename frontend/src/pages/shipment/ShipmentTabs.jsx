@@ -283,7 +283,7 @@ const handleClosePickupForm = () => {
                             size="small"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (params.row.isScanned === 'N') {
+                                if (params.row.isShipped !== 'Y') {
                                     handleHandExtended(params.row);
                                 } else {
                                     handleFileDocumentBox(params.row);
@@ -291,7 +291,7 @@ const handleClosePickupForm = () => {
                             }}
                             sx={{ color: '#A22' }}
                         >
-                            {params.row.isScanned === 'N' ? (
+                            {params.row.isShipped !== 'Y' ? (
                                 <ScanActionIcon width={20} />
                             ) : (
                                 <Iconify icon="mdi:file-document-box" width={20} />

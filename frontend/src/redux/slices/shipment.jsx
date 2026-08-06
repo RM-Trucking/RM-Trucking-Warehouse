@@ -200,7 +200,7 @@ export function scanShipmentFreight({ id, barcodeValue }) {
     return async () => {
         dispatch(slice.actions.startScanFreight());
         try {
-            const response = await axios.post('shipment/scan-freight', null, {
+            const response = await axios.get('shipment/scan-freight', {
                 params: { id, barcodeValue },
             });
             const data = response.data?.data || response.data;

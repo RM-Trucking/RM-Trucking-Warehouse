@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { DecodeHintType } from '@zxing/library';
 import {
     Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
     DialogTitle, IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell,
@@ -26,6 +27,50 @@ const statusStyles = {
     Available: { bgcolor: '#f1f1f1', color: '#333' },
 };
 
+const decodeUploadedBarcode = async (image) => {
+    const hints = new Map();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    const reader = new BrowserMultiFormatReader(hints);
+
+    try {
+        return await reader.decodeFromImageElement(image);
+    } catch (originalError) {
+        const longestSide = Math.max(image.naturalWidth, image.naturalHeight, 1);
+        const scale = Math.min(4, Math.max(2, 1800 / longestSide));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.naturalWidth * scale);
+        canvas.height = Math.round(image.naturalHeight * scale);
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw originalError;
+
+        context.imageSmoothingEnabled = false;
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        try {
+            return reader.decodeFromCanvas(canvas);
+        } catch (scaledError) {
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const { data } = imageData;
+            for (let index = 0; index < data.length; index += 4) {
+                const luminance = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
+                const value = luminance < 150 ? 0 : 255;
+                data[index] = value;
+                data[index + 1] = value;
+                data[index + 2] = value;
+            }
+            context.putImageData(imageData, 0, 0);
+
+            try {
+                return reader.decodeFromCanvas(canvas);
+            } catch {
+                throw scaledError;
+            }
+        }
+    }
+};
+
 export default function ShipmentScanStatus({ shipment, onClose }) {
     const dispatch = useDispatch();
     const { scanFreightLoading } = useSelector((state) => state.shipmentdata);
@@ -34,6 +79,7 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
     const [scannerStatus, setScannerStatus] = useState('');
     const [scanMessage, setScanMessage] = useState({ text: '', severity: 'success' });
     const videoRef = useRef(null);
+    const barcodeImageInputRef = useRef(null);
     const scannerControlsRef = useRef(null);
     const scanInProgressRef = useRef(false);
 
@@ -107,6 +153,10 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
 
         const startScanner = async () => {
             if (!videoRef.current) return;
+            if (!navigator.mediaDevices?.getUserMedia) {
+                setScannerStatus('Camera is unavailable. Upload a barcode image instead.');
+                return;
+            }
             try {
                 const reader = new BrowserMultiFormatReader();
                 controls = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result) => {
@@ -131,12 +181,45 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
     useEffect(() => () => stopScanner(), [stopScanner]);
 
     const openScanner = () => {
-        if (!navigator.mediaDevices?.getUserMedia) {
-            setScanMessage({ text: 'Camera is not available in this browser.', severity: 'warning' });
-            return;
-        }
         setScannerStatus('Point the camera at the freight barcode.');
         setScannerOpen(true);
+    };
+
+    const handleBarcodeImageUpload = async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+
+        stopScanner();
+        setScannerStatus('Reading barcode from image...');
+        const imageUrl = URL.createObjectURL(file);
+
+        try {
+            const image = new Image();
+            await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = () => reject(new Error('Unable to load the selected image.'));
+                image.src = imageUrl;
+            });
+
+            const result = await decodeUploadedBarcode(image);
+            const barcodeValue = String(result?.getText?.() || '').trim();
+            if (!barcodeValue) throw new Error('No barcode found in the selected image.');
+            setScannerStatus(`Barcode detected: ${barcodeValue}. Updating freight scan status...`);
+            await submitBarcode(barcodeValue.slice(0, 100));
+        } catch (error) {
+            const decodeError = String(error?.message || '');
+            const message = decodeError.includes('MultiFormat')
+                ? 'No readable barcode was found. Upload a clear, tightly cropped image with the full barcode visible.'
+                : decodeError || 'Unable to read a barcode from this image.';
+            setScannerStatus(message);
+            setScanMessage({
+                text: message,
+                severity: 'error',
+            });
+        } finally {
+            URL.revokeObjectURL(imageUrl);
+        }
     };
 
     return (
@@ -243,7 +326,23 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                         <Typography sx={{ fontSize: 12, color: '#555' }}>{scannerStatus}</Typography>
                     </Stack>
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ justifyContent: 'space-between' }}>
+                    <input
+                        ref={barcodeImageInputRef}
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={handleBarcodeImageUpload}
+                    />
+                    <Button
+                        onClick={() => barcodeImageInputRef.current?.click()}
+                        variant="contained"
+                        size="small"
+                        disabled={scanFreightLoading}
+                        sx={{ bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                    >
+                        Upload Barcode Image
+                    </Button>
                     <Button onClick={closeScanner} variant="outlined" size="small" sx={{ textTransform: 'none' }}>Cancel</Button>
                 </DialogActions>
             </Dialog>
