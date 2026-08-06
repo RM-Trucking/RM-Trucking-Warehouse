@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
   DialogContent
@@ -8,7 +9,6 @@ import { ErrorBoundary } from 'react-error-boundary';
 
 // shared components
 import ErrorFallback from '../../sections/shared/ErrorBoundary';
-import { useDispatch, useSelector } from '../../redux/store';
 import Iconify from '../../components/iconify';
 import SharedHomepageHeader from '../../sections/shared/SharedHomepageHeader';
 import SharedSearchField from '../../sections/shared/SharedSearchField';
@@ -22,11 +22,17 @@ import OceanFCLForm from './OceanFCLForm';
 // ----------------------------------------------------------------------
 
 export default function ShipmentFormPage() {
-   const dispatch = useDispatch();
+  const location = useLocation();
+
+  return <ShipmentFormPageContent key={location.state?.shipmentGridResetKey || 'shipment-form'} />;
+}
+
+function ShipmentFormPageContent() {
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [showAirShipmentForm, setShowAirShipmentForm] = useState(false);
   const [showOceanLCLForm, setShowOceanLCLForm] = useState(false);
   const [showOceanFCLForm, setShowOceanFCLForm] = useState(false);
+  const [viewShipment, setViewShipment] = useState(null);
   const logError = (error, info) => {
     // Use an error reporting service here
     console.error("Error caught:", info);
@@ -87,7 +93,13 @@ export default function ShipmentFormPage() {
           console.log("Error boundary reset triggered");
         }}
       >
-        {showAirShipmentForm ? (
+        {viewShipment?.shipmentType === 'AIR' ? (
+          <NewAirShipmentForm handleClose={() => setViewShipment(null)} rowData={viewShipment} viewMode />
+        ) : viewShipment?.shipmentType === 'LCL' ? (
+          <OceanLCLForm handleClose={() => setViewShipment(null)} rowData={viewShipment} viewMode />
+        ) : viewShipment?.shipmentType === 'FCL' ? (
+          <OceanFCLForm handleClose={() => setViewShipment(null)} rowData={viewShipment} viewMode />
+        ) : showAirShipmentForm ? (
           <NewAirShipmentForm handleClose={handleCloseAirShipmentForm} />
         ) : showOceanLCLForm ? (
           <OceanLCLForm handleClose={handleCloseOceanLCLForm} />
@@ -98,7 +110,7 @@ export default function ShipmentFormPage() {
             <Box>
               <SharedHomepageHeader title="Shipment Form" buttonText='New Shipment' onButtonClick={onClickOfNewShipment} />
               <SharedSearchField page="shipment" />
-              <ShipmentTabs />
+              <ShipmentTabs onViewShipment={setViewShipment} />
               {/* <CarrierTable /> */}
             </Box>
             {/* <Dialog open={openConfirmDialog} onClose={handleCloseConfirm} onKeyDown={(event) => {

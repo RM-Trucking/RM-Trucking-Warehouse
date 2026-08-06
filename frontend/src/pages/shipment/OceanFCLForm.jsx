@@ -28,25 +28,29 @@ const MOCK_PRO_LIST = [
 
 NewOceanFCLShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
+    rowData: PropTypes.object,
+    viewMode: PropTypes.bool,
 };
 
-export default function NewOceanFCLShipmentForm({ handleClose }) {
+export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const defaultValues = {
-        rmProNo: '',
-        customer: '',
-        station: '',
-        destination: '',
-        consignee: '',
-        booking: '',
-        customerRefNumber: '',
-        additionalRefNumber: '',
-        bookingDate: dayjs('2026-02-26'),
-        earlyReturnDate: dayjs('2026-02-26'),
-        dropByDate: dayjs('2026-02-26'),
-        containerNo: '',
-        instructions: 'UN1234, Biomedical waste N.O.S. , (Sulfate), 2.4A, N/A, 200 lbs',
+        rmProNo: rowData?.barcodeNumber || '',
+        customer: rowData?.customerName || rowData?.customer || '',
+        station: rowData?.stationName || rowData?.station || '',
+        destination: rowData?.destination || '',
+        consignee: rowData?.consigneeName || '',
+        booking: rowData?.booking || '',
+        customerRefNumber: rowData?.customerRefNumber || '',
+        additionalRefNumber: rowData?.additionalRefNumber || '',
+        bookingDate: rowData?.bookingDate ? dayjs(rowData.bookingDate) : null,
+        earlyReturnDate: rowData?.earlyReturnDate ? dayjs(rowData.earlyReturnDate) : null,
+        dropByDate: rowData?.dropByDate ? dayjs(rowData.dropByDate) : null,
+        containerNo: rowData?.containerNo || '',
+        instructions: rowData?.instructions || '',
         loadManifestType: 'Direct Entry',
-        warehouses: [{ warehouseNo: '', pieces: 5, weight: 100 }],
+        warehouses: rowData?.receipts?.length
+            ? rowData.receipts.map((item) => ({ warehouseNo: item.receiptNumber || '', pieces: item.pieces || '', weight: item.weight || '' }))
+            : [{ warehouseNo: '', pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
         proNumbers: ['736738768', '736738768'],
         fromDate: dayjs('2026-02-26'), // Added for Date Selection
         toDate: dayjs('2026-03-26'),   // Added for Date Selection
@@ -131,9 +135,11 @@ export default function NewOceanFCLShipmentForm({ handleClose }) {
 
     return (
         <ShipmentFormLayout
-            title="New Ocean FCL Shipment Form"
+            title={viewMode ? 'View Ocean FCL Shipment Form' : 'New Ocean FCL Shipment Form'}
             handleClose={handleClose}
             onSubmit={handleSubmit(onSubmit)}
+            showSubmit={!viewMode}
+            readOnly={viewMode}
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false}

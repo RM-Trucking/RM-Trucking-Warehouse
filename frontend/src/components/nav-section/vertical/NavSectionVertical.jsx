@@ -35,7 +35,9 @@ function NavItem({ item, depth = 0, onItemClick }) {
       if (item.path.includes('/carrier-maintenance/rate-maintenance')) {
         dispatch(setCurrentRateRoutedFrom('carrier'));
       }
-      navigate(item.path);
+      navigate(item.path, item.resetToGrid ? {
+        state: { shipmentGridResetKey: Date.now() },
+      } : undefined);
       onItemClick?.();
     }
 
