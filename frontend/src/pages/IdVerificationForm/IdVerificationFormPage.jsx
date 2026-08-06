@@ -27,6 +27,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
 import Iconify from '../../components/iconify';
 import StyledTextField from '../../sections/shared/StyledTextField';
+import DriverCheckInReceiptPrintTemplate from '../driver-check-in/DriverCheckInReceiptPrintTemplate';
 import { getIdVerificationData, clearIdVerificationError, setIdVerificationSearchTerm } from '../../redux/slices/idVerification';
 import {
   setAppliedFilterParams,
@@ -108,6 +109,7 @@ export default function IdVerificationFormPage() {
 
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
   const [paginationModel, setPaginationModel] = useState(savedPaginationModel || { pageSize: 10, page: 0 });
+  const [printReceipts, setPrintReceipts] = useState([]);
 
   // Redux selectors for filter state
   const appliedFilterParams = useSelector((state) => state.idVerificationdata.appliedFilterParams);
@@ -123,6 +125,23 @@ export default function IdVerificationFormPage() {
     // Navigate to IdVerificationView page with the verification ID
     navigate(`/app/id-verification-form/${row.verificationId}`);
   };
+
+  const handlePrintVerification = (row) => {
+    setPrintReceipts(Array.isArray(row.receipts) ? row.receipts : []);
+  };
+
+  useEffect(() => {
+    if (!printReceipts.length) return undefined;
+
+    const printTimer = window.setTimeout(() => window.print(), 0);
+    const handleAfterPrint = () => setPrintReceipts([]);
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    return () => {
+      window.clearTimeout(printTimer);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [printReceipts]);
 
   // Fetch data when pagination/pageSize changes
  // Fetch data when pagination/pageSize changes
@@ -303,7 +322,7 @@ export default function IdVerificationFormPage() {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 80,
+      width: 100,
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
@@ -318,6 +337,18 @@ export default function IdVerificationFormPage() {
             sx={{ color: '#555' }}
           >
             <Iconify icon="mdi:eye" width={20} />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label={`Print verification ${params.row.verificationId}`}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              handlePrintVerification(params.row);
+            }}
+            sx={{ color: '#555' }}
+          >
+            <Iconify icon="mdi:printer" width={20} />
           </IconButton>
         </Box>
       ),
@@ -587,6 +618,7 @@ export default function IdVerificationFormPage() {
           </Paper>
         </Popover>
       </Stack>
+      <DriverCheckInReceiptPrintTemplate receipts={printReceipts} />
     </ShipmentFormLayout>
   );
 }

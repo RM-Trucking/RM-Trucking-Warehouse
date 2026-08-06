@@ -536,6 +536,7 @@ const buildWarehouseReceiptViewState = (row = {}, warehouseReceiptGridState) => 
         width: item.width,
         height: item.height,
         weight: item.weight,
+        isScanned: item.isScanned,
         images: item.images || [],
       }))
     : [];
@@ -5377,9 +5378,12 @@ export default function WarehouseReceiptFormPage() {
                   {activeForm.items.map((item, index) => {
                     const getItemError = (field) =>
                       receiptInfoErrors[activeForm.id]?.items?.[`${item.id}-${field}`] || '';
+                    const scannedRowColor = isWarehouseReceiptView && String(item.isScanned || '').trim().toUpperCase() === 'Y'
+                      ? '#c8e6c9'
+                      : '#fff';
 
                     return (
-                    <TableRow key={item.id || index}>
+                    <TableRow key={item.id || index} sx={{ bgcolor: scannedRowColor }}>
                       <TableCell sx={{ py: 0.35, px: 0.8, fontSize: 12 }}>
                         {item.freightBarcodeValue ?? ''}
                       </TableCell>
@@ -5445,7 +5449,7 @@ export default function WarehouseReceiptFormPage() {
                           position: 'sticky',
                           right: 0,
                           zIndex: 1,
-                          bgcolor: '#fff',
+                          bgcolor: scannedRowColor,
                           textAlign: 'center',
                           width: isWarehouseReceiptEdit ? 116 : 72,
                         }}

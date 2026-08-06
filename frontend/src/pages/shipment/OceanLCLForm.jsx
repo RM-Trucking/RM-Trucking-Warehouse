@@ -13,20 +13,24 @@ import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/Shipment
 
 NewOceanLCLShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
+    rowData: PropTypes.object,
+    viewMode: PropTypes.bool,
 };
 
-export default function NewOceanLCLShipmentForm({ handleClose }) {
+export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const defaultValues = {
-        rmProNo: '',
-        customer: '',
-        station: '',
-        consignee: '',
-        booking: '',
-        customerRefNumber: '',
-        additionalRefNo: '',
-        bookingDate: dayjs('2026-02-26'),
-        instructions: 'UN1234, Biomedical waste N.O.S. , (Sulfate), 2.4A, N/A, 200 lbs',
-        warehouses: [{ warehouseNo: '', pieces: 5, weight: 100 }],
+        rmProNo: rowData?.barcodeNumber || '',
+        customer: rowData?.customerName || rowData?.customer || '',
+        station: rowData?.stationName || rowData?.station || '',
+        consignee: rowData?.consigneeName || '',
+        booking: rowData?.booking || '',
+        customerRefNumber: rowData?.customerRefNumber || '',
+        additionalRefNo: rowData?.additionalRefNumber || '',
+        bookingDate: rowData?.bookingDate ? dayjs(rowData.bookingDate) : null,
+        instructions: rowData?.instructions || '',
+        warehouses: rowData?.receipts?.length
+            ? rowData.receipts.map((item) => ({ warehouseNo: item.receiptNumber || '', pieces: item.pieces || '', weight: item.weight || '' }))
+            : [{ warehouseNo: '', pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
     };
 
     const { control, handleSubmit, watch } = useForm({ defaultValues });
@@ -50,9 +54,11 @@ export default function NewOceanLCLShipmentForm({ handleClose }) {
 
     return (
         <ShipmentFormLayout
-            title="New Ocean LCL Shipment Form"
+            title={viewMode ? 'View Ocean LCL Shipment Form' : 'New Ocean LCL Shipment Form'}
             handleClose={handleClose}
             onSubmit={handleSubmit(onSubmit)}
+            showSubmit={!viewMode}
+            readOnly={viewMode}
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false}
