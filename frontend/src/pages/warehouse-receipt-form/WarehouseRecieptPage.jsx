@@ -1591,6 +1591,7 @@ export default function WarehouseRecieptPage() {
           width: item.width,
           height: item.height,
           weight: item.weight,
+          isScanned: item.isScanned,
           images: item.images || [],
         }))
       : [];
