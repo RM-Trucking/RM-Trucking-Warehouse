@@ -17,7 +17,7 @@ const getReceiptStatus = (receipt) => {
     const scanned = Number(summary.scanned || 0);
 
     if (total > 0 && scanned >= total) return 'Scanned';
-    if (Number(summary.unscanned || 0) > 0) return 'Unscanned';
+    if (scanned > 0) return 'Unscanned';
     return 'Available';
 };
 
@@ -26,6 +26,12 @@ const statusStyles = {
     Unscanned: { bgcolor: '#efb52e', color: '#fff' },
     Available: { bgcolor: '#f1f1f1', color: '#333' },
 };
+
+const SplitActionIcon = () => (
+    <Box component="svg" viewBox="0 0 24 24" aria-hidden="true" sx={{ width: 22, height: 22, display: 'block' }}>
+        <path d="M9 5v14M15 5v14M7 9l-4 3 4 3M17 9l4 3-4 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </Box>
+);
 
 const decodeUploadedBarcode = async (image) => {
     const hints = new Map();
@@ -241,14 +247,26 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                 <Box sx={{ textAlign: 'right' }}>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>PRO# - {proNumber}</Typography>
-                    <Button
-                        variant="contained"
-                        size="small"
-                        onClick={areAllReceiptsScanned ? undefined : openScanner}
-                        sx={{ mt: 0.5, minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
-                    >
-                        {areAllReceiptsScanned ? 'Sign-Off' : 'Scan'}
-                    </Button>
+                    <Stack direction="row" spacing={0.75} justifyContent="flex-end" sx={{ mt: 0.5 }}>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={areAllReceiptsScanned ? undefined : openScanner}
+                            sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            {areAllReceiptsScanned ? 'Sign-Off' : 'Scan'}
+                        </Button>
+                        {!areAllReceiptsScanned && (
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={onClose}
+                                sx={{ minWidth: 64, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                            >
+                                Complete
+                            </Button>
+                        )}
+                    </Stack>
                 </Box>
             </Box>
 
@@ -263,6 +281,7 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                                 <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                                <TableCell sx={{ fontWeight: 700, textAlign: 'left' }}>Action</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -293,12 +312,28 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                                                 {status}
                                             </Box>
                                         </TableCell>
+                                        <TableCell align="left">
+                                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-start">
+                                                <IconButton size="small" aria-label={`Split receipt ${receipt.receiptNumber || ''}`} sx={{ color: '#111', p: 0.25 }}>
+                                                    <SplitActionIcon />
+                                                </IconButton>
+                                                {status !== 'Available' && (
+                                                    <Button
+                                                        variant="contained"
+                                                        size="small"
+                                                        sx={{ minWidth: 82, bgcolor: '#b5232b', borderRadius: 1, py: 0.35, px: 1.5, fontWeight: 700, textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#971d24', boxShadow: 'none' } }}
+                                                    >
+                                                        Unscan
+                                                    </Button>
+                                                )}
+                                            </Stack>
+                                        </TableCell>
                                     </TableRow>
                                 );
                             })}
                             {!receipts.length && (
                                 <TableRow>
-                                    <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                         No warehouse receipts available.
                                     </TableCell>
                                 </TableRow>
