@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import { cloneElement } from 'react';
 import { Box, Stack, Typography, Button, CircularProgress } from '@mui/material';
 import Iconify from '../../components/iconify';
 import Barcode from "react-barcode";
@@ -101,8 +102,8 @@ export default function ShipmentFormLayout({
 
             {/* Render the Grey Top Info Panel if provided */}
             {topInfoPanel && (
-                <Box component="fieldset" disabled={readOnly} sx={{ mb: 3, border: 0, p: 0, minWidth: 0 }}>
-                    {topInfoPanel}
+                <Box sx={{ mb: 3, minWidth: 0 }}>
+                    {cloneElement(topInfoPanel, { readOnly })}
                 </Box>
             )}
 
@@ -140,11 +141,15 @@ export function TopInfoPanel({
     rmProInputNode, 
     status = "At Warehouse",
     barcodeValue,
-    onBarcodeGenerate
+    onBarcodeGenerate,
+    showEdit = false,
+    onEdit,
+    readOnly = false,
 }) {
     return (
         <Box sx={{ bgcolor: '#dbdbdb', p: 2, borderRadius: 1, position: 'relative' }}>
             <Stack spacing={2} sx={{ width: { xs: '100%', sm: '60%', md: '40%' } }}>
+                <Box component="fieldset" disabled={readOnly} sx={{ border: 0, p: 0, m: 0, display: 'grid', gap: 2 }}>
                 {/* Conditionally render the Barcode Graphic or just the text label */}
                 <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography sx={{ width: '100px', fontSize: '14px' }}>Bar Code :</Typography>
@@ -172,9 +177,16 @@ export function TopInfoPanel({
                     </Box>
                 </Stack>
 
-                <Stack direction="row" alignItems="center">
+                </Box>
+
+                <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography sx={{ width: '100px', fontSize: '14px' }}>Status :</Typography>
                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{status}</Typography>
+                    {showEdit && (
+                        <Button variant="contained" size="small" onClick={onEdit} sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, ml: 1 }}>
+                            Edit
+                        </Button>
+                    )}
                 </Stack>
             </Stack>
             
@@ -192,4 +204,7 @@ TopInfoPanel.propTypes = {
     status: PropTypes.string,
     barcodeValue: PropTypes.string,
     onBarcodeGenerate: PropTypes.func,
+    showEdit: PropTypes.bool,
+    onEdit: PropTypes.func,
+    readOnly: PropTypes.bool,
 };

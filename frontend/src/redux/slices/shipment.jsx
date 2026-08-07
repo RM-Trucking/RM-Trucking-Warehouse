@@ -83,6 +83,18 @@ const slice = createSlice({
                 state.pagination.totalRecords += 1;
             }
         },
+        updateShipmentSuccess(state, action) {
+            state.createShipmentLoading = false;
+            state.createShipmentError = null;
+            const updatedShipment = action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            const index = state.shipmentData.findIndex((item) =>
+                String(item.shipmentId || item.id) === String(shipmentId)
+            );
+            if (index !== -1) {
+                state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+            }
+        },
         createShipmentError(state, action) {
             state.createShipmentLoading = false;
             state.createShipmentError = action.payload;
@@ -190,6 +202,25 @@ export function postShipment(payload) {
                 error?.message ||
                 error?.error ||
                 (typeof error === 'string' ? error : 'Failed to create shipment');
+            dispatch(slice.actions.createShipmentError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function updateShipment(shipmentId, payload) {
+    return async () => {
+        dispatch(slice.actions.startCreateShipment());
+        try {
+            const response = await axios.put(`shipment/${encodeURIComponent(shipmentId)}`, payload);
+            const shipment = response.data?.data?.shipment || response.data?.data || { ...payload, shipmentId };
+            dispatch(slice.actions.updateShipmentSuccess(shipment));
+            return { success: true, data: shipment };
+        } catch (error) {
+            const message =
+                error?.message ||
+                error?.error ||
+                (typeof error === 'string' ? error : 'Failed to update shipment');
             dispatch(slice.actions.createShipmentError(message));
             return { success: false, error: message };
         }

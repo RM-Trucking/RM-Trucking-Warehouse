@@ -365,6 +365,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             columns={proColumns}
                             getRowId={(row) => row.id}
                             autoHeight
+                            disableColumnMenu
                             disableRowSelectionOnClick
                             hideFooter
                             sx={{

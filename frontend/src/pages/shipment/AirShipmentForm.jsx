@@ -18,6 +18,7 @@ import {
     getExportAirlineOptions,
     getShipmentReceiptOptions,
     postShipment,
+    updateShipment,
 } from '../../redux/slices/shipment';
 
 const getCustomerOptionLabel = (option) => {
@@ -122,6 +123,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const [savedContainerRows, setSavedContainerRows] = useState(() => new Set());
     const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
     const [rowSaveError, setRowSaveError] = useState('');
+    const [isEditing, setIsEditing] = useState(!viewMode);
     const receiptSearchTimers = useRef({});
 
     const rmProValue = useWatch({ control, name: 'rmProNo' });
@@ -272,6 +274,12 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
         setSavedWarehouseRows((previous) => new Set(previous).add(rowId));
     };
 
+    const handleEdit = () => {
+        setSavedContainerRows(new Set(containerFields.map((item) => item.id)));
+        setSavedWarehouseRows(new Set(warehouseFields.map((item) => item.id)));
+        setIsEditing(true);
+    };
+
     const onSubmit = async (data) => {
         const hasUnsavedContainerRows = containerFields.some((item) => !savedContainerRows.has(item.id));
         const hasUnsavedWarehouseRows = warehouseFields.some((item) => !savedWarehouseRows.has(item.id));
@@ -308,18 +316,32 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             pieces: totalPieces,
             weight: totalWeight,
             instructions: data.instructions,
+            ...(viewMode ? {
+                isCanceled: rowData?.isCanceled || 'N',
+                isShipped: rowData?.isShipped || 'N',
+                isScanned: rowData?.isScanned || 'N',
+                pickupEntry: rowData?.pickupEntry || 'N',
+                pickupEntryNumber: rowData?.pickupEntryNumber || '',
+            } : {}),
             containers: data.containers
                 .filter((item) => String(item.containerNo || '').trim())
                 .map((item) => ({ container: String(item.containerNo).trim() })),
             receipts: selectedReceipts,
         };
 
-        const result = await dispatch(postShipment(payload));
+        const shipmentId = rowData?.shipmentId || rowData?.id;
+        const result = viewMode
+            ? await dispatch(updateShipment(shipmentId, payload))
+            : await dispatch(postShipment(payload));
         if (result?.success) {
-            handleClose();
+            if (viewMode) {
+                setIsEditing(false);
+            } else {
+                handleClose();
+            }
             return;
         }
-        setSubmitError(result?.error || 'Failed to create shipment');
+        setSubmitError(result?.error || `Failed to ${viewMode ? 'update' : 'create'} shipment`);
     };
 
     return (
@@ -328,13 +350,17 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             handleClose={handleClose}
             onSubmit={handleSubmit(onSubmit)}
             submitLoading={createShipmentLoading}
-            showSubmit={!viewMode}
-            readOnly={viewMode}
+            submitLabel={viewMode ? 'Update' : 'Submit'}
+            submitLoadingLabel={viewMode ? 'Updating...' : 'Submitting...'}
+            showSubmit={!viewMode || isEditing}
+            readOnly={viewMode && !isEditing}
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false} // Hides the barcode to match the Air mockup
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
+                    showEdit={viewMode && !isEditing}
+                    onEdit={handleEdit}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"

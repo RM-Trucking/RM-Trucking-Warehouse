@@ -56,9 +56,7 @@ export default function ShipmentTabs({ onViewShipment }) {
     } = useSelector((state) => state.shipmentdata);
     
     const [currentTab, setCurrentTab] = useState('active');
-    const [airStatusFilters, setAirStatusFilters] = useState([
-        'scan', 'shipment', 'pickup', 'ofd', 'pod'
-    ]);
+    const [airStatusFilters, setAirStatusFilters] = useState([]);
     // const [selectedRowData, setSelectedRowData] = useState(null);
     // const [openPickupFormType, setOpenPickupFormType] = useState(null);
     const [activeForm, setActiveForm] = useState({ type: null, data: null });
@@ -224,7 +222,6 @@ const handleClosePickupForm = () => {
     ];
 
     const airStatusColumns = statusOptions
-        .filter((status) => airStatusFilters.includes(status.value))
         .map((status) => ({
             field: `${status.value}Status`,
             headerName: status.header,
@@ -380,6 +377,7 @@ const handleClosePickupForm = () => {
                         getRowId={(row) => row.shipmentId}
                         autoHeight
                         disableRowSelectionOnClick
+                        disableColumnMenu
                         
                         // Server-side Pagination Configuration
                         pagination
