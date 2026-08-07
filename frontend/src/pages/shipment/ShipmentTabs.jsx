@@ -255,6 +255,7 @@ const handleClosePickupForm = () => {
             renderCell: (params) => {
                 return (
                     <Box
+                        onMouseDown={(event) => event.stopPropagation()}
                         sx={{
                             display: 'flex',
                             alignItems: 'center',
@@ -377,6 +378,7 @@ const handleClosePickupForm = () => {
                         getRowId={(row) => row.shipmentId}
                         autoHeight
                         disableRowSelectionOnClick
+                        rowSelection={false}
                         disableColumnMenu
                         
                         // Server-side Pagination Configuration
