@@ -182,18 +182,19 @@ export function TopInfoPanel({
                 <Stack direction="row" alignItems="center" spacing={1}>
                     <Typography sx={{ width: '100px', fontSize: '14px' }}>Status :</Typography>
                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{status}</Typography>
-                    {showEdit && (
-                        <Button variant="contained" size="small" onClick={onEdit} sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, ml: 1 }}>
-                            Edit
-                        </Button>
-                    )}
                 </Stack>
             </Stack>
             
-            {/* Movie Icon on the bottom right */}
-            <Box sx={{ position: 'absolute', right: 16, bottom: 16, color: '#A22', cursor: 'pointer' }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ position: 'absolute', right: 16, bottom: 16 }}>
+                {showEdit && (
+                    <Button variant="contained" size="small" onClick={onEdit} sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>
+                        Edit
+                    </Button>
+                )}
+                <Box sx={{ color: '#A22', cursor: 'pointer', display: 'flex' }}>
                 <Iconify icon="streamline-ultimate:notes-book-bold" width={24} height={24} />
-            </Box>
+                </Box>
+            </Stack>
         </Box>
     );
 }

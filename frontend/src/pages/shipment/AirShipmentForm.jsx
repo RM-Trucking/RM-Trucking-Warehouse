@@ -109,7 +109,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
     };
 
-    const { control, handleSubmit, setValue, clearErrors } = useForm({ defaultValues });
+    const { control, handleSubmit, setValue, clearErrors, reset } = useForm({ defaultValues });
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? rowData?.barcodeNumber || '' : '');
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || '');
@@ -280,6 +280,21 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
         setIsEditing(true);
     };
 
+    const handleCancel = () => {
+        if (viewMode && isEditing) {
+            reset(defaultValues);
+            setBarcodeValue(rowData?.barcodeNumber || '');
+            setCustomerSearchValue(rowData?.customerName || rowData?.customer || '');
+            setStationSearchValue(rowData?.stationName || rowData?.station || '');
+            setSubmitError('');
+            setRowSaveError('');
+            setIsEditing(false);
+            return;
+        }
+
+        handleClose();
+    };
+
     const onSubmit = async (data) => {
         const hasUnsavedContainerRows = containerFields.some((item) => !savedContainerRows.has(item.id));
         const hasUnsavedWarehouseRows = warehouseFields.some((item) => !savedWarehouseRows.has(item.id));
@@ -348,6 +363,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
         <ShipmentFormLayout
             title={viewMode ? 'View Air Shipment Form' : 'New Air Shipment Form'}
             handleClose={handleClose}
+            onCancel={handleCancel}
             onSubmit={handleSubmit(onSubmit)}
             submitLoading={createShipmentLoading}
             submitLabel={viewMode ? 'Update' : 'Submit'}

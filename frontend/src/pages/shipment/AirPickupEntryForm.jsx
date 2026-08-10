@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 import { Stack, Box, Typography, FormControlLabel, Checkbox } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -16,26 +16,62 @@ AirPickupEntryForm.propTypes = {
     rowData: PropTypes.object
 };
 
+const firstValue = (source, keys, fallback = '') => {
+    const key = keys.find((candidate) => source?.[candidate] !== undefined && source?.[candidate] !== null && source?.[candidate] !== '');
+    return key ? source[key] : fallback;
+};
+
+const toDateValue = (value) => {
+    if (!value) return null;
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed : null;
+};
+
+const toBoolean = (value) => value === true || value === 1 || String(value || '').toUpperCase() === 'Y';
+
+const getPickupDefaults = (row = {}) => ({
+    rmProNo: firstValue(row, ['barcodeNumber', 'rmNumber']),
+    booking: firstValue(row, ['booking', 'bookingNumber']),
+    customerRefNumber: firstValue(row, ['customerRefNumber', 'customerReferenceNumber']),
+    additionalRefNo: firstValue(row, ['additionalRefNumber', 'additionalRefNo']),
+    date: toDateValue(firstValue(row, ['pickupDate', 'shipmentDate', 'date', 'createdAt'])),
+    contactName: firstValue(row, ['contactName', 'customerContactName', 'contactPersonName']),
+    phoneNumber: firstValue(row, ['phoneNumber', 'contactPhoneNumber', 'customerPhoneNumber']),
+    billTo: firstValue(row, ['billTo', 'customerName', 'customer']),
+    addressLine1: firstValue(row, ['addressLine1', 'customerAddressLine1', 'customerAddress', 'address']),
+    addressLine2: firstValue(row, ['addressLine2', 'customerAddressLine2']),
+    state: firstValue(row, ['state', 'customerState']),
+    city: firstValue(row, ['city', 'customerCity']),
+    zipCode: firstValue(row, ['zipCode', 'customerZipCode', 'postalCode']),
+    contactPersonName: firstValue(row, ['contactPersonName', 'customerContactName', 'contactName']),
+    customerPhoneNumber: firstValue(row, ['customerPhoneNumber', 'contactPhoneNumber', 'phoneNumber']),
+    airline: firstValue(row, ['airlineName', 'consigneeName', 'airline']),
+    airBillNo: firstValue(row, ['airBillNumber', 'airBillNo', 'billNumber']),
+    hazmatInfo: toBoolean(firstValue(row, ['hazmatInfo', 'isHazmat', 'hazmat'])),
+    totalPieces: firstValue(row, ['pieces', 'totalPieces']),
+    totalWeight: firstValue(row, ['weight', 'totalWeight']),
+    manualEntry: row.manualEntry === undefined ? true : toBoolean(row.manualEntry),
+    manualSkid: firstValue(row, ['skid', 'skids', 'totalSkids']),
+    manualPieces: firstValue(row, ['manualPieces', 'pieces', 'totalPieces']),
+    manualWeight: firstValue(row, ['manualWeight', 'weight', 'totalWeight']),
+    readyTime: firstValue(row, ['readyTime']),
+    readyDate: toDateValue(firstValue(row, ['readyDate'])),
+    closeTime: firstValue(row, ['closeTime']),
+    closeDate: toDateValue(firstValue(row, ['closeDate'])),
+    lockoutTime: firstValue(row, ['lockoutTime']),
+    lockoutDate: toDateValue(firstValue(row, ['lockoutDate'])),
+});
+
 export default function AirPickupEntryForm({ handleClose, rowData }) {
-    const { control, handleSubmit, watch, setValue } = useForm({
-        defaultValues: {
-            rmProNo: rowData?.rmNumber || '78297982897287',
-            date: dayjs('2026-02-26'),
-            readyDate: dayjs('2026-02-26'),
-            closeDate: dayjs('2026-02-26'),
-            lockoutDate: dayjs('2026-02-26'),
-            manualEntry: true,
-            hazmatInfo: false
-        }
+    const { control, handleSubmit, reset } = useForm({
+        defaultValues: getPickupDefaults(rowData),
     });
 
     useEffect(() => {
-        if (rowData?.rmNumber) {
-            setValue('rmProNo', rowData.rmNumber);
-        }
-    }, [rowData, setValue]);
+        reset(getPickupDefaults(rowData));
+    }, [reset, rowData]);
 
-    const isManualEntry = watch('manualEntry');
+    const isManualEntry = useWatch({ control, name: 'manualEntry' });
 
     const onSubmit = (data) => console.log('AIR Form:', data);
 

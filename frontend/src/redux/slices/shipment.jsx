@@ -14,6 +14,8 @@ const initialState = {
     createShipmentError: null,
     scanFreightLoading: false,
     scanFreightError: null,
+    signOffLoading: false,
+    signOffError: null,
     shipmentData: [],
     shipmentSearchStr: '',
     exportAirlineOptions: [],
@@ -120,6 +122,28 @@ const slice = createSlice({
         scanFreightError(state, action) {
             state.scanFreightLoading = false;
             state.scanFreightError = action.payload;
+        },
+        startSignOff(state) {
+            state.signOffLoading = true;
+            state.signOffError = null;
+        },
+        signOffSuccess(state, action) {
+            state.signOffLoading = false;
+            state.signOffError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        signOffError(state, action) {
+            state.signOffLoading = false;
+            state.signOffError = action.payload;
         },
         // get shipment success
         getShipmentDataSuccess(state, action) {
@@ -240,6 +264,22 @@ export function scanShipmentFreight({ id, barcodeValue }) {
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to scan freight';
             dispatch(slice.actions.scanFreightError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function signOffShipment(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startSignOff());
+        try {
+            const response = await axios.post('shipment/sign-off', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.signOffSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to sign off shipment';
+            dispatch(slice.actions.signOffError(message));
             return { success: false, error: message };
         }
     };

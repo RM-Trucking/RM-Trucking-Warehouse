@@ -1,7 +1,6 @@
 import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
 import {
     Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
     FormControlLabel
@@ -16,6 +15,7 @@ import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shar
 import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
+import AirPickupEntryForm from './AirPickupEntryForm';
 
 // ----------------------------------------------------------------------
 
@@ -47,8 +47,6 @@ ScanActionIcon.propTypes = {
 
 export default function ShipmentTabs({ onViewShipment }) {
     const dispatch = useDispatch();
-    const navigate = useNavigate();
-    
     const {
         shipmentData: apiShipmentData,
         isLoading,
@@ -127,19 +125,7 @@ const handleClosePickupForm = () => {
 };
 
     const handleFileDocumentBox = (rowData) => {
-        console.log('File document clicked for:', rowData.rmNumber, 'on tab:', currentTab);
-        // Navigate based on current tab to the shipment form with the form type
-        const formTypeMap = {
-            active: 'air',
-            inactive: 'lcl',
-            incomplete: 'fcl',
-        };
-        navigate('/app/shipment-form', { 
-            state: { 
-                rowData,
-                openPickupForm: formTypeMap[currentTab]
-            } 
-        });
+        setActiveForm({ type: 'airPickup', data: rowData });
     };
 
     // Fetch the current server-side page.
@@ -433,6 +419,12 @@ const handleClosePickupForm = () => {
             <ShipmentScanStatus
                 shipment={activeForm.data}
                 onClose={handleClosePickupForm}
+            />
+        )}
+        {activeForm.type === 'airPickup' && (
+            <AirPickupEntryForm
+                rowData={activeForm.data}
+                handleClose={handleClosePickupForm}
             />
         )}
     </DialogContent>
