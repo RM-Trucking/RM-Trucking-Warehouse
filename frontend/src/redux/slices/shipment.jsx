@@ -269,6 +269,24 @@ export function scanShipmentFreight({ id, barcodeValue }) {
     };
 }
 
+export function unscanShipmentFreight({ id, barcodeValue }) {
+    return async () => {
+        dispatch(slice.actions.startScanFreight());
+        try {
+            const response = await axios.get('shipment/unscan-freight', {
+                params: { id, barcodeValue },
+            });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.scanFreightSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to unscan freight';
+            dispatch(slice.actions.scanFreightError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
 export function signOffShipment(shipmentId) {
     return async () => {
         dispatch(slice.actions.startSignOff());

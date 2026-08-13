@@ -9,7 +9,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useDispatch, useSelector } from '../../redux/store';
-import { scanShipmentFreight, signOffShipment } from '../../redux/slices/shipment';
+import { scanShipmentFreight, unscanShipmentFreight } from '../../redux/slices/shipment';
 
 const getReceiptStatus = (receipt) => {
     const summary = receipt.freightSummary || {};
@@ -30,7 +30,14 @@ const statusStyles = {
 const getFreightItems = (receipt) => {
     const source = receipt || {};
     const items = source.freightInformation || source.freightItems || source.freights || source.items;
-    return Array.isArray(items) ? items : [];
+    if (Array.isArray(items)) return items;
+
+    const scannedItems = source.freightSummary?.scannedItems;
+    const unscannedItems = source.freightSummary?.unscannedItems;
+    return [
+        ...(Array.isArray(scannedItems) ? scannedItems : []),
+        ...(Array.isArray(unscannedItems) ? unscannedItems : []),
+    ];
 };
 
 const getFreightItemStatus = (item = {}) => {
@@ -86,9 +93,11 @@ const decodeUploadedBarcode = async (image) => {
 
 export default function ShipmentScanStatus({ shipment, onClose }) {
     const dispatch = useDispatch();
-    const { scanFreightLoading, signOffLoading } = useSelector((state) => state.shipmentdata);
+    const { scanFreightLoading } = useSelector((state) => state.shipmentdata);
     const [currentShipment, setCurrentShipment] = useState(shipment);
     const [scannerOpen, setScannerOpen] = useState(false);
+    const [scannerMode, setScannerMode] = useState('scan');
+    const [unscanReceiptNumber, setUnscanReceiptNumber] = useState('');
     const [scannerStatus, setScannerStatus] = useState('');
     const [scanMessage, setScanMessage] = useState({ text: '', severity: 'success' });
     const [unscanReceipt, setUnscanReceipt] = useState(null);
@@ -146,19 +155,37 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
         const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
         if (!shipmentId || !barcodeValue || scanInProgressRef.current) return;
 
+        if (scannerMode === 'unscan') {
+            const normalizedBarcode = String(barcodeValue).replace(/[^a-z0-9]/gi, '').toLowerCase();
+            const normalizedReceiptNumber = String(unscanReceiptNumber).replace(/[^a-z0-9]/gi, '').toLowerCase();
+            if (!normalizedReceiptNumber || !normalizedBarcode.includes(normalizedReceiptNumber)) {
+                const message = `The scanned barcode does not match warehouse receipt ${unscanReceiptNumber || '-'}.`;
+                stopScanner();
+                scanInProgressRef.current = false;
+                setScannerStatus(message);
+                setScanMessage({ text: message, severity: 'error' });
+                return;
+            }
+        }
+
         scanInProgressRef.current = true;
-        setScannerStatus('Updating freight scan status...');
-        const result = await dispatch(scanShipmentFreight({ id: shipmentId, barcodeValue }));
+        setScannerStatus(scannerMode === 'unscan' ? 'Updating freight unscan status...' : 'Updating freight scan status...');
+        const action = scannerMode === 'unscan' ? unscanShipmentFreight : scanShipmentFreight;
+        const result = await dispatch(action({ id: shipmentId, barcodeValue }));
         if (result?.success) {
             applyScanResponse(result.data);
-            setScanMessage({ text: 'Freight scanned successfully.', severity: 'success' });
+            setScanMessage({
+                text: scannerMode === 'unscan' ? 'Freight unscanned successfully.' : 'Freight scanned successfully.',
+                severity: 'success',
+            });
             closeScanner();
         } else {
             scanInProgressRef.current = false;
-            setScannerStatus(result?.error || 'Unable to scan freight. Try again.');
-            setScanMessage({ text: result?.error || 'Unable to scan freight.', severity: 'error' });
+            const fallbackMessage = scannerMode === 'unscan' ? 'Unable to unscan freight.' : 'Unable to scan freight.';
+            setScannerStatus(result?.error || `${fallbackMessage} Try again.`);
+            setScanMessage({ text: result?.error || fallbackMessage, severity: 'error' });
         }
-    }, [applyScanResponse, closeScanner, currentShipment?.id, currentShipment?.shipmentId, dispatch]);
+    }, [applyScanResponse, closeScanner, currentShipment?.id, currentShipment?.shipmentId, dispatch, scannerMode, stopScanner, unscanReceiptNumber]);
 
     useEffect(() => {
         if (!scannerOpen) return undefined;
@@ -194,22 +221,12 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
 
     useEffect(() => () => stopScanner(), [stopScanner]);
 
-    const openScanner = () => {
-        setScannerStatus('Point the camera at the freight barcode.');
+    const openScanner = (mode = 'scan', receiptNumber = '') => {
+        setScanMessage((previous) => ({ ...previous, text: '' }));
+        setScannerMode(mode);
+        setUnscanReceiptNumber(receiptNumber);
+        setScannerStatus(`Point the camera at the freight barcode to ${mode}.`);
         setScannerOpen(true);
-    };
-
-    const handleSignOff = async () => {
-        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
-        if (!shipmentId || signOffLoading) return;
-
-        const result = await dispatch(signOffShipment(shipmentId));
-        if (result?.success) {
-            applyScanResponse(result.data);
-            setScanMessage({ text: 'Shipment signed off successfully.', severity: 'success' });
-        } else {
-            setScanMessage({ text: result?.error || 'Unable to sign off shipment.', severity: 'error' });
-        }
     };
 
     const handleBarcodeImageUpload = async (event) => {
@@ -249,6 +266,12 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
         }
     };
 
+    const openUnscanScanner = () => {
+        const receiptNumber = unscanReceipt?.receiptNumber;
+        setUnscanReceipt(null);
+        openScanner('unscan', receiptNumber);
+    };
+
     return (
         <Box sx={{ minHeight: 500, bgcolor: '#e7e7e7' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25 }}>
@@ -269,25 +292,24 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>PRO# - {proNumber}</Typography>
                     <Stack direction="row" spacing={0.75} justifyContent="flex-end" sx={{ mt: 0.5 }}>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            onClick={areAllReceiptsScanned ? handleSignOff : openScanner}
-                            disabled={signOffLoading}
-                            sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
-                        >
-                            {areAllReceiptsScanned && signOffLoading ? 'Signing Off...' : areAllReceiptsScanned ? 'Sign-Off' : 'Scan'}
-                        </Button>
                         {!areAllReceiptsScanned && (
                             <Button
                                 variant="contained"
                                 size="small"
-                                onClick={onClose}
-                                sx={{ minWidth: 64, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                                onClick={() => openScanner('scan')}
+                                sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                             >
-                                Complete
+                                Scan
                             </Button>
                         )}
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={onClose}
+                            sx={{ minWidth: 64, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            Complete
+                        </Button>
                     </Stack>
                 </Box>
             </Box>
@@ -364,13 +386,23 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
             </Paper>
             <Dialog open={scannerOpen} onClose={closeScanner} maxWidth="md" fullWidth disableRestoreFocus>
                 <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
-                    Scan Freight Barcode
+                    {scannerMode === 'unscan' ? 'Unscan Freight Barcode' : 'Scan Freight Barcode'}
                     <IconButton onClick={closeScanner} size="small" sx={{ position: 'absolute', right: 12, top: 12 }}>
                         <CloseIcon fontSize="small" />
                     </IconButton>
                 </DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={1.5}>
+                        {scanMessage.text && (
+                            <Alert
+                                severity={scanMessage.severity}
+                                variant="filled"
+                                onClose={() => setScanMessage((previous) => ({ ...previous, text: '' }))}
+                                sx={{ position: 'sticky', top: 0, zIndex: 2 }}
+                            >
+                                {scanMessage.text}
+                            </Alert>
+                        )}
                         <Box sx={{ position: 'relative', bgcolor: '#000', borderRadius: 1, overflow: 'hidden', minHeight: { xs: 320, sm: 460 } }}>
                             <Box component="video" ref={videoRef} autoPlay playsInline muted sx={{ width: '100%', height: { xs: 320, sm: 460 }, display: 'block', objectFit: 'cover' }} />
                             <Box sx={{ position: 'absolute', left: '6%', right: '6%', top: '24%', height: '46%', border: '2px solid #fff', borderRadius: 1, boxShadow: '0 0 0 999px rgba(0,0,0,0.28)' }} />
@@ -414,10 +446,22 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                     {unscanReceipt?.proNumber || unscanReceipt?.barcodeNumber || currentShipment?.barcodeNumber || currentShipment?.rmNumber || '-'}
                 </DialogTitle>
                 <DialogContent dividers sx={{ px: 2, pt: 1, pb: 2 }}>
+                    {scanMessage.text && (
+                        <Alert
+                            severity={scanMessage.severity}
+                            variant="filled"
+                            onClose={() => setScanMessage((previous) => ({ ...previous, text: '' }))}
+                            sx={{ mb: 1 }}
+                        >
+                            {scanMessage.text}
+                        </Alert>
+                    )}
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.75 }}>
                         <Button
                             variant="contained"
                             size="small"
+                            onClick={openUnscanScanner}
+                            disabled={scanFreightLoading}
                             sx={{ minWidth: 58, bgcolor: '#b5232b', py: 0.15, px: 1.25, fontSize: 10, textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#971d24', boxShadow: 'none' } }}
                         >
                             Unscan
@@ -438,9 +482,11 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                                     const freightStatus = getFreightItemStatus(item);
                                     return (
                                         <TableRow key={item.freightId || item.id || item.freightBarcodeValue || index}>
-                                            <TableCell sx={{ fontSize: 11 }}>{String(index + 1).padStart(2, '0')}</TableCell>
                                             <TableCell sx={{ fontSize: 11 }}>
-                                                {item.freightBarcodeValue || item.piece || item.pieceNumber || `FRT${index + 1}`}
+                                                {item.freightBarcodeValue || String(index + 1).padStart(2, '0')}
+                                            </TableCell>
+                                            <TableCell sx={{ fontSize: 11 }}>
+                                                {item.pieces || item.piece || item.pieceNumber || '-'}
                                             </TableCell>
                                             <TableCell sx={{ fontSize: 11 }}>{item.weight ?? item.reWeight ?? '-'}</TableCell>
                                             <TableCell>
@@ -467,7 +513,7 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                 </DialogContent>
             </Dialog>
             <Snackbar
-                open={Boolean(scanMessage.text)}
+                open={Boolean(scanMessage.text) && !scannerOpen && !unscanReceipt}
                 autoHideDuration={4000}
                 onClose={(event, reason) => {
                     if (reason !== 'clickaway') setScanMessage((previous) => ({ ...previous, text: '' }));
