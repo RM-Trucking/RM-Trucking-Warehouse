@@ -109,3 +109,42 @@ export async function scanFreight(req: Request, res: Response, conn: Connection)
         res.status(statusCode).json({ success: false, message: error.message || "Failed to scan freight" });
     }
 }
+
+export async function unscanFreight(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentIdParam = req.query.id as string | undefined;
+        const barcodeValue = req.query.barcodeValue as string | undefined;
+        const shipmentId = shipmentIdParam ? parseInt(shipmentIdParam, 10) : NaN;
+
+        if (!shipmentId || !barcodeValue) {
+            res.status(400).json({ success: false, message: "shipmentId and barcodeValue are required" });
+            return;
+        }
+
+        const updatedShipment = await shipmentService.unscanFreight(conn, shipmentId, barcodeValue);
+        res.status(200).json({ success: true, message: "Freight un-scanned successfully", data: updatedShipment });
+
+    } catch (error: any) {
+
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to un-scan freight" });
+    }
+}
+
+export async function signOffShipment(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentIdParam = req.body.shipmentId as number | undefined;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!shipmentIdParam) {
+            res.status(400).json({ success: false, message: "shipmentId is required" });
+            return;
+        }
+        const updatedShipment = await shipmentService.signOffShipment(conn, shipmentIdParam, userId);
+        res.status(200).json({ success: true, message: "Shipment signed off successfully", data: updatedShipment });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to sign off shipment" });
+    }
+}

@@ -4,7 +4,7 @@ import { Buffer } from 'buffer';
 
 const MAX_IMAGE_SIZE = 500 * 1024; // 500KB per image
 const REQUEST_TIMEOUT = 10000; // 10 seconds timeout
-const MAX_CONCURRENT_DOWNLOADS = 5; // limit simultaneous image fetches
+const MAX_CONCURRENT_DOWNLOADS = 10; // limit simultaneous image fetches
 
 // Filter patterns for relevant images
 const RELEVANT_IMAGE_PATTERNS = [
@@ -71,19 +71,34 @@ async function fetchFileAsBase64(path: string, baseUrl: string, apiKey: string):
 // Concurrency limiter without p-limit
 async function fetchImagesWithLimit(paths: string[], baseUrl: string, apiKey: string): Promise<string[]> {
     const results: string[] = new Array(paths.length);
+    const active: Promise<void>[] = [];
+    let nextIndex = 0;
 
-    // Process in batches to respect MAX_CONCURRENT_DOWNLOADS
-    for (let i = 0; i < paths.length; i += MAX_CONCURRENT_DOWNLOADS) {
-        const batch = paths.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
+    const enqueue = () => {
+        while (active.length < MAX_CONCURRENT_DOWNLOADS && nextIndex < paths.length) {
+            const currentIndex = nextIndex++;
+            const path = paths[currentIndex];
 
-        // Map each path to its index and fetch
-        const promises = batch.map((path, idx) =>
-            fetchFileAsBase64(path, baseUrl, apiKey).then(base64 => {
-                results[i + idx] = base64 || '';
-            })
-        );
+            const promise = fetchFileAsBase64(path, baseUrl, apiKey)
+                .then(base64 => {
+                    results[currentIndex] = base64 || '';
+                })
+                .finally(() => {
+                    const idx = active.indexOf(promise);
+                    if (idx !== -1) {
+                        active.splice(idx, 1);
+                    }
+                });
 
-        await Promise.all(promises); // Wait for this batch to finish before moving on
+            active.push(promise);
+        }
+    };
+
+    enqueue();
+
+    while (active.length > 0) {
+        await Promise.race(active);
+        enqueue();
     }
 
     return results;
@@ -105,77 +120,58 @@ export async function getDimentionsFromCargoAPI(
         throw new Error('Cargo API not found');
     }
 
-    const endpointParts = cargoAPI.apiEndPoint.split('/');
-    endpointParts.pop(); // Remove the last segment
-    const baseUrl = endpointParts.join('/');
-    const snapshotUrl = `${baseUrl}/snapshot`;
+    const baseUrl = cargoAPI.apiEndPoint.replace(/\/+$/, '');
+    const dimensionSnapshotUrl = `${baseUrl}/${encodeURIComponent('dimension snapshot')}`;
 
     try {
-        const [dimensionRes, snapshotRes] = await Promise.allSettled([
-            fetchWithTimeout(cargoAPI.apiEndPoint, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${cargoAPI.apiKey}`,
-                    'Accept-Encoding': 'gzip, deflate'
-                }
-            }),
-            fetchWithTimeout(snapshotUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${cargoAPI.apiKey}`,
-                    'Accept-Encoding': 'gzip, deflate'
-                }
-            })
-        ]);
+        const dimensionResponse = await fetchWithTimeout(dimensionSnapshotUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${cargoAPI.apiKey}`,
+                'Accept-Encoding': 'gzip, deflate'
+            }
+        });
 
-        if (dimensionRes.status === 'rejected') {
-            throw new Error(`Cargo API Dimension request failed: ${dimensionRes.reason}`);
-        }
-
-        const dimensionResponse = dimensionRes.value;
         if (!dimensionResponse.ok) {
-            throw new Error(`Cargo API Dimension request failed with status: ${dimensionResponse.status}`);
+            throw new Error(`Cargo API request failed with status: ${dimensionResponse.status}`);
         }
 
         const result: any = await dimensionResponse.json();
+        const dimensionNode = result?.Responses?.Dimension;
+        const snapshotNode = result?.Responses?.Snapshot;
 
-        if (!result?.Responses?.Dimension) {
+        if (!dimensionNode) {
             throw new Error(`Invalid response structure from Cargo API: ${JSON.stringify(result)}`);
         }
 
-        if (result.Responses.Dimension.code === 'DIM_NO_OBJECT') {
+        if (dimensionNode.code === 'DIM_NO_OBJECT') {
             return {
                 error: true,
-                code: result.Responses.Dimension.code,
-                message: result.Responses.Dimension.description || 'No object detected'
+                code: dimensionNode.code,
+                message: dimensionNode.description || 'No object detected'
             };
         }
 
-        let imagesBase64: string[] = [];
-        if (snapshotRes.status === 'fulfilled' && snapshotRes.value.ok) {
-            const snapshot = await snapshotRes.value.json();
-            const imagesNode = snapshot?.Responses?.Snapshot?.Directory?.Images;
-            let imagePaths: string[] = [];
+        const imagesNode = snapshotNode?.Directory?.Images;
+        let imagePaths: string[] = [];
 
-            if (imagesNode?.Path) {
-                imagePaths = Array.isArray(imagesNode.Path)
-                    ? imagesNode.Path
-                    : [imagesNode.Path];
-            }
-
-            const relevantImages = imagePaths.filter(isRelevantImage);
-            console.log(`Filtered ${imagePaths.length} images down to ${relevantImages.length} relevant images`);
-
-            imagesBase64 = await fetchImagesWithLimit(relevantImages, baseUrl, cargoAPI.apiKey);
+        if (imagesNode?.Path) {
+            imagePaths = Array.isArray(imagesNode.Path)
+                ? imagesNode.Path
+                : [imagesNode.Path];
         }
 
+        const relevantImages = imagePaths.filter(isRelevantImage);
+        console.log(`Filtered ${imagePaths.length} images down to ${relevantImages.length} relevant images`);
+
+        const imagesBase64 = await fetchImagesWithLimit(relevantImages, baseUrl, cargoAPI.apiKey);
+
         return {
-            length: result.Responses.Dimension.Info?.Dimensions?.Length || 0,
-            width: result.Responses.Dimension.Info?.Dimensions?.Width || 0,
-            height: result.Responses.Dimension.Info?.Dimensions?.Height || 0,
-            weight: result.Responses.Dimension.Info?.Dimensions?.Weight?.Net || 0,
+            length: dimensionNode.Info?.Dimensions?.Length || 0,
+            width: dimensionNode.Info?.Dimensions?.Width || 0,
+            height: dimensionNode.Info?.Dimensions?.Height || 0,
+            weight: dimensionNode.Info?.Dimensions?.Weight?.Net || 0,
             images: imagesBase64
         };
     } catch (error) {

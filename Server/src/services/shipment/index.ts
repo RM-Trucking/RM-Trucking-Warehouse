@@ -78,12 +78,14 @@ export async function createShipmentWithRelations(
 
             await Promise.all(payload.receipts.map(async (receipt) => {
                 const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
-                const scannedCount = freightInfo.filter(f => f.isScanned === 'Y').length;
-                const unscannedCount = freightInfo.filter(f => f.isScanned === 'N').length;
+                const scannedItems = freightInfo.filter(f => f.isScanned === 'Y');
+                const unscannedItems = freightInfo.filter(f => f.isScanned === 'N' || f.isScanned === null || f.isScanned === undefined);
                 (receipt as any).freightSummary = {
                     total: freightInfo.length,
-                    scanned: scannedCount,
-                    unscanned: unscannedCount,
+                    scanned: scannedItems.length,
+                    unscanned: unscannedItems.length,
+                    scannedItems: scannedItems,
+                    unscannedItems: unscannedItems,
                 };
                 await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, { status: "PREPARED" });
             }));
@@ -147,12 +149,14 @@ export async function updateShipmentWithRelations(
             await Promise.all((payload.receipts ?? []).map(async (receipt) => {
                 const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
                 const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
-                const scannedCount = freightInfo.filter(f => f.isScanned === 'Y').length;
-                const unscannedCount = freightInfo.filter(f => f.isScanned === 'N').length;
+                const scannedItems = freightInfo.filter(f => f.isScanned === 'Y');
+                const unscannedItems = freightInfo.filter(f => f.isScanned === 'N' || f.isScanned === null || f.isScanned === undefined);
                 (receipt as any).freightSummary = {
                     total: freightInfo.length,
-                    scanned: scannedCount,
-                    unscanned: unscannedCount,
+                    scanned: scannedItems.length,
+                    unscanned: unscannedItems.length,
+                    scannedItems: scannedItems,
+                    unscannedItems: unscannedItems,
                 };
                 await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, { status: warehouseReceipt?.status });
             }));
@@ -193,13 +197,15 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     await Promise.all(receipts.map(async (receipt) => {
         const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
         console.log("Freight info for receiptId", receipt.receiptId, freightInfo);
-        const scannedCount = freightInfo.filter(f => f.isScanned === 'Y').length;
-        const unscannedCount = freightInfo.filter(f => f.isScanned === 'N' || f.isScanned === null || f.isScanned === undefined).length;
+        const scannedItems = freightInfo.filter(f => f.isScanned === 'Y');
+        const unscannedItems = freightInfo.filter(f => f.isScanned === 'N' || f.isScanned === null || f.isScanned === undefined);
         // (receipt as any).freightInfo = freightInfo;
         (receipt as any).freightSummary = {
             total: freightInfo.length,
-            scanned: scannedCount,
-            unscanned: unscannedCount,
+            scanned: scannedItems.length,
+            unscanned: unscannedItems.length,
+            scannedItems: scannedItems,
+            unscannedItems: unscannedItems,
         };
     }));
 
@@ -311,6 +317,120 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
     } catch (error) {
         await conn.rollback();
         console.error("Error occurred while scanning freight:", error);
+        throw error;
+    }
+}
+
+export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string) {
+    const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
+        .split("-")
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    const receiptNumber = Number(receiptNumberPart);
+    const freightBarcodeValue = freightBarcodeValuePart ?? "";
+
+    if (!receiptNumber || !freightBarcodeValue) {
+        throwValidationError("Barcode value must be in the format receiptNumber-freightBarcodeValue.");
+    }
+
+    try {
+        await conn.beginTransaction();
+
+        console.log(`Un-scanning freight for shipmentId: ${shipmentId}, barcodeValue: ${barcodeValue}`);
+        const receipt = await warehouseReceiptDB.getAllWarehouseReceiptByReceiptNumber(conn, receiptNumber);
+        if (!receipt) {
+            throwValidationError(`Receipt with number ${receiptNumber} was not found.`);
+        }
+
+        const shipmentReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+        const isReceiptLinkedToShipment = shipmentReceipts.some((shipmentReceipt: any) => Number(shipmentReceipt.receiptId) === Number(receipt.receiptId));
+        if (!isReceiptLinkedToShipment) {
+            throwValidationError(`Receipt ${receiptNumber} is not associated with shipment ${shipmentId}.`);
+        }
+
+        const freightInfos = await warehouseReceiptDB.getFreightInfosForScanByReceipt(conn, receipt.receiptId);
+        const matchedFreight = freightInfos.find((freightInfo: any) => {
+            const existingBarcode = normalizeBarcodeNumber(freightInfo.freightBarcodeValue);
+            const incomingBarcode = normalizeBarcodeNumber(freightBarcodeValue);
+            return existingBarcode && incomingBarcode && existingBarcode.toUpperCase() === incomingBarcode.toUpperCase();
+        });
+
+        if (!matchedFreight) {
+            throwValidationError(`Freight barcode "${freightBarcodeValue}" was not found for receipt ${receiptNumber}.`);
+        }
+
+        if (String(matchedFreight.isScanned).toUpperCase() !== "Y") {
+            throwValidationError("Item is not scanned");
+        }
+
+        await warehouseReceiptDB.updateFreightInfo(conn, Number(matchedFreight.freightId), { isScanned: "N" });
+
+        const receiptFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+        const currentReceiptFullyScanned = hasAllFreightScanned(receiptFreightInfos);
+
+        if (!currentReceiptFullyScanned) {
+            await warehouseReceiptDB.updateWarehouseReceipt(conn, Number(receipt.receiptId), { status: "PREPARED" });
+        }
+
+        const allShipmentsReceiptsScanned = (await Promise.all(shipmentReceipts.map(async (shipmentReceipt: any) => {
+            const receiptId = Number(shipmentReceipt.receiptId);
+            const shipmentReceiptFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+            return hasAllFreightScanned(shipmentReceiptFreightInfos);
+        }))).every(Boolean);
+
+        if (!allShipmentsReceiptsScanned) {
+            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "N" }, 0);
+        }
+
+        const record = await getShipmentById(conn, shipmentId);
+
+        await conn.commit();
+
+        return record;
+
+    } catch (error) {
+        await conn.rollback();
+        console.error("Error occurred while un-scanning freight:", error);
+        throw error;
+    }
+}
+
+export async function signOffShipment(conn: Connection, shipmentId: number, userId: number) {
+    const existingShipment = await shipmentDB.getShipmentById(conn, shipmentId);
+
+    if (!existingShipment) {
+        throwValidationError(`Shipment with id ${shipmentId} was not found.`);
+    }
+
+    try {
+        await conn.beginTransaction();
+
+        const shipmentReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+
+        const notFullyScanned: number[] = [];
+
+        for (const receipt of shipmentReceipts) {
+            const receiptId = Number((receipt as any).receiptId);
+            const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
+            if (!hasAllFreightScanned(freightInfos)) {
+                notFullyScanned.push(receiptId);
+            }
+        }
+
+        if (notFullyScanned.length > 0) {
+            throwValidationError(`All warehouse receipts must be fully scanned before sign-off. Unscanned receipts: ${notFullyScanned.join(", ")}`);
+        }
+
+        await shipmentDB.updateShipment(conn, shipmentId, { isShipped: "Y" }, userId);
+
+        const record = await getShipmentById(conn, shipmentId);
+
+        await conn.commit();
+
+        return record;
+    } catch (error) {
+        await conn.rollback();
         throw error;
     }
 }

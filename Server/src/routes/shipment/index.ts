@@ -23,6 +23,15 @@ router.get("/scan-freight", authenticateJWT, async (req: Request, res: Response)
     }
 });
 
+router.get("/unscan-freight", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.unscanFreight(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
@@ -36,6 +45,15 @@ router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
         await shipmentController.createShipment(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+router.post("/sign-off", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.signOffShipment(req, res, conn);
     } finally {
         if (conn) conn.close();
     }
