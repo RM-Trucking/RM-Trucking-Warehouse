@@ -23,6 +23,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
+import { HEADER } from '../../config';
 
 const scanActionBtnSx = {
   bgcolor: '#A22',
@@ -339,7 +340,9 @@ function ScanItem({
 function FreightOptionButtons({
   selectedOptions = [],
   badFreightImageCount = 0,
+  handlingDescription = '',
   onToggle,
+  onHandlingDescriptionChange,
   onBadFreightUpload,
   onBadFreightPreview,
 }) {
@@ -424,6 +427,18 @@ function FreightOptionButtons({
             {label}
           </Button>
           {isBadFreight && badFreightSelected && renderBadFreightActions()}
+          {isBadFreight && badFreightSelected && (
+            <Box sx={{ gridColumn: '1 / -1' }}>
+              <ScanField
+                label="Freight Condition"
+                value={handlingDescription}
+                onChange={onHandlingDescriptionChange}
+                variant="outlined"
+                multiline
+                rows={2}
+              />
+            </Box>
+          )}
         </Box>
         );
       })}
@@ -493,6 +508,11 @@ export default function WarehouseCheckInScanGunPage({
     emails: [],
     selectedEmails: {},
   });
+  const [notesDialog, setNotesDialog] = useState({
+    open: false,
+    receiptKey: '',
+    value: '',
+  });
   const requestRemoveItem = (receiptKey, formId, itemId, itemIndex) => {
     setDeleteItemDialog({ receiptKey, formId, itemId, itemIndex });
   };
@@ -558,6 +578,23 @@ export default function WarehouseCheckInScanGunPage({
     setMailListDialog((prev) => ({ ...prev, open: false }));
   };
 
+  const handleOpenNotes = (receipt) => {
+    setNotesDialog({
+      open: true,
+      receiptKey: receipt.key,
+      value: receipt.notes || '',
+    });
+  };
+
+  const handleCloseNotes = () => {
+    setNotesDialog((previous) => ({ ...previous, open: false }));
+  };
+
+  const handleSaveNotes = () => {
+    updateReceipt(notesDialog.receiptKey, () => ({ notes: notesDialog.value }));
+    handleCloseNotes();
+  };
+
   const toggleFreightOption = (receiptKey, formId, option) => {
     const receipt = proceededReceipts.find((currentReceipt) => currentReceipt.key === receiptKey);
     const form = receipt?.forms?.find((currentForm) => currentForm.id === formId);
@@ -570,13 +607,31 @@ export default function WarehouseCheckInScanGunPage({
     updateFormField(receiptKey, formId, 'freightOptions', nextOptions);
     if (option === 'Bad Freight Condition' && isSelected) {
       updateFormField(receiptKey, formId, 'badFreightImages', []);
+      updateFormField(receiptKey, formId, 'handlingDescription', '');
     }
   };
 
   return (
     <Box sx={{ width: '100vw', minHeight: '100dvh', bgcolor: '#fff', color: '#000', fontSize: 12, overflowX: 'hidden' }}>
       <Box sx={{ width: '100vw', maxWidth: 'none', mx: 0, bgcolor: '#fff', minHeight: '100dvh' }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1, py: 0.75 }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{
+            position: 'fixed',
+            top: `${HEADER.H_MOBILE}px`,
+            left: 4,
+            right: 4,
+            width: 'auto',
+            boxSizing: 'border-box',
+            zIndex: (theme) => theme.zIndex.appBar - 1,
+            px: 1,
+            py: 0.75,
+            bgcolor: '#fff',
+            borderBottom: '1px solid #e0e0e0',
+          }}
+        >
           <Stack
             direction="row"
             alignItems="center"
@@ -596,7 +651,7 @@ export default function WarehouseCheckInScanGunPage({
           </Stack>
         </Stack>
 
-        <Box sx={{ p: 1 }}>
+        <Box sx={{ px: 1, pb: 1, pt: 6 }}>
           <Accordion defaultExpanded disableGutters sx={{ boxShadow: 'none', border: '1px solid #777', mb: 1 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: '#d0d0d0', minHeight: 38, '& .MuiAccordionSummary-content': { my: 0.5 } }}>
               <Typography sx={{ fontSize: 12, fontWeight: 700 }}>Warehouse Receipt</Typography>
@@ -610,7 +665,7 @@ export default function WarehouseCheckInScanGunPage({
                   setSearchValue('');
                 }}
               >
-                <FormControlLabel value="pro" disabled={isSearchDisabled} control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />} label={<Typography sx={{ fontSize: 11 }}>Search By PRO#</Typography>} />
+                <FormControlLabel value="pro" disabled={isSearchDisabled} control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />} label={<Typography sx={{ fontSize: 11 }}>Search By PRO / ID</Typography>} />
                 <FormControlLabel value="rmDriver" disabled={isSearchDisabled} control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />} label={<Typography sx={{ fontSize: 11 }}>RM Driver</Typography>} />
                 {showParcelOption && <FormControlLabel value="parcel" disabled={isSearchDisabled} control={<Radio size="small" sx={{ color: '#A22', '&.Mui-checked': { color: '#A22' } }} />} label={<Typography sx={{ fontSize: 11 }}>Parcel</Typography>} />}
               </RadioGroup>
@@ -753,9 +808,14 @@ export default function WarehouseCheckInScanGunPage({
                       <Iconify icon="mdi:email-outline" width={20} />
                     </IconButton>
                   </Stack>
-                  <Button variant="contained" size="small" onClick={() => removeReceipt(receipt.key)} sx={scanActionBtnSx}>
-                    Reset
-                  </Button>
+                  <Stack direction="row" spacing={0.75}>
+                    <Button variant="contained" size="small" onClick={() => handleOpenNotes(receipt)} sx={scanActionBtnSx}>
+                      Notes
+                    </Button>
+                    <Button variant="contained" size="small" onClick={() => removeReceipt(receipt.key)} sx={scanActionBtnSx}>
+                      Reset
+                    </Button>
+                  </Stack>
                 </Stack>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '88px 1fr', rowGap: 0.5, columnGap: 1 }}>
                   <Typography sx={{ fontSize: 11, color: '#555' }}>Receipt No.</Typography>
@@ -859,7 +919,11 @@ export default function WarehouseCheckInScanGunPage({
                           )}
                           <FreightOptionButtons
                             selectedOptions={form.freightOptions || []}
+                            handlingDescription={form.handlingDescription || ''}
                             onToggle={(option) => toggleFreightOption(receipt.key, form.id, option)}
+                            onHandlingDescriptionChange={(event) =>
+                              updateFormField(receipt.key, form.id, 'handlingDescription', event.target.value)
+                            }
                             badFreightImageCount={(form.badFreightImages || []).length}
                             onBadFreightUpload={() =>
                               handleOpenImageUpload(
@@ -1008,6 +1072,30 @@ export default function WarehouseCheckInScanGunPage({
             sx={{ ...scanActionBtnSx, height: 32 }}
           >
             Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={notesDialog.open} onClose={handleCloseNotes} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>Notes</DialogTitle>
+        <DialogContent dividers>
+          <StyledTextField
+            fullWidth
+            multiline
+            rows={4}
+            variant="outlined"
+            value={notesDialog.value}
+            onChange={(event) =>
+              setNotesDialog((previous) => ({ ...previous, value: event.target.value }))
+            }
+            placeholder="Enter notes"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button variant="outlined" size="small" onClick={handleCloseNotes} sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button variant="contained" size="small" onClick={handleSaveNotes} sx={scanActionBtnSx}>
+            Save
           </Button>
         </DialogActions>
       </Dialog>
