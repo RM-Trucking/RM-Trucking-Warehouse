@@ -69,8 +69,6 @@ export async function updateShipment(conn: Connection, shipmentId: number, paylo
     });
 
     fields.push(`"updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)`);
-    fields.push(`"updatedBy" = ?`);
-    params.push(userId);
     params.push(shipmentId);
 
     const query = `
@@ -179,7 +177,7 @@ export async function getContainersByShipmentId(conn: Connection, shipmentId: nu
 }
 
 export async function getReceiptsByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
-    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."status", wr."piecesInland", wr."weightInland", wr."reWeight"
+    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."status", wr."piecesInland", wr."weightInland", wr."reWeight", wr."location"
     FROM ${SCHEMA}."Warehouse_Shipment_Receipts" as wsr 
     LEFT JOIN ${SCHEMA}."Warehouse_Receipt" as wr ON wsr."receiptId" = wr."receiptId"
     WHERE wsr."shipmentId" = ?`;

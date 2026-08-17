@@ -146,6 +146,7 @@ const createForm = (id, receiptNumber = null, defaults = {}) => ({
   customerRefNoPackageId: defaults.customerRefNoPackageId || "",
   freightOptions: [],
   badFreightImages: [],
+  handlingDescription: defaults.handlingDescription || "",
 });
 
 const getNextFormId = (forms = []) =>
@@ -936,7 +937,11 @@ export default function WarehouseCheckInPage({
   const showScanGunPage = isScanGunScreen;
 
   const [searchType, setSearchType] = useState("pro"); // 'pro' | 'rmDriver' | 'fedexUps'
-  const [searchBy, setSearchBy] = useState("PRO");
+  const [searchBy, setSearchBy] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width:599.95px)").matches
+      ? "ID"
+      : "PRO",
+  );
   const [searchValue, setSearchValue] = useState("");
   const handleSearchValueChange = useCallback((value) => {
     setSearchValue(String(value || "").slice(0, 100));
@@ -1035,9 +1040,43 @@ export default function WarehouseCheckInPage({
   // ── Proceeded receipts state ───────────────────────────────────────
   const [proceededReceipts, setProceededReceipts] = useState([]);
 
+  const hasUnsavedCheckInData =
+    Boolean(searchValue.trim()) ||
+    proceededReceipts.length > 0 ||
+    Object.values(parcelForm).some((value) => Boolean(value));
+
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (!hasUnsavedCheckInData) return;
+
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedCheckInData]);
+
+  useEffect(() => {
+    const previousHtmlOverscroll = document.documentElement.style.overscrollBehaviorY;
+    const previousBodyOverscroll = document.body.style.overscrollBehaviorY;
+
+    document.documentElement.style.overscrollBehaviorY = "none";
+    document.body.style.overscrollBehaviorY = "none";
+
+    return () => {
+      document.documentElement.style.overscrollBehaviorY = previousHtmlOverscroll;
+      document.body.style.overscrollBehaviorY = previousBodyOverscroll;
+    };
+  }, []);
+
   const resetCheckInState = () => {
     setSearchType("pro");
-    setSearchBy("PRO");
+    setSearchBy(
+      typeof window !== "undefined" && window.matchMedia("(max-width:599.95px)").matches
+        ? "ID"
+        : "PRO",
+    );
     setSearchValue("");
     setSavedResults(null);
     setCollapsed({});
@@ -1173,7 +1212,12 @@ export default function WarehouseCheckInPage({
 
     draftRestoredRef.current = true;
     setSearchType(warehouseCheckInDraft.searchType || "pro");
-    setSearchBy(warehouseCheckInDraft.searchBy || "PRO");
+    setSearchBy(
+      warehouseCheckInDraft.searchBy ||
+        (typeof window !== "undefined" && window.matchMedia("(max-width:599.95px)").matches
+          ? "ID"
+          : "PRO"),
+    );
     handleSearchValueChange(warehouseCheckInDraft.searchValue || "");
     setSavedResults(warehouseCheckInDraft.savedResults || null);
     setCollapsed(warehouseCheckInDraft.collapsed || {});
@@ -1256,6 +1300,7 @@ export default function WarehouseCheckInPage({
         row: normalizedRow,
         receivedBy: "",
         location: "OH",
+        notes: "",
         sectionCollapsed: false,
         forms: [
           {
@@ -2073,8 +2118,8 @@ export default function WarehouseCheckInPage({
               (form?.badFreightImages || []).length
                 ? "Y"
                 : null,
-            handlingDescription: null,
-            notes: null,
+            handlingDescription: toValueOrNull(form?.handlingDescription),
+            notes: toValueOrNull(receipt?.notes),
             destination: toValueOrNull(
               getRowValue(row, ["destination", "finalDestination"], ""),
             ),
@@ -2731,6 +2776,7 @@ export default function WarehouseCheckInPage({
         row,
         receivedBy: receiptData.receivedBy || "",
         location: receiptData.location || "OH",
+        notes: "",
         sectionCollapsed: false,
         forms: [{ ...form, items: [parcelItem] }],
       },
@@ -3349,7 +3395,7 @@ export default function WarehouseCheckInPage({
                   />
                 }
                 label={
-                  <Typography sx={{ fontSize: 13 }}>Search By PRO#</Typography>
+                  <Typography sx={{ fontSize: 13 }}>Search By PRO / ID</Typography>
                 }
               />
               <FormControlLabel

@@ -243,19 +243,30 @@ export async function listVerificationService(
         filterLogic
     );
 
-    // Enrich each verification with driver info, pro details, and user name
+    // Enrich each verification with driver info, pro details, user name, and related receipt summaries
     const detailedVerifications = await Promise.all(
         verifications.map(async (verification: any) => {
             const driver = await idVerificationDB.getDriverById(conn, verification.driverId);
             const proDetails = await idVerificationDB.getProDetailsByVerification(conn, verification.verificationId);
             const createdByName = await userDB.getUserName(conn, verification.createdBy);
+            const receipts = (await warehouseReceiptDB.getWarehouseReceiptsByVerification(conn, verification.verificationId))
+                .map((receipt: any) => ({
+                    receiptId: receipt.receiptId,
+                    receiptNumber: receipt.receiptNumber,
+                    proNumber: receipt.proNumber,
+                    status: receipt.status,
+                    customerName: receipt.customerName,
+                    stationName: receipt.stationName,
+                    carrierName: receipt.carrierName
+                }));
 
             return {
                 ...verification,
                 createdAt: verification.createdAt ? toUtcDate(verification.createdAt) : null,
                 createdByName,
                 driver,
-                proDetails
+                proDetails,
+                receipts
             };
         })
     );
@@ -278,13 +289,22 @@ export async function getVerificationService(conn: Connection, id: number) {
 
     const driver = await idVerificationDB.getDriverById(conn, verification.driverId);
     const proDetails = await idVerificationDB.getProDetailsByVerification(conn, id);
-    // const receipts = await warehouseReceiptDB.getWarehouseReceiptsByVerification(conn, id);
+    const receipts = (await warehouseReceiptDB.getWarehouseReceiptsByVerification(conn, id)).map((receipt: any) => ({
+        receiptId: receipt.receiptId,
+        receiptNumber: receipt.receiptNumber,
+        proNumber: receipt.proNumber,
+        status: receipt.status,
+        customerName: receipt.customerName,
+        stationName: receipt.stationName,
+        carrierName: receipt.carrierName
+    }));
 
     return {
         ...verification,
         createdAt: verification.createdAt ? toUtcDate(verification.createdAt) : null,
         createdByName: await userDB.getUserName(conn, verification.createdBy),
         driver,
-        proDetails
+        proDetails,
+        receipts
     };
 }

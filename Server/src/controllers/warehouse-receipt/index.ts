@@ -1336,3 +1336,22 @@ export async function getReceiptForShipment(req: Request, res: Response, conn: C
         res.status(500).json({ success: false, message: error.message });
     }
 }
+
+export async function createFreightInfoTemp(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+
+        const freightBarcodeValue = await warehouseReceiptService.createFreightInfoTempService(conn);
+
+        res.status(200).json({
+            success: true,
+            message: "Temporary freight info created successfully",
+            data: { freightBarcodeValue }
+        });
+
+    }
+    catch (error: any) {
+        console.log(error);
+        logger.error("Error creating temporary freight info", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+}

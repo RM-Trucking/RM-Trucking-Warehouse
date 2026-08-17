@@ -109,6 +109,13 @@ router.put("/rate-approve", authenticateJWT, async (req: Request, res: Response)
 
 // ===== SPECIFIC GET ENDPOINTS (EXACT PATHS) =====
 
+// Get freight info temp for a given barcode value
+router.get("/freight-info-temp", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.createFreightInfoTemp(req, res, conn);
+    if (conn) conn.close();
+});
+
 // Get PRO header details for a given PRO number
 router.get("/pro-detail/:pro", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
@@ -151,6 +158,7 @@ router.get("/:receiptId/audit-logs", authenticateJWT, async (req: Request, res: 
     await warehouseReceiptController.getAuditLogsForReceipt(req, res, conn);
     if (conn) conn.close();
 });
+
 
 // ===== GENERIC GET ENDPOINTS (LIST & RETRIEVE) =====
 

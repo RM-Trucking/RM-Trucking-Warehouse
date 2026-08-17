@@ -64,6 +64,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/freight-info-temp:
+    get:
+      tags:
+        - Receipts
+      summary: Create temporary freight info barcode
+      description: Generate a temporary freight info barcode value used by the warehouse receipt workflow. This endpoint does not require request parameters.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Temporary freight info created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Temporary freight info created successfully"
+                  data:
+                    type: object
+                    properties:
+                      freightBarcodeValue:
+                        type: integer
+                        example: 100001
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt/batch:
     post:
       tags:
@@ -140,6 +175,7 @@ paths:
                       width: 10
                       height: 10
                       cubicMeter: 20
+                      freightBarcodeValue: "FRT-1001"
                     - pieces: 30
                       type: "Pallet"
                       weight: 3000
@@ -147,6 +183,7 @@ paths:
                       width: 40
                       height: 60
                       cubicMeter: 80
+                      freightBarcodeValue: "FRT-1001"
                 - receipt:
                     receiptNumber: 100000033
                     receivedBy: null
@@ -193,6 +230,7 @@ paths:
                       width: 15
                       height: 12
                       cubicMeter: 3.6
+                      freightBarcodeValue: "FRT-1001"
                     - pieces: 30
                       type: "Pallet"
                       weight: 3000
@@ -200,6 +238,7 @@ paths:
                       width: 40
                       height: 55
                       cubicMeter: 70
+                      freightBarcodeValue: "FRT-1002"
           multipart/form-data:
             schema:
               type: object
@@ -452,6 +491,7 @@ paths:
                   width: 10
                   height: 10
                   cubicMeter: 20
+                  freightBarcodeValue: "FRT-1001"
                 - pieces: 30
                   type: "Pallet"
                   weight: 3000
@@ -459,6 +499,7 @@ paths:
                   width: 40
                   height: 60
                   cubicMeter: 80
+                  freightBarcodeValue: "FRT-1001"
       responses:
         "201":
           description: Warehouse receipt created successfully with freight info
@@ -1380,7 +1421,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ShipmentReceiptRequest'
+              $ref: "#/components/schemas/ShipmentReceiptRequest"
             example:
               receiptNumber: 100000031
               startDate: "2026-04-01T00:00:00Z"
@@ -1398,25 +1439,25 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: '#/components/schemas/ShipmentReceiptResponse'
+                    $ref: "#/components/schemas/ShipmentReceiptResponse"
         "404":
           description: No matching receipt found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
         "400":
           description: Invalid request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
   /api/warehouse-receipt/label-print:
     post:
       tags:
@@ -1466,7 +1507,13 @@ paths:
                   proNumber: "PRO987"
                   destination: "New York"
                   pieces: 10
+                  freightBarcodeValue: "FB123456789"
                   labelCount: 2
+                  weight: 50
+                  length: 10
+                  width: 8
+                  height: 6
+                  type: "Box"
               minimalPayload:
                 summary: Only receiptNumber in query, no body
                 value: {}
@@ -2116,12 +2163,16 @@ components:
               length: 10
               width: 10
               height: 10
+              cubicMeter: 20
+              freightBarcodeValue: "FRT-1001"
             - pieces: 30
               type: "Pallet"
               weight: 3000
               length: 48
               width: 40
               height: 60
+              cubicMeter: 50
+              freightBarcodeValue: "FRT-1002"
 
     WarehouseReceiptWithFreightResponse:
       allOf:
@@ -2142,6 +2193,8 @@ components:
                   width: 10
                   height: 10
                   imageId: null
+                  cubicMeter: 20
+                  freightBarcodeValue: "FRT-1001"
                 - freightId: 102
                   receiptId: 1
                   pieces: 30
@@ -2151,6 +2204,8 @@ components:
                   width: 40
                   height: 60
                   imageId: null
+                  cubicMeter: 50
+                  freightBarcodeValue: "FRT-1002"
     WarehouseReceipt:
       type: object
       properties:

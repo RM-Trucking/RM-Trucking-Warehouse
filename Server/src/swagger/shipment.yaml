@@ -65,6 +65,40 @@ paths:
         "500":
           description: Server error
 
+  /api/shipment/sign-off:
+    post:
+      tags:
+        - Shipments
+      summary: Sign off shipment
+      description: Validates all warehouse receipts are fully scanned and marks the shipment as shipped.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shipmentId
+              properties:
+                shipmentId:
+                  type: integer
+                  example: 1
+      responses:
+        "200":
+          description: Shipment signed off successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Validation error or missing fields (e.g., unscanned receipts)
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
   /api/shipment/scan-freight:
     get:
       tags:
@@ -105,6 +139,45 @@ paths:
         "500":
           description: Server error
 
+  /api/shipment/unscan-freight:
+    get:
+      tags:
+        - Shipments
+      summary: Un-scan freight for a shipment
+      description: Marks a shipment freight as un-scanned using the provided barcode value.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Shipment ID to un-scan.
+        - in: query
+          name: barcodeValue
+          required: true
+          schema:
+            type: string
+          description: "Barcode value scanned for the freight (format: receiptNumber-freightBarcodeValue)."
+      responses:
+        "200":
+          description: Freight un-scanned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Freight un-scanned successfully
+        "400":
+          description: Missing shipment id or barcode value or validation error
+        "500":
+          description: Server error
   /api/shipment/{id}:
     get:
       tags:

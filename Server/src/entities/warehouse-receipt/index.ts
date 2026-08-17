@@ -173,8 +173,14 @@ export interface FreightInfo {
     isScanned: 'Y' | 'N';
 }
 
+export interface FreightInfoTemp {
+    freightBarcodeId: number | bigint;
+    freightBarcodeValue: string;
+}
+
 export interface CreateFreightInfo {
     receiptId: number | bigint;
+    freightBarcodeValue: string;
     pieces: number;
     type: string;
     length?: number;
