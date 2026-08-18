@@ -122,7 +122,25 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const areAllReceiptsScanned = receipts.length > 0 && receipts.every(
         (receipt) => getReceiptStatus(receipt) === 'Scanned'
     );
+    const hasScannedOrUnscannedItems = receipts.some((receipt) => {
+        const status = getReceiptStatus(receipt);
+        return status === 'Scanned' || status === 'Unscanned';
+    });
     const isSignOffRequested = currentShipment?.completeStatus === 'REQUESTED';
+    const hasUnscannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Unscanned');
+    const isSignOffVisible = isSignOffRequested && !hasUnscannedReceipts;
+    const availableConfirmationRows = receipts
+        .filter((receipt) => getReceiptStatus(receipt) === 'Available')
+        .map((receipt) => {
+            const summary = receipt.freightSummary || {};
+            return {
+                rowId: receipt.shipmentReceiptId || receipt.receiptId || receipt.receiptNumber,
+                receiptNumber: receipt.receiptNumber,
+                location: receipt.location || receipt.locationCode || currentShipment?.location || '-',
+                pieces: `${Number(summary.scanned || 0)}/${Number(summary.total || receipt.piecesInland || 0)}`,
+                weight: receipt.reWeight ?? receipt.weightInland ?? '-',
+            };
+        });
     const unscannedConfirmationRows = receipts
         .filter((receipt) => getReceiptStatus(receipt) === 'Unscanned')
         .map((receipt) => {
@@ -369,15 +387,15 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             <Button
                                 variant="contained"
                                 size="small"
-                                onClick={areAllReceiptsScanned
-                                    ? () => setSignOffConfirmationOpen(true)
-                                    : () => setSplitApprovalOpen(true)}
-                                disabled={areAllReceiptsScanned ? signOffLoading : splitApprovalLoading}
+                                onClick={hasUnscannedReceipts
+                                    ? () => setSplitApprovalOpen(true)
+                                    : () => setSignOffConfirmationOpen(true)}
+                                disabled={hasUnscannedReceipts ? splitApprovalLoading : signOffLoading}
                                 sx={{ minWidth: 92, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                             >
                                 {signOffLoading
                                     ? <CircularProgress size={14} color="inherit" />
-                                    : areAllReceiptsScanned ? 'Sign off' : 'Split Approval'}
+                                    : hasUnscannedReceipts ? 'Split Approval' : 'Sign off'}
                             </Button>
                         ) : (
                             <>
@@ -395,7 +413,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                     variant="contained"
                                     size="small"
                                     onClick={handleCompleteClick}
-                                    disabled={completeShipmentLoading}
+                                    disabled={completeShipmentLoading || !hasScannedOrUnscannedItems}
                                     sx={{ minWidth: 64, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                                 >
                                     {completeShipmentLoading ? <CircularProgress size={14} color="inherit" /> : 'Complete'}
@@ -450,7 +468,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                         </TableCell>
                                         <TableCell align="left">
                                             <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-start">
-                                                {status !== 'Available' && !(isSignOffRequested && areAllReceiptsScanned) && (
+                                                {status !== 'Available' && !isSignOffVisible && (
                                                     <Button
                                                         variant="contained"
                                                         size="small"
@@ -479,7 +497,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             <Dialog
                 open={signOffConfirmationOpen}
                 onClose={() => setSignOffConfirmationOpen(false)}
-                maxWidth="sm"
+                maxWidth={availableConfirmationRows.length ? 'md' : 'sm'}
                 fullWidth
                 disableRestoreFocus
                 PaperProps={{ sx: { borderRadius: 1.5 } }}
@@ -494,13 +512,53 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         <CloseIcon />
                     </IconButton>
                 </DialogTitle>
-                <DialogContent sx={{ pt: 4, pb: 2 }}>
-                    <Stack spacing={3} alignItems="center">
-                        <Typography sx={{ fontSize: 19, textAlign: 'center' }}>
-                            Are you confident this is final <Box component="span" sx={{ fontWeight: 700 }}>sign-off</Box> ?
-                        </Typography>
-                        <Typography sx={{ fontSize: 19 }}>Do you want to proceed ?</Typography>
-                    </Stack>
+                <DialogContent sx={{ px: availableConfirmationRows.length ? { xs: 2, sm: 7 } : 3, pt: availableConfirmationRows.length ? 1.5 : 4, pb: 2 }}>
+                    {availableConfirmationRows.length ? (
+                        <>
+                            <Typography sx={{ mb: 1.5, fontSize: 13, textAlign: 'center' }}>
+                                All available warehouse receipts moved to On-Hand status
+                            </Typography>
+                            <TableContainer sx={{ border: '1px solid #ddd', borderRadius: 1.5 }}>
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow sx={{ bgcolor: '#d1d1d1' }}>
+                                            <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
+                                            <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
+                                            <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                                            <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                            <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
+                                            <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {availableConfirmationRows.map((row, index) => (
+                                            <TableRow key={row.rowId || index}>
+                                                <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                                                <TableCell sx={{ color: '#b52025', fontWeight: 700, textDecoration: 'underline' }}>
+                                                    {row.receiptNumber || '-'}
+                                                </TableCell>
+                                                <TableCell>{row.location}</TableCell>
+                                                <TableCell sx={{ fontWeight: 700 }}>{row.pieces}</TableCell>
+                                                <TableCell>{row.weight}</TableCell>
+                                                <TableCell>
+                                                    <Box component="span" sx={{ display: 'inline-block', minWidth: 102, px: 1.5, py: 0.25, bgcolor: '#f1f1f1', color: '#333', borderRadius: 5, textAlign: 'center', fontSize: 11 }}>
+                                                        Available
+                                                    </Box>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        </>
+                    ) : (
+                        <Stack spacing={3} alignItems="center">
+                            <Typography sx={{ fontSize: 19, textAlign: 'center' }}>
+                                Are you confident this is final <Box component="span" sx={{ fontWeight: 700 }}>sign-off</Box> ?
+                            </Typography>
+                            <Typography sx={{ fontSize: 19 }}>Do you want to proceed ?</Typography>
+                        </Stack>
+                    )}
                 </DialogContent>
                 <DialogActions sx={{ justifyContent: 'center', gap: 2, pt: 3, pb: 4 }}>
                     <Button
@@ -517,7 +575,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         disabled={signOffLoading}
                         sx={{ minWidth: 175, bgcolor: '#A22', fontSize: 17, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                     >
-                        {signOffLoading ? <CircularProgress size={20} color="inherit" /> : 'Yes'}
+                        {signOffLoading ? <CircularProgress size={20} color="inherit" /> : 'Confirm'}
                     </Button>
                 </DialogActions>
             </Dialog>
