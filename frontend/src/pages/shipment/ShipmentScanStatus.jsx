@@ -9,7 +9,9 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useDispatch, useSelector } from '../../redux/store';
-import { scanShipmentFreight, unscanShipmentFreight } from '../../redux/slices/shipment';
+import {
+    completeShipment, scanShipmentFreight, signOffShipment, splitApprovalShipment, unscanShipmentFreight,
+} from '../../redux/slices/shipment';
 
 const getReceiptStatus = (receipt) => {
     const summary = receipt.freightSummary || {};
@@ -91,9 +93,11 @@ const decodeUploadedBarcode = async (image) => {
     }
 };
 
-export default function ShipmentScanStatus({ shipment, onClose }) {
+export default function ShipmentScanStatus({ shipment, onClose, onCompleteSuccess }) {
     const dispatch = useDispatch();
-    const { scanFreightLoading } = useSelector((state) => state.shipmentdata);
+    const {
+        scanFreightLoading, completeShipmentLoading, signOffLoading, splitApprovalLoading,
+    } = useSelector((state) => state.shipmentdata);
     const [currentShipment, setCurrentShipment] = useState(shipment);
     const [scannerOpen, setScannerOpen] = useState(false);
     const [scannerMode, setScannerMode] = useState('scan');
@@ -101,6 +105,9 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
     const [scannerStatus, setScannerStatus] = useState('');
     const [scanMessage, setScanMessage] = useState({ text: '', severity: 'success' });
     const [unscanReceipt, setUnscanReceipt] = useState(null);
+    const [completeConfirmationOpen, setCompleteConfirmationOpen] = useState(false);
+    const [splitApprovalOpen, setSplitApprovalOpen] = useState(false);
+    const [signOffConfirmationOpen, setSignOffConfirmationOpen] = useState(false);
     const videoRef = useRef(null);
     const barcodeImageInputRef = useRef(null);
     const scannerControlsRef = useRef(null);
@@ -115,6 +122,20 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
     const areAllReceiptsScanned = receipts.length > 0 && receipts.every(
         (receipt) => getReceiptStatus(receipt) === 'Scanned'
     );
+    const isSignOffRequested = currentShipment?.completeStatus === 'REQUESTED';
+    const unscannedConfirmationRows = receipts
+        .filter((receipt) => getReceiptStatus(receipt) === 'Unscanned')
+        .map((receipt) => {
+            const summary = receipt.freightSummary || {};
+            return {
+                rowId: receipt.shipmentReceiptId || receipt.receiptId || receipt.receiptNumber,
+                receiptNumber: receipt.receiptNumber,
+                location: receipt.location || receipt.locationCode || currentShipment?.location || '-',
+                pieces: `${Number(summary.scanned || 0)}/${Number(summary.total || receipt.piecesInland || 0)}`,
+                weight: receipt.reWeight ?? receipt.weightInland ?? '-',
+            };
+        });
+    const splitApprovalRows = unscannedConfirmationRows;
 
     const stopScanner = useCallback(() => {
         scannerControlsRef.current?.stop?.();
@@ -272,6 +293,58 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
         openScanner('unscan', receiptNumber);
     };
 
+    const handleComplete = async () => {
+        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
+        if (!shipmentId) {
+            setScanMessage({ text: 'Shipment ID is unavailable.', severity: 'error' });
+            return;
+        }
+
+        const result = await dispatch(completeShipment(shipmentId));
+        if (result?.success) {
+            onCompleteSuccess();
+        } else {
+            setCompleteConfirmationOpen(false);
+            setScanMessage({ text: result?.error || 'Failed to complete shipment.', severity: 'error' });
+        }
+    };
+
+    const handleCompleteClick = () => {
+        setCompleteConfirmationOpen(true);
+    };
+
+    const handleSplitApproval = async () => {
+        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
+        if (!shipmentId) {
+            setScanMessage({ text: 'Shipment ID is unavailable.', severity: 'error' });
+            return;
+        }
+
+        const result = await dispatch(splitApprovalShipment(shipmentId));
+        if (result?.success) {
+            onCompleteSuccess('Split approval submitted successfully');
+        } else {
+            setSplitApprovalOpen(false);
+            setScanMessage({ text: result?.error || 'Failed to submit split approval.', severity: 'error' });
+        }
+    };
+
+    const handleSignOff = async () => {
+        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
+        if (!shipmentId) {
+            setScanMessage({ text: 'Shipment ID is unavailable.', severity: 'error' });
+            return;
+        }
+
+        const result = await dispatch(signOffShipment(shipmentId));
+        if (result?.success) {
+            onCompleteSuccess('Shipment signed off successfully');
+        } else {
+            setSignOffConfirmationOpen(false);
+            setScanMessage({ text: result?.error || 'Failed to sign off shipment.', severity: 'error' });
+        }
+    };
+
     return (
         <Box sx={{ minHeight: 500, bgcolor: '#e7e7e7' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25 }}>
@@ -292,24 +365,43 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>PRO# - {proNumber}</Typography>
                     <Stack direction="row" spacing={0.75} justifyContent="flex-end" sx={{ mt: 0.5 }}>
-                        {!areAllReceiptsScanned && (
+                        {isSignOffRequested ? (
                             <Button
                                 variant="contained"
                                 size="small"
-                                onClick={() => openScanner('scan')}
-                                sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                                onClick={areAllReceiptsScanned
+                                    ? () => setSignOffConfirmationOpen(true)
+                                    : () => setSplitApprovalOpen(true)}
+                                disabled={areAllReceiptsScanned ? signOffLoading : splitApprovalLoading}
+                                sx={{ minWidth: 92, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                             >
-                                Scan
+                                {signOffLoading
+                                    ? <CircularProgress size={14} color="inherit" />
+                                    : areAllReceiptsScanned ? 'Sign off' : 'Split Approval'}
                             </Button>
+                        ) : (
+                            <>
+                                {!areAllReceiptsScanned && (
+                                    <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={() => openScanner('scan')}
+                                        sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                                    >
+                                        Scan
+                                    </Button>
+                                )}
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={handleCompleteClick}
+                                    disabled={completeShipmentLoading}
+                                    sx={{ minWidth: 64, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                                >
+                                    {completeShipmentLoading ? <CircularProgress size={14} color="inherit" /> : 'Complete'}
+                                </Button>
+                            </>
                         )}
-                        <Button
-                            variant="contained"
-                            size="small"
-                            onClick={onClose}
-                            sx={{ minWidth: 64, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
-                        >
-                            Complete
-                        </Button>
                     </Stack>
                 </Box>
             </Box>
@@ -358,7 +450,7 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                                         </TableCell>
                                         <TableCell align="left">
                                             <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-start">
-                                                {status !== 'Available' && (
+                                                {status !== 'Available' && !(isSignOffRequested && areAllReceiptsScanned) && (
                                                     <Button
                                                         variant="contained"
                                                         size="small"
@@ -384,6 +476,226 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
                     </Table>
                 </TableContainer>
             </Paper>
+            <Dialog
+                open={signOffConfirmationOpen}
+                onClose={() => setSignOffConfirmationOpen(false)}
+                maxWidth="sm"
+                fullWidth
+                disableRestoreFocus
+                PaperProps={{ sx: { borderRadius: 1.5 } }}
+            >
+                <DialogTitle sx={{ px: 2, py: 1.25, fontSize: 22, fontWeight: 500, borderBottom: '2px solid #aaa' }}>
+                    Sign Off Confirmation
+                    <IconButton
+                        onClick={() => setSignOffConfirmationOpen(false)}
+                        size="small"
+                        sx={{ position: 'absolute', right: 8, top: 6 }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ pt: 4, pb: 2 }}>
+                    <Stack spacing={3} alignItems="center">
+                        <Typography sx={{ fontSize: 19, textAlign: 'center' }}>
+                            Are you confident this is final <Box component="span" sx={{ fontWeight: 700 }}>sign-off</Box> ?
+                        </Typography>
+                        <Typography sx={{ fontSize: 19 }}>Do you want to proceed ?</Typography>
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ justifyContent: 'center', gap: 2, pt: 3, pb: 4 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={() => setSignOffConfirmationOpen(false)}
+                        disabled={signOffLoading}
+                        sx={{ minWidth: 175, color: '#111', borderColor: '#333', fontSize: 17, textTransform: 'none' }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleSignOff}
+                        disabled={signOffLoading}
+                        sx={{ minWidth: 175, bgcolor: '#A22', fontSize: 17, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                    >
+                        {signOffLoading ? <CircularProgress size={20} color="inherit" /> : 'Yes'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={splitApprovalOpen}
+                onClose={() => setSplitApprovalOpen(false)}
+                maxWidth="md"
+                fullWidth
+                disableRestoreFocus
+                PaperProps={{ sx: { borderRadius: 1.5 } }}
+            >
+                <DialogTitle sx={{ px: 2, py: 1.25, fontSize: 15, fontWeight: 700, borderBottom: '2px solid #aaa' }}>
+                    Split Approval Confirmation
+                    <IconButton
+                        onClick={() => setSplitApprovalOpen(false)}
+                        size="small"
+                        sx={{ position: 'absolute', right: 8, top: 6 }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ px: { xs: 2, sm: 7 }, pt: 2, pb: 1 }}>
+                    <Typography sx={{ mb: 2, fontSize: 13, textAlign: 'center' }}>
+                        These are partially scanned receipts
+                    </Typography>
+                    <TableContainer sx={{ border: '1px solid #ddd', borderRadius: 1.5 }}>
+                        <Table size="small">
+                            <TableHead>
+                                <TableRow sx={{ bgcolor: '#d1d1d1' }}>
+                                    <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {splitApprovalRows.map((row, index) => (
+                                    <TableRow key={row.rowId || index}>
+                                        <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                                        <TableCell sx={{ color: '#b52025', fontWeight: 700, textDecoration: 'underline' }}>
+                                            {row.receiptNumber || '-'}
+                                        </TableCell>
+                                        <TableCell>{row.location}</TableCell>
+                                        <TableCell>
+                                            <Box component="span" sx={{ px: 0.75, py: 0.35, bgcolor: '#efb52e', borderRadius: 0.5, fontWeight: 700 }}>
+                                                {row.pieces}
+                                            </Box>
+                                        </TableCell>
+                                        <TableCell>{row.weight}</TableCell>
+                                        <TableCell>
+                                            <Box component="span" sx={{ display: 'inline-block', minWidth: 102, px: 1.5, py: 0.25, bgcolor: '#efb52e', color: '#fff', borderRadius: 5, textAlign: 'center', fontSize: 11 }}>
+                                                Unscanned
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {!splitApprovalRows.length && (
+                                    <TableRow>
+                                        <TableCell colSpan={6} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                                            No unscanned items available.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                    <Stack spacing={1.5} alignItems="center" sx={{ mt: 2, mb: 1 }}>
+                        <Typography sx={{ fontSize: 13, textAlign: 'center' }}>
+                            A New warehouse receipt will be created for the unscanned items<br />
+                            Scanned items will remain in the current warehouse receipt
+                        </Typography>
+                        <Typography sx={{ fontSize: 13 }}>Do you want to proceed ?</Typography>
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ justifyContent: 'center', gap: 1, pb: 2.5 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={() => setSplitApprovalOpen(false)}
+                        disabled={splitApprovalLoading}
+                        sx={{ minWidth: 116, color: '#111', borderColor: '#333', textTransform: 'none' }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleSplitApproval}
+                        disabled={splitApprovalLoading || !splitApprovalRows.length}
+                        sx={{ minWidth: 116, bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                    >
+                        {splitApprovalLoading ? <CircularProgress size={18} color="inherit" /> : 'Yes'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={completeConfirmationOpen}
+                onClose={() => setCompleteConfirmationOpen(false)}
+                maxWidth={unscannedConfirmationRows.length ? 'md' : 'xs'}
+                fullWidth
+                disableRestoreFocus
+                PaperProps={{ sx: { borderRadius: 1.5 } }}
+            >
+                <DialogTitle sx={{ px: 2, py: 1.25, fontSize: 15, fontWeight: 700, borderBottom: '2px solid #aaa' }}>
+                    Complete Confirmation
+                    <IconButton
+                        onClick={() => setCompleteConfirmationOpen(false)}
+                        size="small"
+                        sx={{ position: 'absolute', right: 8, top: 6 }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ px: { xs: 2, sm: 7 }, pt: 2.5, pb: 1 }}>
+                    {Boolean(unscannedConfirmationRows.length) && (
+                        <TableContainer sx={{ border: '1px solid #ddd', borderRadius: 1.5 }}>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow sx={{ bgcolor: '#d1d1d1' }}>
+                                        <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
+                                        <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
+                                        <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                                        <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                        <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
+                                        <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {unscannedConfirmationRows.map((row, index) => (
+                                        <TableRow key={row.rowId || index}>
+                                            <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
+                                            <TableCell sx={{ color: '#b52025', fontWeight: 700, textDecoration: 'underline' }}>
+                                                {row.receiptNumber || '-'}
+                                            </TableCell>
+                                            <TableCell>{row.location}</TableCell>
+                                            <TableCell>
+                                                <Box component="span" sx={{ px: 0.75, py: 0.35, bgcolor: '#efb52e', borderRadius: 0.5, fontWeight: 700 }}>
+                                                    {row.pieces}
+                                                </Box>
+                                            </TableCell>
+                                            <TableCell>{row.weight}</TableCell>
+                                            <TableCell>
+                                                <Box component="span" sx={{ display: 'inline-block', minWidth: 102, px: 1.5, py: 0.25, bgcolor: '#efb52e', color: '#fff', borderRadius: 5, textAlign: 'center', fontSize: 11 }}>
+                                                    Unscanned
+                                                </Box>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    )}
+                    <Stack spacing={2.5} alignItems="center" sx={{ mt: unscannedConfirmationRows.length ? 8 : 2, mb: 1 }}>
+                        <Typography sx={{ fontSize: 13, textAlign: 'center' }}>
+                            Completing this action will send the request to Office for Customer approval.
+                        </Typography>
+                        <Typography sx={{ fontSize: 13 }}>Do you want to proceed ?</Typography>
+                    </Stack>
+                </DialogContent>
+                <DialogActions sx={{ justifyContent: 'center', gap: 1, pb: 2.5 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={() => setCompleteConfirmationOpen(false)}
+                        disabled={completeShipmentLoading}
+                        sx={{ minWidth: 116, color: '#111', borderColor: '#333', textTransform: 'none' }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleComplete}
+                        disabled={completeShipmentLoading}
+                        sx={{ minWidth: 116, bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                    >
+                        {completeShipmentLoading ? <CircularProgress size={18} color="inherit" /> : 'Yes'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
             <Dialog open={scannerOpen} onClose={closeScanner} maxWidth="md" fullWidth disableRestoreFocus>
                 <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
                     {scannerMode === 'unscan' ? 'Unscan Freight Barcode' : 'Scan Freight Barcode'}
@@ -531,4 +843,5 @@ export default function ShipmentScanStatus({ shipment, onClose }) {
 ShipmentScanStatus.propTypes = {
     shipment: PropTypes.object,
     onClose: PropTypes.func.isRequired,
+    onCompleteSuccess: PropTypes.func.isRequired,
 };

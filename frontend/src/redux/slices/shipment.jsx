@@ -16,6 +16,10 @@ const initialState = {
     scanFreightError: null,
     signOffLoading: false,
     signOffError: null,
+    completeShipmentLoading: false,
+    completeShipmentError: null,
+    splitApprovalLoading: false,
+    splitApprovalError: null,
     shipmentData: [],
     shipmentSearchStr: '',
     exportAirlineOptions: [],
@@ -145,6 +149,50 @@ const slice = createSlice({
             state.signOffLoading = false;
             state.signOffError = action.payload;
         },
+        startCompleteShipment(state) {
+            state.completeShipmentLoading = true;
+            state.completeShipmentError = null;
+        },
+        completeShipmentSuccess(state, action) {
+            state.completeShipmentLoading = false;
+            state.completeShipmentError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        completeShipmentError(state, action) {
+            state.completeShipmentLoading = false;
+            state.completeShipmentError = action.payload;
+        },
+        startSplitApproval(state) {
+            state.splitApprovalLoading = true;
+            state.splitApprovalError = null;
+        },
+        splitApprovalSuccess(state, action) {
+            state.splitApprovalLoading = false;
+            state.splitApprovalError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        splitApprovalError(state, action) {
+            state.splitApprovalLoading = false;
+            state.splitApprovalError = action.payload;
+        },
         // get shipment success
         getShipmentDataSuccess(state, action) {
             state.isLoading = false;
@@ -166,11 +214,23 @@ export default slice.reducer;
 
 // ----------------------------------------------------------------------
 // shipment api calls
-export function getShipmentData({ pageNo = 1, pageSize = 10 } = {}) {
+export function getShipmentData({
+    pageNo = 1,
+    pageSize = 10,
+    request = false,
+    scanned = false,
+    pickup = false,
+    shipped = false,
+} = {}) {
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
-            const response = await axios.get(`shipment?page=${pageNo}&pageSize=${pageSize}`);
+            const params = { page: pageNo, pageSize };
+            if (request) params.request = true;
+            if (scanned) params.scanned = true;
+            if (pickup) params.pickup = true;
+            if (shipped) params.shipped = true;
+            const response = await axios.get('shipment', { params });
             dispatch(slice.actions.getShipmentDataSuccess(response.data));
         } catch (error) {
             dispatch(slice.actions.hasError(error));
@@ -298,6 +358,38 @@ export function signOffShipment(shipmentId) {
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to sign off shipment';
             dispatch(slice.actions.signOffError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function completeShipment(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startCompleteShipment());
+        try {
+            const response = await axios.post('shipment/complete', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.completeShipmentSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to complete shipment';
+            dispatch(slice.actions.completeShipmentError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function splitApprovalShipment(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startSplitApproval());
+        try {
+            const response = await axios.post('shipment/split-approval', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.splitApprovalSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to submit split approval';
+            dispatch(slice.actions.splitApprovalError(message));
             return { success: false, error: message };
         }
     };
