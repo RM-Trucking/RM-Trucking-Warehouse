@@ -8,6 +8,8 @@ import {
     TableContainer, TableHead, TableRow, Typography
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
     completeShipment, scanShipmentFreight, signOffShipment, splitApprovalShipment, unscanShipmentFreight,
@@ -47,6 +49,26 @@ const getFreightItemStatus = (item = {}) => {
     return status === 'scanned' || status === 'y' || status === 'true' || status === '1'
         ? 'Scanned'
         : 'Unscanned';
+};
+
+const mergeScanResponse = (shipment, data) => {
+    const updated = data?.shipment || data;
+    if (Array.isArray(updated?.receipts)) return { ...shipment, ...updated };
+    if (Array.isArray(data?.receipts)) return { ...shipment, receipts: data.receipts };
+
+    if (updated?.receiptId || updated?.shipmentReceiptId) {
+        return {
+            ...shipment,
+            receipts: (shipment?.receipts || []).map((receipt) => {
+                const isMatch = updated.shipmentReceiptId
+                    ? String(receipt.shipmentReceiptId) === String(updated.shipmentReceiptId)
+                    : String(receipt.receiptId) === String(updated.receiptId);
+                return isMatch ? { ...receipt, ...updated } : receipt;
+            }),
+        };
+    }
+
+    return shipment;
 };
 
 const decodeUploadedBarcode = async (image) => {
@@ -127,8 +149,12 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         return status === 'Scanned' || status === 'Unscanned';
     });
     const isSignOffRequested = currentShipment?.completeStatus === 'REQUESTED';
+    const isCompleteApproved = currentShipment?.completeStatus === 'APPROVED';
     const hasUnscannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Unscanned');
-    const isSignOffVisible = isSignOffRequested && !hasUnscannedReceipts;
+    const hasScannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Scanned');
+    const approvedSignOffVisible = isCompleteApproved && hasScannedReceipts && !hasUnscannedReceipts;
+    const showApprovalAction = isSignOffRequested || approvedSignOffVisible;
+    const isSignOffVisible = showApprovalAction && !hasUnscannedReceipts;
     const availableConfirmationRows = receipts
         .filter((receipt) => getReceiptStatus(receipt) === 'Available')
         .map((receipt) => {
@@ -171,25 +197,6 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         setScannerStatus('');
     }, [stopScanner]);
 
-    const applyScanResponse = useCallback((data) => {
-        const updated = data?.shipment || data;
-        if (Array.isArray(updated?.receipts)) {
-            setCurrentShipment((previous) => ({ ...previous, ...updated }));
-        } else if (Array.isArray(data?.receipts)) {
-            setCurrentShipment((previous) => ({ ...previous, receipts: data.receipts }));
-        } else if (updated?.receiptId || updated?.shipmentReceiptId) {
-            setCurrentShipment((previous) => ({
-                ...previous,
-                receipts: (previous?.receipts || []).map((receipt) => {
-                    const isMatch = updated.shipmentReceiptId
-                        ? String(receipt.shipmentReceiptId) === String(updated.shipmentReceiptId)
-                        : String(receipt.receiptId) === String(updated.receiptId);
-                    return isMatch ? { ...receipt, ...updated } : receipt;
-                }),
-            }));
-        }
-    }, []);
-
     const submitBarcode = useCallback(async (barcodeValue) => {
         const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
         if (!shipmentId || !barcodeValue || scanInProgressRef.current) return;
@@ -212,19 +219,29 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         const action = scannerMode === 'unscan' ? unscanShipmentFreight : scanShipmentFreight;
         const result = await dispatch(action({ id: shipmentId, barcodeValue }));
         if (result?.success) {
-            applyScanResponse(result.data);
+            const nextShipment = mergeScanResponse(currentShipment, result.data);
+            const nextReceipts = Array.isArray(nextShipment?.receipts) ? nextShipment.receipts : [];
+            const allReceiptsScanned = nextReceipts.length > 0 && nextReceipts.every(
+                (receipt) => getReceiptStatus(receipt) === 'Scanned'
+            );
+            setCurrentShipment(nextShipment);
             setScanMessage({
                 text: scannerMode === 'unscan' ? 'Freight unscanned successfully.' : 'Freight scanned successfully.',
                 severity: 'success',
             });
-            closeScanner();
+            if (scannerMode === 'unscan' || allReceiptsScanned) {
+                closeScanner();
+            } else {
+                scanInProgressRef.current = false;
+                setScannerStatus('Scan successful. Ready for the next freight barcode.');
+            }
         } else {
             scanInProgressRef.current = false;
             const fallbackMessage = scannerMode === 'unscan' ? 'Unable to unscan freight.' : 'Unable to scan freight.';
             setScannerStatus(result?.error || `${fallbackMessage} Try again.`);
             setScanMessage({ text: result?.error || fallbackMessage, severity: 'error' });
         }
-    }, [applyScanResponse, closeScanner, currentShipment?.id, currentShipment?.shipmentId, dispatch, scannerMode, stopScanner, unscanReceiptNumber]);
+    }, [closeScanner, currentShipment, dispatch, scannerMode, stopScanner, unscanReceiptNumber]);
 
     useEffect(() => {
         if (!scannerOpen) return undefined;
@@ -363,6 +380,29 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         }
     };
 
+    const handleAddReceiptRow = () => {
+        setCurrentShipment((previous) => ({
+            ...previous,
+            receipts: [
+                ...(previous?.receipts || []),
+                {
+                    shipmentReceiptId: `new-${Date.now()}`,
+                    receiptNumber: '',
+                    location: '',
+                    freightSummary: { scanned: 0, total: 0 },
+                    isNew: true,
+                },
+            ],
+        }));
+    };
+
+    const handleDeleteReceiptRow = (rowIndex) => {
+        setCurrentShipment((previous) => ({
+            ...previous,
+            receipts: (previous?.receipts || []).filter((receipt, index) => index !== rowIndex),
+        }));
+    };
+
     return (
         <Box sx={{ minHeight: 500, bgcolor: '#e7e7e7' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25 }}>
@@ -383,7 +423,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>PRO# - {proNumber}</Typography>
                     <Stack direction="row" spacing={0.75} justifyContent="flex-end" sx={{ mt: 0.5 }}>
-                        {isSignOffRequested ? (
+                        {showApprovalAction ? (
                             <Button
                                 variant="contained"
                                 size="small"
@@ -478,6 +518,17 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                         Unscan
                                                     </Button>
                                                 )}
+                                                {status === 'Available' && isSignOffVisible && (
+                                                    <IconButton
+                                                        size="small"
+                                                        aria-label="Delete warehouse receipt"
+                                                        title="Delete warehouse receipt"
+                                                        onClick={() => handleDeleteReceiptRow(index)}
+                                                        sx={{ color: '#b5232b' }}
+                                                    >
+                                                        <DeleteIcon fontSize="small" />
+                                                    </IconButton>
+                                                )}
                                             </Stack>
                                         </TableCell>
                                     </TableRow>
@@ -493,6 +544,19 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         </TableBody>
                     </Table>
                 </TableContainer>
+                {isSignOffVisible && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                        <IconButton
+                            size="small"
+                            aria-label="Add warehouse receipt"
+                            title="Add warehouse receipt"
+                            onClick={handleAddReceiptRow}
+                            sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            <AddIcon fontSize="small" />
+                        </IconButton>
+                    </Box>
+                )}
             </Paper>
             <Dialog
                 open={signOffConfirmationOpen}
