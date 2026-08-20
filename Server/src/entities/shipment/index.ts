@@ -21,6 +21,13 @@ export interface WarehouseShipment {
     isScanned: 'Y' | 'N';
     pickupEntry: 'Y' | 'N';
     pickupEntryNumber: string;
+    completeStatus: 'IDEAL' | 'REQUESTED' | 'SPLIT_APPROVED' | 'APPROVED';
+    requestedBy: number;
+    requestedAt: Date;
+    approvedBy: number;
+    approvedAt: Date;
+    entityId: number;
+    noteThreadId: number;
 }
 
 export interface WarehouseShipmentContainers {

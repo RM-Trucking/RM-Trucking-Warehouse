@@ -68,5 +68,25 @@ router.put("/:id", authenticateJWT, async (req: Request, res: Response) => {
     }
 });
 
+router.post("/split-approval", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.shipmentSplitApproval(req, res, conn);
+    }
+    finally {
+        if (conn) conn.close();
+    }
+});
+
+router.post("/complete", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.completeShipment(req, res, conn);
+    }
+    finally {
+        if (conn) conn.close();
+    }
+});
+
 
 export default router;

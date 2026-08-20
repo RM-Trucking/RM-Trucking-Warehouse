@@ -33,6 +33,26 @@ paths:
           schema:
             type: integer
             default: 10
+        - in: query
+          name: scanned
+          schema:
+            type: boolean
+          description: Filter shipments where freight has been fully scanned. `true` => `isScanned = 'Y'`.
+        - in: query
+          name: pickup
+          schema:
+            type: boolean
+          description: Filter shipments with pickup entry. `true` => `pickupEntry = 'Y'`.
+        - in: query
+          name: shipped
+          schema:
+            type: boolean
+          description: Filter shipments that have been shipped. `true` => `isShipped = 'Y'`.
+        - in: query
+          name: request
+          schema:
+            type: boolean
+          description: Filter shipments with `completeStatus = 'REQUESTED'` when `true`.
       responses:
         "200":
           description: Shipment list retrieved successfully
@@ -94,6 +114,74 @@ paths:
                 $ref: "#/components/schemas/ShipmentResponse"
         "400":
           description: Validation error or missing fields (e.g., unscanned receipts)
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
+  /api/shipment/split-approval:
+    post:
+      tags:
+        - Shipments
+      summary: Approve shipment split
+      description: Approves the splitting of a shipment and returns the updated shipment record.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shipmentId
+              properties:
+                shipmentId:
+                  type: integer
+                  example: 1
+      responses:
+        "200":
+          description: Shipment split approved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Validation error (e.g., missing shipmentId)
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
+  /api/shipment/complete:
+    post:
+      tags:
+        - Shipments
+      summary: Request shipment completion
+      description: Checks linked warehouse receipts for partial scans and sets the shipment `completeStatus` to `REQUESTED` when any receipt is partially scanned.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shipmentId
+              properties:
+                shipmentId:
+                  type: integer
+                  example: 1
+      responses:
+        "200":
+          description: Shipment completion requested successfully (or no action required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Validation error (e.g., missing shipmentId)
         "404":
           description: Shipment not found
         "500":

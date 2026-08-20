@@ -12,7 +12,7 @@ export interface Entity {
  */
 export async function createWarehouseEntity(
     conn: Connection,
-    entityType: 'WAREHOUSE_RECEIPT' | 'ID_VERIFICATION',
+    entityType: 'WAREHOUSE_RECEIPT' | 'ID_VERIFICATION' | 'SHIPMENT',
     entityName: string
 ): Promise<number> {
     const query = `

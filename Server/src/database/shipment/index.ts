@@ -24,9 +24,11 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "isShipped",
                 "isScanned",
                 "pickupEntry",
-                "pickupEntryNumber"
+                "pickupEntryNumber",
+                "entityId",
+                "noteThreadId"
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?)
         )
     `;
 
@@ -49,6 +51,8 @@ export async function createShipment(conn: Connection, payload: any, userId: num
         "N",
         "N",
         null,
+        payload.entityId,
+        payload.noteThreadId
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -94,7 +98,10 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     return result.length > 0 ? result[0] : null;
 }
 
-export async function listShipments(conn: Connection, filters: { searchTerm?: string; page?: number; pageSize?: number }): Promise<any[]> {
+export async function listShipments(
+    conn: Connection,
+    filters: { searchTerm?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean }
+): Promise<any[]> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
     const offset = (page - 1) * pageSize;
@@ -116,13 +123,52 @@ export async function listShipments(conn: Connection, filters: { searchTerm?: st
         params.push(searchValue, searchValue, searchValue);
     }
 
+    // request filter maps to completeStatus = 'REQUESTED' or 'SPLIT_APPROVED'
+    if (typeof filters.request !== "undefined") {
+        if (filters.request) {
+            query += ` AND UPPER(COALESCE("completeStatus", '')) IN ('REQUESTED', 'SPLIT_APPROVED')`;
+        } else {
+            query += ` AND UPPER(COALESCE("completeStatus", '')) NOT IN ('REQUESTED', 'SPLIT_APPROVED')`;
+        }
+    }
+
+    // scanned filter -> isScanned = 'Y'
+    if (typeof filters.scanned !== "undefined") {
+        if (filters.scanned) {
+            query += ` AND UPPER(COALESCE("isScanned", 'N')) = 'Y'`;
+        } else {
+            query += ` AND UPPER(COALESCE("isScanned", 'N')) <> 'Y'`;
+        }
+    }
+
+    // pickup filter -> pickupEntry = 'Y'
+    if (typeof filters.pickup !== "undefined") {
+        if (filters.pickup) {
+            query += ` AND UPPER(COALESCE("pickupEntry", 'N')) = 'Y'`;
+        } else {
+            query += ` AND UPPER(COALESCE("pickupEntry", 'N')) <> 'Y'`;
+        }
+    }
+
+    // shipped filter -> isShipped = 'Y'
+    if (typeof filters.shipped !== "undefined") {
+        if (filters.shipped) {
+            query += ` AND UPPER(COALESCE("isShipped", 'N')) = 'Y'`;
+        } else {
+            query += ` AND UPPER(COALESCE("isShipped", 'N')) <> 'Y'`;
+        }
+    }
+
     query += ` ORDER BY "shipmentId" DESC LIMIT ? OFFSET ?`;
     params.push(pageSize, offset);
 
     return await conn.query(query, params as any) as any[];
 }
 
-export async function countShipments(conn: Connection, filters: { searchTerm?: string }): Promise<number> {
+export async function countShipments(
+    conn: Connection,
+    filters: { searchTerm?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean }
+): Promise<number> {
     let query = `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE 1 = 1`;
     const params: any[] = [];
 
@@ -134,6 +180,38 @@ export async function countShipments(conn: Connection, filters: { searchTerm?: s
             CAST("shipmentId" AS VARCHAR(20)) LIKE ?
         )`;
         params.push(searchValue, searchValue, searchValue);
+    }
+
+    if (typeof filters.request !== "undefined") {
+        if (filters.request) {
+            query += ` AND UPPER(COALESCE("completeStatus", '')) IN ('REQUESTED', 'SPLIT_APPROVED')`;
+        } else {
+            query += ` AND UPPER(COALESCE("completeStatus", '')) NOT IN ('REQUESTED', 'SPLIT_APPROVED')`;
+        }
+    }
+
+    if (typeof filters.scanned !== "undefined") {
+        if (filters.scanned) {
+            query += ` AND UPPER(COALESCE("isScanned", 'N')) = 'Y'`;
+        } else {
+            query += ` AND UPPER(COALESCE("isScanned", 'N')) <> 'Y'`;
+        }
+    }
+
+    if (typeof filters.pickup !== "undefined") {
+        if (filters.pickup) {
+            query += ` AND UPPER(COALESCE("pickupEntry", 'N')) = 'Y'`;
+        } else {
+            query += ` AND UPPER(COALESCE("pickupEntry", 'N')) <> 'Y'`;
+        }
+    }
+
+    if (typeof filters.shipped !== "undefined") {
+        if (filters.shipped) {
+            query += ` AND UPPER(COALESCE("isShipped", 'N')) = 'Y'`;
+        } else {
+            query += ` AND UPPER(COALESCE("isShipped", 'N')) <> 'Y'`;
+        }
     }
 
     const result = await conn.query(query, params as any) as any[];
@@ -217,4 +295,24 @@ export async function checkShipmentUniqueFields(
     const result = await conn.query(query, params) as { conflictField: string }[];
 
     return result.length ? result[0].conflictField : null;
+}
+
+export async function requestShipmentCompletion(conn: Connection, shipmentId: number, userId: number, completeStatus: string = 'REQUESTED'): Promise<void> {
+    const query = `
+        UPDATE ${SCHEMA}."Warehouse_Shipment"
+        SET "completeStatus" = ?, "requestedBy" = ?, "requestedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), "updatedBy" = ?, "updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)
+        WHERE "shipmentId" = ?
+    `;
+
+    await conn.query(query, [completeStatus, userId, userId, shipmentId]);
+}
+
+export async function approveShipmentCompletion(conn: Connection, shipmentId: number, userId: number, completeStatus: string = 'APPROVED'): Promise<void> {
+    const query = `
+        UPDATE ${SCHEMA}."Warehouse_Shipment"
+        SET "completeStatus" = ?, "approvedBy" = ?, "approvedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), "updatedBy" = ?, "updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)
+        WHERE "shipmentId" = ?
+    `;
+
+    await conn.query(query, [completeStatus, userId, userId, shipmentId]);
 }
