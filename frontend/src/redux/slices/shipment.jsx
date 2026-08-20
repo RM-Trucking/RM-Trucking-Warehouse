@@ -386,7 +386,7 @@ export function splitApprovalShipment(shipmentId) {
             const response = await axios.post('shipment/split-approval', { shipmentId });
             const data = response.data?.data || response.data;
             dispatch(slice.actions.splitApprovalSuccess(data));
-            return { success: true, data };
+            return { success: true, data, message: response.data?.message };
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to submit split approval';
             dispatch(slice.actions.splitApprovalError(message));

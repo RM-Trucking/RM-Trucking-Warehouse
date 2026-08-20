@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import {
     Alert, Autocomplete, Button, CircularProgress, Dialog, DialogActions, DialogContent,
-    DialogTitle, Snackbar, Typography, Stack, Grid, IconButton, Box
+    DialogTitle, Snackbar, Typography, Stack, Grid, IconButton, Box, Table, TableBody,
+    TableCell, TableHead, TableRow, TextField
 } from '@mui/material';
 
 import StyledTextField from '../../sections/shared/StyledTextField';
@@ -11,6 +12,8 @@ import Iconify from '../../components/iconify';
 import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/ShipmentFormLayout';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
+    getWarehouseReceiptNotes,
+    postWarehouseReceiptNote,
     searchWarehouseReceiptCustomers,
     searchWarehouseReceiptStations,
 } from '../../redux/slices/warehouseReceipt';
@@ -57,6 +60,16 @@ const getShipmentReceiptOptionLabel = (option) => {
     return String(option.receiptNumber || '');
 };
 
+const formatNoteTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-US', {
+        month: 'numeric', day: 'numeric', year: '2-digit',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+};
+
 
 NewAirShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
@@ -71,6 +84,10 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
         customerLoading,
         stationOptions,
         stationLoading,
+        receiptNotes,
+        receiptNotesLoading,
+        receiptNotesSaving,
+        receiptNotesError,
     } = useSelector((state) => state.warehouseReceiptdata);
     const {
         exportAirlineOptions,
@@ -124,6 +141,9 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
     const [rowSaveError, setRowSaveError] = useState('');
     const [isEditing, setIsEditing] = useState(!viewMode);
+    const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+    const [noteText, setNoteText] = useState('');
+    const [notesMessage, setNotesMessage] = useState('');
     const receiptSearchTimers = useRef({});
 
     const rmProValue = useWatch({ control, name: 'rmProNo' });
@@ -132,6 +152,29 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const selectedCustomerId = selectedCustomer?.customerId || selectedCustomer?.id || '';
     const selectedStationId = selectedStation?.stationId || selectedStation?.id || '';
     const canSelectWarehouse = Boolean(selectedCustomerId && selectedStationId);
+
+    const handleOpenNotes = () => {
+        setNotesDialogOpen(true);
+        dispatch(getWarehouseReceiptNotes(rowData?.noteThreadId || 0));
+    };
+
+    const handleAddNote = async () => {
+        const messageText = noteText.trim();
+        if (!messageText) {
+            setNotesMessage('Notes is mandatory');
+            return;
+        }
+
+        const response = await dispatch(postWarehouseReceiptNote({
+            noteThreadId: rowData?.noteThreadId || 0,
+            messageText,
+        }));
+        if (response?.error) {
+            setNotesMessage(response.message || 'Failed to add shipment note');
+            return;
+        }
+        setNoteText('');
+    };
 
     const handleWarehouseAlertClose = (event, reason) => {
         if (reason === 'clickaway') return;
@@ -377,6 +420,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     showEdit={viewMode && !isEditing}
                     onEdit={handleEdit}
+                    showNotes={viewMode && !isEditing}
+                    onNotes={handleOpenNotes}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"
@@ -844,6 +889,112 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             >
                 <Alert severity="error" variant="filled" onClose={() => setSubmitError('')}>
                     {submitError}
+                </Alert>
+            </Snackbar>
+            <Dialog
+                open={notesDialogOpen}
+                onClose={() => setNotesDialogOpen(false)}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{ sx: { borderRadius: 1, minHeight: 430 } }}
+            >
+                <DialogContent sx={{ p: 2 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+                        <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Shipment Notes</Typography>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setNotesDialogOpen(false)}
+                            sx={{ bgcolor: '#A22', height: 24, minWidth: 58, fontSize: 11, '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            OK
+                        </Button>
+                    </Stack>
+
+                    <Box sx={{ mt: 2.2, maxWidth: '100%' }}>
+                        <TextField
+                            variant="standard"
+                            label={(
+                                <Box component="span">
+                                    Notes <Box component="span" sx={{ color: '#A22' }}>*</Box>
+                                </Box>
+                            )}
+                            value={noteText}
+                            onChange={(event) => setNoteText(event.target.value)}
+                            fullWidth
+                            size="small"
+                            sx={{
+                                '& .MuiInputLabel-root': { fontSize: 11 },
+                                '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
+                            }}
+                        />
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={handleAddNote}
+                            disabled={receiptNotesSaving}
+                            sx={{ mt: 0.8, height: 24, minWidth: 82, bgcolor: '#A22', fontSize: 11, '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            {receiptNotesSaving ? 'Saving...' : 'Add Notes'}
+                        </Button>
+                    </Box>
+
+                    <Table
+                        size="small"
+                        sx={{
+                            mt: 3,
+                            border: '1px solid #d0d0d0',
+                            '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500 },
+                            '& td': { fontSize: 12, verticalAlign: 'top' },
+                        }}
+                    >
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ width: 190 }}>Time</TableCell>
+                                <TableCell sx={{ width: 120 }}>User</TableCell>
+                                <TableCell>Notes</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {receiptNotesLoading ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                                        <CircularProgress size={24} />
+                                    </TableCell>
+                                </TableRow>
+                            ) : receiptNotesError ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#A22' }}>
+                                        {receiptNotesError}
+                                    </TableCell>
+                                </TableRow>
+                            ) : receiptNotes.length ? (
+                                receiptNotes.map((note, index) => (
+                                    <TableRow key={note.noteMessageId || `${note.createdAt}-${note.createdBy}-${index}`}>
+                                        <TableCell>{formatNoteTime(note.createdAt)}</TableCell>
+                                        <TableCell>{note.createdByName || note.createdBy || ''}</TableCell>
+                                        <TableCell>{note.messageText || ''}</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 3 }}>No notes found</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </DialogContent>
+            </Dialog>
+            <Snackbar
+                open={Boolean(notesMessage)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setNotesMessage('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="error" variant="filled" onClose={() => setNotesMessage('')}>
+                    {notesMessage}
                 </Alert>
             </Snackbar>
         </ShipmentFormLayout>

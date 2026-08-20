@@ -144,6 +144,8 @@ export function TopInfoPanel({
     onBarcodeGenerate,
     showEdit = false,
     onEdit,
+    showNotes = false,
+    onNotes,
     readOnly = false,
 }) {
     return (
@@ -191,9 +193,20 @@ export function TopInfoPanel({
                         Edit
                     </Button>
                 )}
-                <Box sx={{ color: '#A22', cursor: 'pointer', display: 'flex' }}>
-                <Iconify icon="streamline-ultimate:notes-book-bold" width={24} height={24} />
-                </Box>
+                {showNotes && (
+                    <Box
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Open notes"
+                        onClick={onNotes}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') onNotes?.();
+                        }}
+                        sx={{ color: '#A22', cursor: 'pointer', display: 'flex' }}
+                    >
+                        <Iconify icon="streamline-ultimate:notes-book-bold" width={24} height={24} />
+                    </Box>
+                )}
             </Stack>
         </Box>
     );
@@ -207,5 +220,7 @@ TopInfoPanel.propTypes = {
     onBarcodeGenerate: PropTypes.func,
     showEdit: PropTypes.bool,
     onEdit: PropTypes.func,
+    showNotes: PropTypes.bool,
+    onNotes: PropTypes.func,
     readOnly: PropTypes.bool,
 };

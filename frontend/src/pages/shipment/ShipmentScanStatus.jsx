@@ -9,7 +9,9 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
     completeShipment, scanShipmentFreight, signOffShipment, splitApprovalShipment, unscanShipmentFreight,
@@ -130,6 +132,10 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const [completeConfirmationOpen, setCompleteConfirmationOpen] = useState(false);
     const [splitApprovalOpen, setSplitApprovalOpen] = useState(false);
     const [signOffConfirmationOpen, setSignOffConfirmationOpen] = useState(false);
+    const [splitApprovalCompleted, setSplitApprovalCompleted] = useState(
+        shipment?.completeStatus === 'SPLIT_APPROVED'
+    );
+    const [splitReceiptIds, setSplitReceiptIds] = useState([]);
     const videoRef = useRef(null);
     const barcodeImageInputRef = useRef(null);
     const scannerControlsRef = useRef(null);
@@ -148,7 +154,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         const status = getReceiptStatus(receipt);
         return status === 'Scanned' || status === 'Unscanned';
     });
-    const isSignOffRequested = currentShipment?.completeStatus === 'REQUESTED';
+    const isSignOffRequested = ['REQUESTED', 'SPLIT_APPROVED'].includes(currentShipment?.completeStatus);
     const isCompleteApproved = currentShipment?.completeStatus === 'APPROVED';
     const hasUnscannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Unscanned');
     const hasScannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Scanned');
@@ -357,7 +363,33 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
 
         const result = await dispatch(splitApprovalShipment(shipmentId));
         if (result?.success) {
-            onCompleteSuccess('Split approval submitted successfully');
+            const updatedShipment = result.data?.shipment || result.data;
+            const originalReceiptIds = new Set(
+                receipts.map((receipt) => String(receipt.receiptId || receipt.shipmentReceiptId))
+            );
+            const updatedReceipts = Array.isArray(updatedShipment?.receipts)
+                ? [...updatedShipment.receipts].sort((first, second) => {
+                    const firstIsOriginal = originalReceiptIds.has(String(first.receiptId || first.shipmentReceiptId));
+                    const secondIsOriginal = originalReceiptIds.has(String(second.receiptId || second.shipmentReceiptId));
+                    return Number(secondIsOriginal) - Number(firstIsOriginal);
+                })
+                : receipts;
+            const newSplitReceiptIds = updatedReceipts
+                .filter((receipt) => !originalReceiptIds.has(String(receipt.receiptId || receipt.shipmentReceiptId)))
+                .map((receipt) => String(receipt.shipmentReceiptId || receipt.receiptId));
+
+            setCurrentShipment((previous) => ({
+                ...previous,
+                ...updatedShipment,
+                receipts: updatedReceipts,
+            }));
+            setSplitReceiptIds(newSplitReceiptIds);
+            setSplitApprovalCompleted(true);
+            setSplitApprovalOpen(false);
+            setScanMessage({
+                text: result.message || 'Shipment split approved successfully',
+                severity: 'success',
+            });
         } else {
             setSplitApprovalOpen(false);
             setScanMessage({ text: result?.error || 'Failed to submit split approval.', severity: 'error' });
@@ -465,6 +497,18 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             </Box>
 
             <Paper sx={{ mx: 1.5, mt: 1, p: 3, minHeight: 390, borderRadius: 2, boxShadow: 'none' }}>
+                {splitApprovalCompleted && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            endIcon={<CheckCircleIcon sx={{ color: '#54ad72' }} />}
+                            sx={{ minWidth: 112, py: 0.15, color: '#333', borderColor: '#aaa', bgcolor: '#f1f1f1', fontSize: 10, textTransform: 'none' }}
+                        >
+                            Split Approved
+                        </Button>
+                    </Box>
+                )}
                 <TableContainer sx={{ border: '1px solid #d7d7d7', borderRadius: 1.5 }}>
                     <Table size="small">
                         <TableHead>
@@ -482,6 +526,9 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             {receipts.map((receipt, index) => {
                                 const summary = receipt.freightSummary || {};
                                 const status = getReceiptStatus(receipt);
+                                const isSplitReceipt = splitReceiptIds.includes(
+                                    String(receipt.shipmentReceiptId || receipt.receiptId)
+                                );
                                 return (
                                     <TableRow key={receipt.shipmentReceiptId || receipt.receiptId || index}>
                                         <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
@@ -519,15 +566,27 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                     </Button>
                                                 )}
                                                 {status === 'Available' && isSignOffVisible && (
-                                                    <IconButton
+                                                    <Box sx={{ width: 34, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                                                        <IconButton
+                                                            size="small"
+                                                            aria-label="Delete warehouse receipt"
+                                                            title="Delete warehouse receipt"
+                                                            onClick={() => handleDeleteReceiptRow(index)}
+                                                            sx={{ color: '#b5232b' }}
+                                                        >
+                                                            <DeleteIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Box>
+                                                )}
+                                                {isSplitReceipt && (
+                                                    <Button
+                                                        variant="text"
                                                         size="small"
-                                                        aria-label="Delete warehouse receipt"
-                                                        title="Delete warehouse receipt"
-                                                        onClick={() => handleDeleteReceiptRow(index)}
-                                                        sx={{ color: '#b5232b' }}
+                                                        startIcon={<LocalPrintshopIcon />}
+                                                        sx={{ minWidth: 92, color: '#111', fontSize: 10, textTransform: 'none' }}
                                                     >
-                                                        <DeleteIcon fontSize="small" />
-                                                    </IconButton>
+                                                        Print Label
+                                                    </Button>
                                                 )}
                                             </Stack>
                                         </TableCell>
