@@ -33,6 +33,12 @@ const mobileNavConfig = [
       { title: 'Trailer', path: PATH_DASHBOARD.warehouseCheckInTrailer, icon: null },
     ],
   },
+  {
+    title: 'Shipment Form',
+    path: PATH_DASHBOARD.shipmentBuilding,
+    icon: null,
+    resetToGrid: true,
+  },
 ];
 
 Header.propTypes = {

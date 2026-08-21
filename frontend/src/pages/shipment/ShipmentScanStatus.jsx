@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
 import {
-    Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
+    Alert, Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
     DialogTitle, IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell,
-    TableContainer, TableHead, TableRow, Typography
+    TableContainer, TableHead, TableRow, TextField, Typography
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
@@ -14,7 +14,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
-    completeShipment, scanShipmentFreight, signOffShipment, splitApprovalShipment, unscanShipmentFreight,
+    addShipmentReceipt, completeShipment, getShipmentReceiptOptions, scanShipmentFreight,
+    signOffShipment, splitApprovalShipment, unscanShipmentFreight,
 } from '../../redux/slices/shipment';
 
 const getReceiptStatus = (receipt) => {
@@ -117,10 +118,11 @@ const decodeUploadedBarcode = async (image) => {
     }
 };
 
-export default function ShipmentScanStatus({ shipment, onClose, onCompleteSuccess }) {
+export default function ShipmentScanStatus({ shipment, onClose, onCompleteSuccess, mobile = false }) {
     const dispatch = useDispatch();
     const {
         scanFreightLoading, completeShipmentLoading, signOffLoading, splitApprovalLoading,
+        addShipmentReceiptLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField,
     } = useSelector((state) => state.shipmentdata);
     const [currentShipment, setCurrentShipment] = useState(shipment);
     const [scannerOpen, setScannerOpen] = useState(false);
@@ -136,10 +138,13 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         shipment?.completeStatus === 'SPLIT_APPROVED'
     );
     const [splitReceiptIds, setSplitReceiptIds] = useState([]);
+    const [receiptInputValues, setReceiptInputValues] = useState({});
+    const receiptSearchTimersRef = useRef({});
     const videoRef = useRef(null);
     const barcodeImageInputRef = useRef(null);
     const scannerControlsRef = useRef(null);
     const scanInProgressRef = useRef(false);
+    const mobileAutoScanHandledRef = useRef(false);
 
     const receipts = Array.isArray(currentShipment?.receipts) ? currentShipment.receipts : [];
     const formName = currentShipment?.shipmentType === 'FCL'
@@ -157,6 +162,10 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const isSignOffRequested = ['REQUESTED', 'SPLIT_APPROVED'].includes(currentShipment?.completeStatus);
     const isCompleteApproved = currentShipment?.completeStatus === 'APPROVED';
     const hasUnscannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Unscanned');
+    const hasPendingScanReceipts = receipts.some((receipt) => {
+        const status = getReceiptStatus(receipt);
+        return status === 'Unscanned' || status === 'Available';
+    });
     const hasScannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Scanned');
     const approvedSignOffVisible = isCompleteApproved && hasScannedReceipts && !hasUnscannedReceipts;
     const showApprovalAction = isSignOffRequested || approvedSignOffVisible;
@@ -231,6 +240,12 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 (receipt) => getReceiptStatus(receipt) === 'Scanned'
             );
             setCurrentShipment(nextShipment);
+            if (scannerMode === 'unscan' && mobile) {
+                const updatedReceipt = nextReceipts.find(
+                    (receipt) => String(receipt.receiptNumber) === String(unscanReceiptNumber)
+                );
+                if (updatedReceipt) setUnscanReceipt(updatedReceipt);
+            }
             setScanMessage({
                 text: scannerMode === 'unscan' ? 'Freight unscanned successfully.' : 'Freight scanned successfully.',
                 severity: 'success',
@@ -247,7 +262,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             setScannerStatus(result?.error || `${fallbackMessage} Try again.`);
             setScanMessage({ text: result?.error || fallbackMessage, severity: 'error' });
         }
-    }, [closeScanner, currentShipment, dispatch, scannerMode, stopScanner, unscanReceiptNumber]);
+    }, [closeScanner, currentShipment, dispatch, mobile, scannerMode, stopScanner, unscanReceiptNumber]);
 
     useEffect(() => {
         if (!scannerOpen) return undefined;
@@ -283,13 +298,23 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
 
     useEffect(() => () => stopScanner(), [stopScanner]);
 
-    const openScanner = (mode = 'scan', receiptNumber = '') => {
+    useEffect(() => () => {
+        Object.values(receiptSearchTimersRef.current).forEach(clearTimeout);
+    }, []);
+
+    const openScanner = useCallback((mode = 'scan', receiptNumber = '') => {
         setScanMessage((previous) => ({ ...previous, text: '' }));
         setScannerMode(mode);
         setUnscanReceiptNumber(receiptNumber);
         setScannerStatus(`Point the camera at the freight barcode to ${mode}.`);
         setScannerOpen(true);
-    };
+    }, []);
+
+    useEffect(() => {
+        if (!mobile || mobileAutoScanHandledRef.current) return;
+        mobileAutoScanHandledRef.current = true;
+        if (hasPendingScanReceipts) openScanner('scan');
+    }, [hasPendingScanReceipts, mobile, openScanner]);
 
     const handleBarcodeImageUpload = async (event) => {
         const file = event.target.files?.[0];
@@ -413,12 +438,13 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     const handleAddReceiptRow = () => {
+        const temporaryId = `new-${Date.now()}`;
         setCurrentShipment((previous) => ({
             ...previous,
             receipts: [
                 ...(previous?.receipts || []),
                 {
-                    shipmentReceiptId: `new-${Date.now()}`,
+                    shipmentReceiptId: temporaryId,
                     receiptNumber: '',
                     location: '',
                     freightSummary: { scanned: 0, total: 0 },
@@ -426,6 +452,44 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 },
             ],
         }));
+    };
+
+    const handleReceiptSearch = (fieldKey, value, reason) => {
+        if (reason === 'reset') return;
+        if (receiptSearchTimersRef.current[fieldKey]) clearTimeout(receiptSearchTimersRef.current[fieldKey]);
+        receiptSearchTimersRef.current[fieldKey] = setTimeout(() => {
+            dispatch(getShipmentReceiptOptions(value, fieldKey));
+        }, 500);
+    };
+
+    const handleAddReceiptSelection = async (temporaryId, receipt) => {
+        if (!receipt?.receiptId || addShipmentReceiptLoading) return;
+        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
+        if (!shipmentId) {
+            setScanMessage({ text: 'Shipment ID is unavailable.', severity: 'error' });
+            return;
+        }
+
+        const result = await dispatch(addShipmentReceipt({ shipmentId, receiptId: receipt.receiptId }));
+        if (!result?.success) {
+            setScanMessage({ text: result?.error || 'Failed to add receipt to shipment.', severity: 'error' });
+            return;
+        }
+
+        const responseData = result.data?.shipment || result.data;
+        if (Array.isArray(responseData?.receipts)) {
+            setCurrentShipment((previous) => ({ ...previous, ...responseData }));
+        } else {
+            const addedReceipt = result.data?.receipt || responseData;
+            setCurrentShipment((previous) => ({
+                ...previous,
+                receipts: (previous?.receipts || []).map((item) =>
+                    String(item.shipmentReceiptId) === String(temporaryId) ? addedReceipt : item
+                ),
+            }));
+        }
+        setReceiptInputValues((previous) => ({ ...previous, [temporaryId]: '' }));
+        setScanMessage({ text: result.message || 'Receipt added successfully.', severity: 'success' });
     };
 
     const handleDeleteReceiptRow = (rowIndex) => {
@@ -436,7 +500,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     return (
-        <Box sx={{ minHeight: 500, bgcolor: '#e7e7e7' }}>
+        <Box sx={{ minHeight: mobile ? '100vh' : 500, bgcolor: '#e7e7e7' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25 }}>
                 <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
@@ -496,7 +560,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 </Box>
             </Box>
 
-            <Paper sx={{ mx: 1.5, mt: 1, p: 3, minHeight: 390, borderRadius: 2, boxShadow: 'none' }}>
+            <Paper sx={{ mx: mobile ? 0 : 1.5, mt: 1, p: mobile ? 0 : 3, minHeight: 390, borderRadius: mobile ? 0 : 2, boxShadow: 'none' }}>
                 {splitApprovalCompleted && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
                         <Button
@@ -510,16 +574,16 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     </Box>
                 )}
                 <TableContainer sx={{ border: '1px solid #d7d7d7', borderRadius: 1.5 }}>
-                    <Table size="small">
+                    <Table size="small" sx={{ minWidth: mobile ? 650 : undefined }}>
                         <TableHead>
                             <TableRow sx={{ bgcolor: '#d7d7d7' }}>
-                                <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
+                                {!mobile && <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>}
+                                <TableCell sx={{ fontWeight: 700 }}>{mobile ? 'Warehouse #' : 'Warehouse Receipt #'}</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                                <TableCell sx={{ fontWeight: 700, textAlign: 'left' }}>Action</TableCell>
+                                <TableCell sx={{ position: mobile ? 'sticky' : 'static', right: mobile ? 0 : 'auto', zIndex: mobile ? 3 : 'auto', bgcolor: '#d7d7d7', boxShadow: mobile ? '-4px 0 6px -4px rgba(0,0,0,0.35)' : 'none', fontWeight: 700, textAlign: 'left' }}>Action</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
@@ -531,9 +595,30 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 );
                                 return (
                                     <TableRow key={receipt.shipmentReceiptId || receipt.receiptId || index}>
-                                        <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>
-                                        <TableCell sx={{ color: '#b52025', fontWeight: 600, textDecoration: 'underline' }}>
-                                            {receipt.receiptNumber || '-'}
+                                        {!mobile && <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>}
+                                        <TableCell sx={receipt.isNew ? undefined : { color: '#b52025', fontWeight: 600, textDecoration: 'underline' }}>
+                                            {receipt.isNew ? (
+                                                <Autocomplete
+                                                    size="small"
+                                                    options={(shipmentReceiptOptionsByField[receipt.shipmentReceiptId] || []).filter(
+                                                        (option) => !receipts.some((item) => !item.isNew && String(item.receiptId) === String(option.receiptId))
+                                                    )}
+                                                    inputValue={receiptInputValues[receipt.shipmentReceiptId] || ''}
+                                                    loading={Boolean(shipmentReceiptLoadingByField[receipt.shipmentReceiptId]) || addShipmentReceiptLoading}
+                                                    getOptionLabel={(option) => String(option?.receiptNumber || '')}
+                                                    isOptionEqualToValue={(option, value) => String(option?.receiptId) === String(value?.receiptId)}
+                                                    onInputChange={(event, value, reason) => {
+                                                        setReceiptInputValues((previous) => ({ ...previous, [receipt.shipmentReceiptId]: value }));
+                                                        handleReceiptSearch(receipt.shipmentReceiptId, value, reason);
+                                                    }}
+                                                    onChange={(event, value) => handleAddReceiptSelection(receipt.shipmentReceiptId, value)}
+                                                    loadingText="Searching warehouse receipts..."
+                                                    noOptionsText="Type a receipt number"
+                                                    renderInput={(params) => (
+                                                        <TextField {...params} placeholder="Type receipt number" variant="standard" />
+                                                    )}
+                                                />
+                                            ) : receipt.receiptNumber || '-'}
                                         </TableCell>
                                         <TableCell>{receipt.location || receipt.locationCode || currentShipment?.location || '-'}</TableCell>
                                         <TableCell>
@@ -553,13 +638,25 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                 {status}
                                             </Box>
                                         </TableCell>
-                                        <TableCell align="left">
+                                        <TableCell
+                                            align="left"
+                                            sx={{ position: mobile ? 'sticky' : 'static', right: mobile ? 0 : 'auto', zIndex: mobile ? 2 : 'auto', bgcolor: '#fff', boxShadow: mobile ? '-4px 0 6px -4px rgba(0,0,0,0.25)' : 'none' }}
+                                        >
                                             <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-start">
                                                 {status !== 'Available' && !isSignOffVisible && (
                                                     <Button
                                                         variant="contained"
                                                         size="small"
-                                                        onClick={() => setUnscanReceipt(receipt)}
+                                                        onClick={() => {
+                                                            if (mobile) {
+                                                                setUnscanReceipt(receipt);
+                                                                if (hasScannedReceipts) {
+                                                                    openScanner('unscan', receipt.receiptNumber);
+                                                                }
+                                                            } else {
+                                                                setUnscanReceipt(receipt);
+                                                            }
+                                                        }}
                                                         sx={{ minWidth: 82, bgcolor: '#b5232b', borderRadius: 1, py: 0.35, px: 1.5, fontWeight: 700, textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#971d24', boxShadow: 'none' } }}
                                                     >
                                                         Unscan
@@ -595,7 +692,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             })}
                             {!receipts.length && (
                                 <TableRow>
-                                    <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                    <TableCell colSpan={mobile ? 6 : 7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                         No warehouse receipts available.
                                     </TableCell>
                                 </TableRow>
@@ -610,6 +707,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             aria-label="Add warehouse receipt"
                             title="Add warehouse receipt"
                             onClick={handleAddReceiptRow}
+                            disabled={addShipmentReceiptLoading || receipts.some((receipt) => receipt.isNew)}
                             sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
                         >
                             <AddIcon fontSize="small" />
@@ -877,7 +975,14 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     </Button>
                 </DialogActions>
             </Dialog>
-            <Dialog open={scannerOpen} onClose={closeScanner} maxWidth="md" fullWidth disableRestoreFocus>
+            <Dialog
+                open={scannerOpen}
+                onClose={closeScanner}
+                maxWidth="md"
+                fullWidth
+                disableRestoreFocus
+                sx={{ zIndex: (theme) => theme.zIndex.modal + 2 }}
+            >
                 <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
                     {scannerMode === 'unscan' ? 'Unscan Freight Barcode' : 'Scan Freight Barcode'}
                     <IconButton onClick={closeScanner} size="small" sx={{ position: 'absolute', right: 12, top: 12 }}>
@@ -934,9 +1039,17 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 disableRestoreFocus
                 PaperProps={{ sx: { minHeight: 325, borderRadius: 1.5 } }}
             >
-                <DialogTitle sx={{ px: 2, pt: 2, pb: 1, fontSize: 13, fontWeight: 700 }}>
+                <DialogTitle sx={{ position: 'relative', px: 2, pt: 2, pb: 1, pr: 6, fontSize: 13, fontWeight: 700 }}>
                     Warehouse {unscanReceipt?.receiptNumber || '-'} - {' '}
                     {unscanReceipt?.proNumber || unscanReceipt?.barcodeNumber || currentShipment?.barcodeNumber || currentShipment?.rmNumber || '-'}
+                    <IconButton
+                        size="small"
+                        aria-label="Close unscan popup"
+                        onClick={() => setUnscanReceipt(null)}
+                        sx={{ position: 'absolute', right: 10, top: 8 }}
+                    >
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
                 </DialogTitle>
                 <DialogContent dividers sx={{ px: 2, pt: 1, pb: 2 }}>
                     {scanMessage.text && (
@@ -950,15 +1063,17 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         </Alert>
                     )}
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.75 }}>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            onClick={openUnscanScanner}
-                            disabled={scanFreightLoading}
-                            sx={{ minWidth: 58, bgcolor: '#b5232b', py: 0.15, px: 1.25, fontSize: 10, textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#971d24', boxShadow: 'none' } }}
-                        >
-                            Unscan
-                        </Button>
+                        {(!mobile || hasScannedReceipts) && (
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={openUnscanScanner}
+                                disabled={scanFreightLoading}
+                                sx={{ minWidth: 58, bgcolor: '#b5232b', py: 0.15, px: 1.25, fontSize: 10, textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#971d24', boxShadow: 'none' } }}
+                            >
+                                Unscan
+                            </Button>
+                        )}
                     </Box>
                     <TableContainer sx={{ border: '1px solid #d7d7d7', borderRadius: 0.5 }}>
                         <Table size="small">
@@ -1025,4 +1140,5 @@ ShipmentScanStatus.propTypes = {
     shipment: PropTypes.object,
     onClose: PropTypes.func.isRequired,
     onCompleteSuccess: PropTypes.func.isRequired,
+    mobile: PropTypes.bool,
 };

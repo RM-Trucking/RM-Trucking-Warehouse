@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
-  DialogContent
+  DialogContent, useMediaQuery
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -19,6 +19,7 @@ import ShipmentDetails from './ShipmentDetails';
 import NewAirShipmentForm from './AirShipmentForm';
 import OceanLCLForm from './OceanLCLForm';
 import OceanFCLForm from './OceanFCLForm';
+import ShipmentMobileScanPage from './ShipmentMobileScanPage';
 // ----------------------------------------------------------------------
 
 export default function ShipmentFormPage() {
@@ -28,6 +29,7 @@ export default function ShipmentFormPage() {
 }
 
 function ShipmentFormPageContent() {
+  const isScanGunScreen = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [showAirShipmentForm, setShowAirShipmentForm] = useState(false);
   const [showOceanLCLForm, setShowOceanLCLForm] = useState(false);
@@ -83,6 +85,11 @@ function ShipmentFormPageContent() {
     setOpenConfirmDialog(false);
     setShowOceanFCLForm(true);
   };
+
+  if (isScanGunScreen && !viewShipment && !showAirShipmentForm && !showOceanLCLForm && !showOceanFCLForm) {
+    return <ShipmentMobileScanPage />;
+  }
+
   return (
     <>
       <ErrorBoundary

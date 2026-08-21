@@ -20,6 +20,8 @@ const initialState = {
     completeShipmentError: null,
     splitApprovalLoading: false,
     splitApprovalError: null,
+    addShipmentReceiptLoading: false,
+    addShipmentReceiptError: null,
     shipmentData: [],
     shipmentSearchStr: '',
     exportAirlineOptions: [],
@@ -192,6 +194,28 @@ const slice = createSlice({
         splitApprovalError(state, action) {
             state.splitApprovalLoading = false;
             state.splitApprovalError = action.payload;
+        },
+        startAddShipmentReceipt(state) {
+            state.addShipmentReceiptLoading = true;
+            state.addShipmentReceiptError = null;
+        },
+        addShipmentReceiptSuccess(state, action) {
+            state.addShipmentReceiptLoading = false;
+            state.addShipmentReceiptError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        addShipmentReceiptError(state, action) {
+            state.addShipmentReceiptLoading = false;
+            state.addShipmentReceiptError = action.payload;
         },
         // get shipment success
         getShipmentDataSuccess(state, action) {
@@ -390,6 +414,24 @@ export function splitApprovalShipment(shipmentId) {
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to submit split approval';
             dispatch(slice.actions.splitApprovalError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function addShipmentReceipt({ shipmentId, receiptId }) {
+    return async () => {
+        dispatch(slice.actions.startAddShipmentReceipt());
+        try {
+            const response = await axios.put(
+                `shipment/${encodeURIComponent(shipmentId)}/receipts/${encodeURIComponent(receiptId)}`
+            );
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.addShipmentReceiptSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to add receipt to shipment';
+            dispatch(slice.actions.addShipmentReceiptError(message));
             return { success: false, error: message };
         }
     };
