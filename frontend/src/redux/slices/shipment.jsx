@@ -22,6 +22,8 @@ const initialState = {
     splitApprovalError: null,
     addShipmentReceiptLoading: false,
     addShipmentReceiptError: null,
+    deleteShipmentReceiptLoading: false,
+    deleteShipmentReceiptError: null,
     shipmentData: [],
     shipmentSearchStr: '',
     exportAirlineOptions: [],
@@ -216,6 +218,28 @@ const slice = createSlice({
         addShipmentReceiptError(state, action) {
             state.addShipmentReceiptLoading = false;
             state.addShipmentReceiptError = action.payload;
+        },
+        startDeleteShipmentReceipt(state) {
+            state.deleteShipmentReceiptLoading = true;
+            state.deleteShipmentReceiptError = null;
+        },
+        deleteShipmentReceiptSuccess(state, action) {
+            state.deleteShipmentReceiptLoading = false;
+            state.deleteShipmentReceiptError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        deleteShipmentReceiptError(state, action) {
+            state.deleteShipmentReceiptLoading = false;
+            state.deleteShipmentReceiptError = action.payload;
         },
         // get shipment success
         getShipmentDataSuccess(state, action) {
@@ -432,6 +456,24 @@ export function addShipmentReceipt({ shipmentId, receiptId }) {
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to add receipt to shipment';
             dispatch(slice.actions.addShipmentReceiptError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function deleteShipmentReceipt({ shipmentId, receiptId }) {
+    return async () => {
+        dispatch(slice.actions.startDeleteShipmentReceipt());
+        try {
+            const response = await axios.delete(
+                `shipment/${encodeURIComponent(shipmentId)}/receipts/${encodeURIComponent(receiptId)}`
+            );
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.deleteShipmentReceiptSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to delete receipt from shipment';
+            dispatch(slice.actions.deleteShipmentReceiptError(message));
             return { success: false, error: message };
         }
     };

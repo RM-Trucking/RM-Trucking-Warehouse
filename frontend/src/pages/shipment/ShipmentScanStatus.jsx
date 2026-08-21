@@ -14,7 +14,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
-    addShipmentReceipt, completeShipment, getShipmentReceiptOptions, scanShipmentFreight,
+    addShipmentReceipt, completeShipment, deleteShipmentReceipt, getShipmentReceiptOptions, scanShipmentFreight,
     signOffShipment, splitApprovalShipment, unscanShipmentFreight,
 } from '../../redux/slices/shipment';
 
@@ -139,6 +139,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     );
     const [splitReceiptIds, setSplitReceiptIds] = useState([]);
     const [receiptInputValues, setReceiptInputValues] = useState({});
+    const [deletingReceiptId, setDeletingReceiptId] = useState(null);
     const receiptSearchTimersRef = useRef({});
     const videoRef = useRef(null);
     const barcodeImageInputRef = useRef(null);
@@ -492,11 +493,42 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         setScanMessage({ text: result.message || 'Receipt added successfully.', severity: 'success' });
     };
 
-    const handleDeleteReceiptRow = (rowIndex) => {
+    const handleDeleteReceiptRow = async (rowIndex) => {
+        const receipt = receipts[rowIndex];
+        if (receipt?.isNew) {
+            setCurrentShipment((previous) => ({
+                ...previous,
+                receipts: (previous?.receipts || []).filter((item, index) => index !== rowIndex),
+            }));
+            return;
+        }
+
+        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
+        const receiptId = receipt?.receiptId;
+        if (!shipmentId || !receiptId || deletingReceiptId !== null) {
+            if (!shipmentId || !receiptId) {
+                setScanMessage({ text: 'Shipment ID or receipt ID is unavailable.', severity: 'error' });
+            }
+            return;
+        }
+
+        setDeletingReceiptId(receiptId);
+        const result = await dispatch(deleteShipmentReceipt({ shipmentId, receiptId }));
+        setDeletingReceiptId(null);
+        if (!result?.success) {
+            setScanMessage({ text: result?.error || 'Failed to delete receipt from shipment.', severity: 'error' });
+            return;
+        }
+
+        const responseData = result.data?.shipment || result.data;
         setCurrentShipment((previous) => ({
             ...previous,
-            receipts: (previous?.receipts || []).filter((receipt, index) => index !== rowIndex),
+            ...(Array.isArray(responseData?.receipts) ? responseData : {}),
+            receipts: Array.isArray(responseData?.receipts)
+                ? responseData.receipts
+                : (previous?.receipts || []).filter((item) => String(item.receiptId) !== String(receiptId)),
         }));
+        setScanMessage({ text: result.message || 'Receipt deleted successfully.', severity: 'success' });
     };
 
     return (
@@ -614,6 +646,16 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                     onChange={(event, value) => handleAddReceiptSelection(receipt.shipmentReceiptId, value)}
                                                     loadingText="Searching warehouse receipts..."
                                                     noOptionsText="Type a receipt number"
+                                                    renderOption={(props, option) => (
+                                                        <Box component="li" {...props} key={option.receiptId} sx={{ display: 'block !important' }}>
+                                                            <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#243e9b' }}>
+                                                                Receipts No - {option.receiptNumber}
+                                                            </Typography>
+                                                            <Typography sx={{ fontSize: 12 }}>
+                                                                Customer - {[option.customerName, option.stationName].filter(Boolean).join(' | ')}
+                                                            </Typography>
+                                                        </Box>
+                                                    )}
                                                     renderInput={(params) => (
                                                         <TextField {...params} placeholder="Type receipt number" variant="standard" />
                                                     )}
@@ -669,9 +711,12 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                             aria-label="Delete warehouse receipt"
                                                             title="Delete warehouse receipt"
                                                             onClick={() => handleDeleteReceiptRow(index)}
+                                                            disabled={deletingReceiptId !== null}
                                                             sx={{ color: '#b5232b' }}
                                                         >
-                                                            <DeleteIcon fontSize="small" />
+                                                            {String(deletingReceiptId) === String(receipt.receiptId)
+                                                                ? <CircularProgress size={18} color="inherit" />
+                                                                : <DeleteIcon fontSize="small" />}
                                                         </IconButton>
                                                     </Box>
                                                 )}
