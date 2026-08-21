@@ -51,6 +51,7 @@ export default function ShipmentTabs({ onViewShipment }) {
         shipmentData: apiShipmentData,
         isLoading,
         pagination,
+        shipmentSearchStr,
     } = useSelector((state) => state.shipmentdata);
     
     const [currentTab, setCurrentTab] = useState('active');
@@ -88,6 +89,10 @@ export default function ShipmentTabs({ onViewShipment }) {
         page: 0,
         pageSize: 10,
     });
+    const shipmentSearchStrRef = useRef(shipmentSearchStr);
+    useEffect(() => {
+        shipmentSearchStrRef.current = shipmentSearchStr;
+    }, [shipmentSearchStr]);
 
     const handlePrint = useReactToPrint({
         contentRef: printRef,
@@ -135,6 +140,7 @@ const handleClosePickupForm = () => {
         dispatch(getShipmentData({
             pageNo: paginationModel.page + 1,
             pageSize: paginationModel.pageSize,
+            searchTerm: shipmentSearchStrRef.current,
             request: requestFilterEnabled,
             scanned: scannedFilterEnabled,
             pickup: pickupFilterEnabled,
@@ -151,6 +157,7 @@ const handleClosePickupForm = () => {
         dispatch(getShipmentData({
             pageNo: paginationModel.page + 1,
             pageSize: paginationModel.pageSize,
+            searchTerm: shipmentSearchStrRef.current,
             request: requestFilterEnabled,
             scanned: scannedFilterEnabled,
             pickup: pickupFilterEnabled,

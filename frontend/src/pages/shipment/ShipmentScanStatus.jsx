@@ -146,6 +146,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const scannerControlsRef = useRef(null);
     const scanInProgressRef = useRef(false);
     const mobileAutoScanHandledRef = useRef(false);
+    const scanGunBufferRef = useRef('');
+    const scanGunResetTimerRef = useRef(null);
 
     const receipts = Array.isArray(currentShipment?.receipts) ? currentShipment.receipts : [];
     const formName = currentShipment?.shipmentType === 'FCL'
@@ -170,7 +172,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const hasScannedReceipts = receipts.some((receipt) => getReceiptStatus(receipt) === 'Scanned');
     const approvedSignOffVisible = isCompleteApproved && hasScannedReceipts && !hasUnscannedReceipts;
     const showApprovalAction = isSignOffRequested || approvedSignOffVisible;
-    const isSignOffVisible = showApprovalAction && !hasUnscannedReceipts;
+    const canManageAvailableReceipts = showApprovalAction;
     const availableConfirmationRows = receipts
         .filter((receipt) => getReceiptStatus(receipt) === 'Available')
         .map((receipt) => {
@@ -205,6 +207,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             videoRef.current.srcObject = null;
         }
         scanInProgressRef.current = false;
+        scanGunBufferRef.current = '';
+        clearTimeout(scanGunResetTimerRef.current);
     }, []);
 
     const closeScanner = useCallback(() => {
@@ -266,7 +270,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     }, [closeScanner, currentShipment, dispatch, mobile, scannerMode, stopScanner, unscanReceiptNumber]);
 
     useEffect(() => {
-        if (!scannerOpen) return undefined;
+        if (!scannerOpen || mobile) return undefined;
         let disposed = false;
         let controls = null;
 
@@ -295,7 +299,40 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             clearTimeout(timer);
             controls?.stop?.();
         };
-    }, [scannerOpen, submitBarcode]);
+    }, [mobile, scannerOpen, submitBarcode]);
+
+    useEffect(() => {
+        if (!scannerOpen || !mobile) return undefined;
+
+        const handleScanGunInput = (event) => {
+            if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
+
+            if (event.key === 'Enter' || event.key === 'Tab') {
+                const barcodeValue = scanGunBufferRef.current.trim();
+                scanGunBufferRef.current = '';
+                clearTimeout(scanGunResetTimerRef.current);
+                if (barcodeValue) {
+                    event.preventDefault();
+                    submitBarcode(barcodeValue.slice(0, 100));
+                }
+                return;
+            }
+
+            if (event.key.length !== 1) return;
+            scanGunBufferRef.current += event.key;
+            clearTimeout(scanGunResetTimerRef.current);
+            scanGunResetTimerRef.current = setTimeout(() => {
+                scanGunBufferRef.current = '';
+            }, 500);
+        };
+
+        window.addEventListener('keydown', handleScanGunInput, true);
+        return () => {
+            window.removeEventListener('keydown', handleScanGunInput, true);
+            clearTimeout(scanGunResetTimerRef.current);
+            scanGunBufferRef.current = '';
+        };
+    }, [mobile, scannerOpen, submitBarcode]);
 
     useEffect(() => () => stopScanner(), [stopScanner]);
 
@@ -307,9 +344,11 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         setScanMessage((previous) => ({ ...previous, text: '' }));
         setScannerMode(mode);
         setUnscanReceiptNumber(receiptNumber);
-        setScannerStatus(`Point the camera at the freight barcode to ${mode}.`);
+        setScannerStatus(mobile
+            ? `Scan the freight barcode with the scan gun to ${mode}.`
+            : `Point the camera at the freight barcode to ${mode}.`);
         setScannerOpen(true);
-    }, []);
+    }, [mobile]);
 
     useEffect(() => {
         if (!mobile || mobileAutoScanHandledRef.current) return;
@@ -685,7 +724,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                             sx={{ position: mobile ? 'sticky' : 'static', right: mobile ? 0 : 'auto', zIndex: mobile ? 2 : 'auto', bgcolor: '#fff', boxShadow: mobile ? '-4px 0 6px -4px rgba(0,0,0,0.25)' : 'none' }}
                                         >
                                             <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-start">
-                                                {status !== 'Available' && !isSignOffVisible && (
+                                                {status !== 'Available' && !showApprovalAction && (
                                                     <Button
                                                         variant="contained"
                                                         size="small"
@@ -704,7 +743,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                         Unscan
                                                     </Button>
                                                 )}
-                                                {status === 'Available' && isSignOffVisible && (
+                                                {status === 'Available' && canManageAvailableReceipts && (
                                                     <Box sx={{ width: 34, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
                                                         <IconButton
                                                             size="small"
@@ -745,7 +784,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         </TableBody>
                     </Table>
                 </TableContainer>
-                {isSignOffVisible && (
+                {canManageAvailableReceipts && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                         <IconButton
                             size="small"
@@ -1046,13 +1085,34 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 {scanMessage.text}
                             </Alert>
                         )}
-                        <Box sx={{ position: 'relative', bgcolor: '#000', borderRadius: 1, overflow: 'hidden', minHeight: { xs: 320, sm: 460 } }}>
-                            <Box component="video" ref={videoRef} autoPlay playsInline muted sx={{ width: '100%', height: { xs: 320, sm: 460 }, display: 'block', objectFit: 'cover' }} />
-                            <Box sx={{ position: 'absolute', left: '6%', right: '6%', top: '24%', height: '46%', border: '2px solid #fff', borderRadius: 1, boxShadow: '0 0 0 999px rgba(0,0,0,0.28)' }} />
-                            {scanFreightLoading && (
-                                <CircularProgress sx={{ position: 'absolute', top: '50%', left: '50%', color: '#fff', transform: 'translate(-50%, -50%)' }} />
-                            )}
-                        </Box>
+                        {mobile ? (
+                            <Box
+                                sx={{
+                                    minHeight: 180, border: '1px dashed #999', borderRadius: 1,
+                                    bgcolor: '#f7f7f7', display: 'flex', alignItems: 'center',
+                                    justifyContent: 'center', px: 3, textAlign: 'center',
+                                }}
+                            >
+                                {scanFreightLoading ? (
+                                    <CircularProgress size={32} />
+                                ) : (
+                                    <Stack spacing={1} alignItems="center">
+                                        <Typography sx={{ fontSize: 16, fontWeight: 700 }}>Scan gun ready</Typography>
+                                        <Typography sx={{ fontSize: 12, color: '#555' }}>
+                                            Press the scan gun trigger and scan the freight barcode.
+                                        </Typography>
+                                    </Stack>
+                                )}
+                            </Box>
+                        ) : (
+                            <Box sx={{ position: 'relative', bgcolor: '#000', borderRadius: 1, overflow: 'hidden', minHeight: { xs: 320, sm: 460 } }}>
+                                <Box component="video" ref={videoRef} autoPlay playsInline muted sx={{ width: '100%', height: { xs: 320, sm: 460 }, display: 'block', objectFit: 'cover' }} />
+                                <Box sx={{ position: 'absolute', left: '6%', right: '6%', top: '24%', height: '46%', border: '2px solid #fff', borderRadius: 1, boxShadow: '0 0 0 999px rgba(0,0,0,0.28)' }} />
+                                {scanFreightLoading && (
+                                    <CircularProgress sx={{ position: 'absolute', top: '50%', left: '50%', color: '#fff', transform: 'translate(-50%, -50%)' }} />
+                                )}
+                            </Box>
+                        )}
                         <Typography sx={{ fontSize: 12, color: '#555' }}>{scannerStatus}</Typography>
                     </Stack>
                 </DialogContent>

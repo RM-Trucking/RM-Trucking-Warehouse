@@ -265,6 +265,7 @@ export default slice.reducer;
 export function getShipmentData({
     pageNo = 1,
     pageSize = 10,
+    searchTerm = '',
     request = false,
     scanned = false,
     pickup = false,
@@ -274,6 +275,7 @@ export function getShipmentData({
         dispatch(slice.actions.startLoading());
         try {
             const params = { page: pageNo, pageSize };
+            if (String(searchTerm).trim()) params.searchTerm = String(searchTerm).trim();
             if (request) params.request = true;
             if (scanned) params.scanned = true;
             if (pickup) params.pickup = true;
