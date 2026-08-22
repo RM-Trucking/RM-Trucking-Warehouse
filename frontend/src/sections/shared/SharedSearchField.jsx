@@ -100,7 +100,7 @@ export default function SharedSearchField({ page }) {
                 <Stack flexDirection={'row'} alignItems={'center'} justifyContent={'flex-end'} sx={{ padding: 2 }}>
                     <TextField
                         variant="outlined"
-                        placeholder="Search..."
+                        placeholder={page === 'shipment' ? 'Search for RM number or Air Bill No' : 'Search...'}
                         fullWidth
                         value={searchValue}
                         onChange={handleSearch}

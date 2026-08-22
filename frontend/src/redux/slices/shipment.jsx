@@ -20,6 +20,8 @@ const initialState = {
     completeShipmentError: null,
     splitApprovalLoading: false,
     splitApprovalError: null,
+    revokeCompletionLoading: false,
+    revokeCompletionError: null,
     addShipmentReceiptLoading: false,
     addShipmentReceiptError: null,
     deleteShipmentReceiptLoading: false,
@@ -196,6 +198,28 @@ const slice = createSlice({
         splitApprovalError(state, action) {
             state.splitApprovalLoading = false;
             state.splitApprovalError = action.payload;
+        },
+        startRevokeCompletion(state) {
+            state.revokeCompletionLoading = true;
+            state.revokeCompletionError = null;
+        },
+        revokeCompletionSuccess(state, action) {
+            state.revokeCompletionLoading = false;
+            state.revokeCompletionError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        revokeCompletionError(state, action) {
+            state.revokeCompletionLoading = false;
+            state.revokeCompletionError = action.payload;
         },
         startAddShipmentReceipt(state) {
             state.addShipmentReceiptLoading = true;
@@ -440,6 +464,22 @@ export function splitApprovalShipment(shipmentId) {
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to submit split approval';
             dispatch(slice.actions.splitApprovalError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function revokeShipmentCompletion(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startRevokeCompletion());
+        try {
+            const response = await axios.post('shipment/revoke-completion', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.revokeCompletionSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to reassign shipment';
+            dispatch(slice.actions.revokeCompletionError(message));
             return { success: false, error: message };
         }
     };

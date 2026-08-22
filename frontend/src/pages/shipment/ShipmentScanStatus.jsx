@@ -15,7 +15,7 @@ import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
     addShipmentReceipt, completeShipment, deleteShipmentReceipt, getShipmentReceiptOptions, scanShipmentFreight,
-    signOffShipment, splitApprovalShipment, unscanShipmentFreight,
+    revokeShipmentCompletion, signOffShipment, splitApprovalShipment, unscanShipmentFreight,
 } from '../../redux/slices/shipment';
 
 const getReceiptStatus = (receipt) => {
@@ -122,7 +122,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const dispatch = useDispatch();
     const {
         scanFreightLoading, completeShipmentLoading, signOffLoading, splitApprovalLoading,
-        addShipmentReceiptLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField,
+        revokeCompletionLoading, addShipmentReceiptLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField,
     } = useSelector((state) => state.shipmentdata);
     const [currentShipment, setCurrentShipment] = useState(shipment);
     const [scannerOpen, setScannerOpen] = useState(false);
@@ -134,11 +134,13 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const [completeConfirmationOpen, setCompleteConfirmationOpen] = useState(false);
     const [splitApprovalOpen, setSplitApprovalOpen] = useState(false);
     const [signOffConfirmationOpen, setSignOffConfirmationOpen] = useState(false);
+    const [reassignConfirmationOpen, setReassignConfirmationOpen] = useState(false);
     const [splitApprovalCompleted, setSplitApprovalCompleted] = useState(
         shipment?.completeStatus === 'SPLIT_APPROVED'
     );
     const [splitReceiptIds, setSplitReceiptIds] = useState([]);
     const [receiptInputValues, setReceiptInputValues] = useState({});
+    const [addingReceiptTemporaryId, setAddingReceiptTemporaryId] = useState(null);
     const [deletingReceiptId, setDeletingReceiptId] = useState(null);
     const receiptSearchTimersRef = useRef({});
     const videoRef = useRef(null);
@@ -494,6 +496,23 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         }));
     };
 
+    const handleReassign = async () => {
+        const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
+        if (!shipmentId) {
+            setScanMessage({ text: 'Shipment ID is unavailable.', severity: 'error' });
+            return;
+        }
+
+        const result = await dispatch(revokeShipmentCompletion(shipmentId));
+        if (result?.success) {
+            setReassignConfirmationOpen(false);
+            onCompleteSuccess(result.message || 'Shipment reassigned successfully');
+        } else {
+            setReassignConfirmationOpen(false);
+            setScanMessage({ text: result?.error || 'Failed to reassign shipment.', severity: 'error' });
+        }
+    };
+
     const handleReceiptSearch = (fieldKey, value, reason) => {
         if (reason === 'reset') return;
         if (receiptSearchTimersRef.current[fieldKey]) clearTimeout(receiptSearchTimersRef.current[fieldKey]);
@@ -510,7 +529,9 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             return;
         }
 
+        setAddingReceiptTemporaryId(temporaryId);
         const result = await dispatch(addShipmentReceipt({ shipmentId, receiptId: receipt.receiptId }));
+        setAddingReceiptTemporaryId(null);
         if (!result?.success) {
             setScanMessage({ text: result?.error || 'Failed to add receipt to shipment.', severity: 'error' });
             return;
@@ -590,6 +611,17 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>PRO# - {proNumber}</Typography>
                     <Stack direction="row" spacing={0.75} justifyContent="flex-end" sx={{ mt: 0.5 }}>
+                        {currentShipment?.completeStatus === 'REQUESTED' && showApprovalAction && (
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => setReassignConfirmationOpen(true)}
+                                disabled={revokeCompletionLoading}
+                                sx={{ minWidth: 72, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                            >
+                                {revokeCompletionLoading ? <CircularProgress size={14} color="inherit" /> : 'Re assign'}
+                            </Button>
+                        )}
                         {showApprovalAction ? (
                             <Button
                                 variant="contained"
@@ -669,36 +701,43 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                         {!mobile && <TableCell>{String(index + 1).padStart(2, '0')}</TableCell>}
                                         <TableCell sx={receipt.isNew ? undefined : { color: '#b52025', fontWeight: 600, textDecoration: 'underline' }}>
                                             {receipt.isNew ? (
-                                                <Autocomplete
-                                                    size="small"
-                                                    options={(shipmentReceiptOptionsByField[receipt.shipmentReceiptId] || []).filter(
-                                                        (option) => !receipts.some((item) => !item.isNew && String(item.receiptId) === String(option.receiptId))
+                                                <Stack direction="row" spacing={1} alignItems="center">
+                                                    <Autocomplete
+                                                        size="small"
+                                                        sx={{ flex: 1 }}
+                                                        disabled={String(addingReceiptTemporaryId) === String(receipt.shipmentReceiptId)}
+                                                        options={(shipmentReceiptOptionsByField[receipt.shipmentReceiptId] || []).filter(
+                                                            (option) => !receipts.some((item) => !item.isNew && String(item.receiptId) === String(option.receiptId))
+                                                        )}
+                                                        inputValue={receiptInputValues[receipt.shipmentReceiptId] || ''}
+                                                        loading={Boolean(shipmentReceiptLoadingByField[receipt.shipmentReceiptId])}
+                                                        getOptionLabel={(option) => String(option?.receiptNumber || '')}
+                                                        isOptionEqualToValue={(option, value) => String(option?.receiptId) === String(value?.receiptId)}
+                                                        onInputChange={(event, value, reason) => {
+                                                            setReceiptInputValues((previous) => ({ ...previous, [receipt.shipmentReceiptId]: value }));
+                                                            handleReceiptSearch(receipt.shipmentReceiptId, value, reason);
+                                                        }}
+                                                        onChange={(event, value) => handleAddReceiptSelection(receipt.shipmentReceiptId, value)}
+                                                        loadingText="Searching warehouse receipts..."
+                                                        noOptionsText="Type a receipt number"
+                                                        renderOption={(props, option) => (
+                                                            <Box component="li" {...props} key={option.receiptId} sx={{ display: 'block !important' }}>
+                                                                <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#243e9b' }}>
+                                                                    Receipts No - {option.receiptNumber}
+                                                                </Typography>
+                                                                <Typography sx={{ fontSize: 12 }}>
+                                                                    Customer - {[option.customerName, option.stationName].filter(Boolean).join(' | ')}
+                                                                </Typography>
+                                                            </Box>
+                                                        )}
+                                                        renderInput={(params) => (
+                                                            <TextField {...params} placeholder="Type receipt number" variant="standard" />
+                                                        )}
+                                                    />
+                                                    {String(addingReceiptTemporaryId) === String(receipt.shipmentReceiptId) && (
+                                                        <CircularProgress size={20} aria-label="Adding warehouse receipt" />
                                                     )}
-                                                    inputValue={receiptInputValues[receipt.shipmentReceiptId] || ''}
-                                                    loading={Boolean(shipmentReceiptLoadingByField[receipt.shipmentReceiptId]) || addShipmentReceiptLoading}
-                                                    getOptionLabel={(option) => String(option?.receiptNumber || '')}
-                                                    isOptionEqualToValue={(option, value) => String(option?.receiptId) === String(value?.receiptId)}
-                                                    onInputChange={(event, value, reason) => {
-                                                        setReceiptInputValues((previous) => ({ ...previous, [receipt.shipmentReceiptId]: value }));
-                                                        handleReceiptSearch(receipt.shipmentReceiptId, value, reason);
-                                                    }}
-                                                    onChange={(event, value) => handleAddReceiptSelection(receipt.shipmentReceiptId, value)}
-                                                    loadingText="Searching warehouse receipts..."
-                                                    noOptionsText="Type a receipt number"
-                                                    renderOption={(props, option) => (
-                                                        <Box component="li" {...props} key={option.receiptId} sx={{ display: 'block !important' }}>
-                                                            <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#243e9b' }}>
-                                                                Receipts No - {option.receiptNumber}
-                                                            </Typography>
-                                                            <Typography sx={{ fontSize: 12 }}>
-                                                                Customer - {[option.customerName, option.stationName].filter(Boolean).join(' | ')}
-                                                            </Typography>
-                                                        </Box>
-                                                    )}
-                                                    renderInput={(params) => (
-                                                        <TextField {...params} placeholder="Type receipt number" variant="standard" />
-                                                    )}
-                                                />
+                                                </Stack>
                                             ) : receipt.receiptNumber || '-'}
                                         </TableCell>
                                         <TableCell>{receipt.location || receipt.locationCode || currentShipment?.location || '-'}</TableCell>
@@ -799,6 +838,51 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     </Box>
                 )}
             </Paper>
+            <Dialog
+                open={reassignConfirmationOpen}
+                onClose={() => {
+                    if (!revokeCompletionLoading) setReassignConfirmationOpen(false);
+                }}
+                maxWidth="xs"
+                fullWidth
+                disableRestoreFocus
+                PaperProps={{ sx: { borderRadius: 1.5 } }}
+            >
+                <DialogTitle sx={{ px: 2, py: 1.25, fontSize: 18, fontWeight: 600, borderBottom: '2px solid #aaa' }}>
+                    Re assign Confirmation
+                    <IconButton
+                        onClick={() => setReassignConfirmationOpen(false)}
+                        disabled={revokeCompletionLoading}
+                        size="small"
+                        sx={{ position: 'absolute', right: 8, top: 6 }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ px: 3, pt: 4, pb: 2 }}>
+                    <Typography sx={{ fontSize: 17, textAlign: 'center' }}>
+                        Are you sure you want to re assign this shipment?
+                    </Typography>
+                </DialogContent>
+                <DialogActions sx={{ justifyContent: 'center', gap: 2, pt: 2, pb: 3 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={() => setReassignConfirmationOpen(false)}
+                        disabled={revokeCompletionLoading}
+                        sx={{ minWidth: 110, color: '#111', borderColor: '#333', textTransform: 'none' }}
+                    >
+                        No
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleReassign}
+                        disabled={revokeCompletionLoading}
+                        sx={{ minWidth: 110, bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                    >
+                        {revokeCompletionLoading ? <CircularProgress size={20} color="inherit" /> : 'Yes'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
             <Dialog
                 open={signOffConfirmationOpen}
                 onClose={() => setSignOffConfirmationOpen(false)}
