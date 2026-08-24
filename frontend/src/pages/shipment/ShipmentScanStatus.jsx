@@ -480,6 +480,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     const handleAddReceiptRow = () => {
+        if (splitApprovalCompleted) return;
+
         const temporaryId = `new-${Date.now()}`;
         setCurrentShipment((previous) => ({
             ...previous,
@@ -830,7 +832,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             aria-label="Add warehouse receipt"
                             title="Add warehouse receipt"
                             onClick={handleAddReceiptRow}
-                            disabled={addShipmentReceiptLoading || receipts.some((receipt) => receipt.isNew)}
+                            disabled={splitApprovalCompleted || addShipmentReceiptLoading || receipts.some((receipt) => receipt.isNew)}
                             sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' } }}
                         >
                             <AddIcon fontSize="small" />
@@ -954,7 +956,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         variant="outlined"
                         onClick={() => setSignOffConfirmationOpen(false)}
                         disabled={signOffLoading}
-                        sx={{ minWidth: 175, color: '#111', borderColor: '#333', fontSize: 17, textTransform: 'none' }}
+                        sx={{ minWidth: 110, color: '#111', borderColor: '#333', fontSize: 14, textTransform: 'none' }}
                     >
                         Cancel
                     </Button>
@@ -962,7 +964,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         variant="contained"
                         onClick={handleSignOff}
                         disabled={signOffLoading}
-                        sx={{ minWidth: 175, bgcolor: '#A22', fontSize: 17, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        sx={{ minWidth: 110, bgcolor: '#A22', fontSize: 14, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                     >
                         {signOffLoading ? <CircularProgress size={20} color="inherit" /> : 'Confirm'}
                     </Button>
