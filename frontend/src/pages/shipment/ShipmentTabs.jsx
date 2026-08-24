@@ -3,13 +3,13 @@ import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import {
     Alert, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
-    FormControlLabel, Snackbar
+    CircularProgress, FormControlLabel, Snackbar
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getShipmentData } from '../../redux/slices/shipment';
+import { getShipmentData, getShipmentForPickup } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
@@ -66,6 +66,8 @@ export default function ShipmentTabs({ onViewShipment }) {
     const printRef = useRef();
     const [printData, setPrintData] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
+    const [pickupError, setPickupError] = useState('');
+    const [pickupLoadingId, setPickupLoadingId] = useState(null);
     
     const shipmentTypeMap = { active: 'AIR', inactive: 'LCL', incomplete: 'FCL' };
     const shipmentData = apiShipmentData
@@ -148,8 +150,23 @@ const handleClosePickupForm = () => {
         }));
     };
 
-    const handleFileDocumentBox = (rowData) => {
-        setActiveForm({ type: 'airPickup', data: rowData });
+    const handleFileDocumentBox = async (rowData) => {
+        const shipmentId = rowData?.shipmentId || rowData?.id;
+        if (!shipmentId) {
+            setPickupError('Shipment ID is unavailable.');
+            return;
+        }
+
+        setPickupLoadingId(shipmentId);
+        const result = await dispatch(getShipmentForPickup(shipmentId));
+        setPickupLoadingId(null);
+
+        if (!result?.success) {
+            setPickupError(result?.error || 'Failed to load pickup details.');
+            return;
+        }
+
+        setActiveForm({ type: 'airPickup', data: result.data });
     };
 
     // Fetch the current server-side page.
@@ -309,6 +326,7 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
+                            disabled={params.row.isShipped === 'Y' && pickupLoadingId !== null}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (params.row.isShipped !== 'Y') {
@@ -319,7 +337,9 @@ const handleClosePickupForm = () => {
                             }}
                             sx={{ color: '#A22' }}
                         >
-                            {params.row.isShipped !== 'Y' ? (
+                            {String(pickupLoadingId) === String(params.row.shipmentId || params.row.id) ? (
+                                <CircularProgress size={18} color="inherit" />
+                            ) : params.row.isShipped !== 'Y' ? (
                                 <ScanActionIcon width={20} />
                             ) : (
                                 <Iconify icon="mdi:file-document-box" width={20} />
@@ -491,6 +511,18 @@ const handleClosePickupForm = () => {
             >
                 <Alert severity="success" variant="filled" onClose={() => setSuccessMessage('')}>
                     {successMessage}
+                </Alert>
+            </Snackbar>
+            <Snackbar
+                open={Boolean(pickupError)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setPickupError('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="error" variant="filled" onClose={() => setPickupError('')}>
+                    {pickupError}
                 </Alert>
             </Snackbar>
         </>

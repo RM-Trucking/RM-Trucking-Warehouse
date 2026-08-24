@@ -4,7 +4,7 @@ import { BrowserMultiFormatReader } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
 import {
     Alert, Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
-    DialogTitle, IconButton, Paper, Snackbar, Stack, Table, TableBody, TableCell,
+    DialogTitle, IconButton, MenuItem, Paper, Snackbar, Stack, Table, TableBody, TableCell,
     TableContainer, TableHead, TableRow, TextField, Typography
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -12,11 +12,14 @@ import AddIcon from '@mui/icons-material/Add';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LocalPrintshopIcon from '@mui/icons-material/LocalPrintshop';
+import Iconify from '../../components/iconify';
+import StyledTextField from '../../sections/shared/StyledTextField';
 import { useDispatch, useSelector } from '../../redux/store';
 import {
     addShipmentReceipt, completeShipment, deleteShipmentReceipt, getShipmentReceiptOptions, scanShipmentFreight,
     revokeShipmentCompletion, signOffShipment, splitApprovalShipment, unscanShipmentFreight,
 } from '../../redux/slices/shipment';
+import { fetchPrintersDropdown, printWarehouseReceiptLabel } from '../../redux/slices/warehouse';
 
 const getReceiptStatus = (receipt) => {
     const summary = receipt.freightSummary || {};
@@ -124,6 +127,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         scanFreightLoading, completeShipmentLoading, signOffLoading, splitApprovalLoading,
         revokeCompletionLoading, addShipmentReceiptLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField,
     } = useSelector((state) => state.shipmentdata);
+    const { printersDropdown } = useSelector((state) => state.warehousedata);
     const [currentShipment, setCurrentShipment] = useState(shipment);
     const [scannerOpen, setScannerOpen] = useState(false);
     const [scannerMode, setScannerMode] = useState('scan');
@@ -135,6 +139,9 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const [splitApprovalOpen, setSplitApprovalOpen] = useState(false);
     const [signOffConfirmationOpen, setSignOffConfirmationOpen] = useState(false);
     const [reassignConfirmationOpen, setReassignConfirmationOpen] = useState(false);
+    const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
+    const [selectedPrinterId, setSelectedPrinterId] = useState('');
+    const [printLoading, setPrintLoading] = useState(false);
     const [splitApprovalCompleted, setSplitApprovalCompleted] = useState(
         shipment?.completeStatus === 'SPLIT_APPROVED'
     );
@@ -479,6 +486,49 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         }
     };
 
+    const handleOpenPrinterDialog = (receiptNumber) => {
+        setPrinterDialog({ open: true, receiptNumber });
+        setSelectedPrinterId('');
+        dispatch(fetchPrintersDropdown());
+    };
+
+    const handleClosePrinterDialog = () => {
+        if (printLoading) return;
+        setPrinterDialog({ open: false, receiptNumber: '' });
+        setSelectedPrinterId('');
+    };
+
+    const handlePrintReceipt = async () => {
+        const printer = printersDropdown.data.find(
+            (item) => String(item.printerId) === String(selectedPrinterId)
+        );
+
+        if (!printer) {
+            setScanMessage({ text: 'Please select a printer', severity: 'error' });
+            return;
+        }
+
+        setPrintLoading(true);
+        const response = await dispatch(printWarehouseReceiptLabel({
+            printerIP: printer.printerIP,
+            printerPort: printer.printerPort,
+            receiptNumber: printerDialog.receiptNumber,
+        }));
+        setPrintLoading(false);
+
+        if (response?.error || response?.success === false) {
+            setScanMessage({ text: response?.message || 'Failed to print label', severity: 'error' });
+            return;
+        }
+
+        setScanMessage({
+            text: response?.message || `Print requested for receipt ${printerDialog.receiptNumber} on ${printer.printerName}`,
+            severity: 'success',
+        });
+        setPrinterDialog({ open: false, receiptNumber: '' });
+        setSelectedPrinterId('');
+    };
+
     const handleAddReceiptRow = () => {
         if (splitApprovalCompleted) return;
 
@@ -805,6 +855,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                         variant="text"
                                                         size="small"
                                                         startIcon={<LocalPrintshopIcon />}
+                                                        onClick={() => handleOpenPrinterDialog(receipt.receiptNumber)}
                                                         sx={{ minWidth: 92, color: '#111', fontSize: 10, textTransform: 'none' }}
                                                     >
                                                         Print Label
@@ -840,6 +891,61 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     </Box>
                 )}
             </Paper>
+            <Dialog open={printerDialog.open} onClose={handleClosePrinterDialog} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
+                    Select Printer
+                    <IconButton
+                        onClick={handleClosePrinterDialog}
+                        disabled={printLoading}
+                        size="small"
+                        sx={{ position: 'absolute', right: 12, top: 12 }}
+                    >
+                        <Iconify icon="mdi:close" width={18} />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
+                        <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography sx={{ fontSize: 12, color: '#555' }}>
+                                Printer <span style={{ color: 'red' }}>*</span>
+                            </Typography>
+                            <StyledTextField
+                                select
+                                size="small"
+                                value={selectedPrinterId}
+                                onChange={(event) => setSelectedPrinterId(event.target.value)}
+                                disabled={printersDropdown.loading || printLoading}
+                                helperText={printersDropdown.error || ''}
+                                error={Boolean(printersDropdown.error)}
+                                sx={{ width: '100%' }}
+                            >
+                                {printersDropdown.loading ? (
+                                    <MenuItem value="" disabled>Loading printers...</MenuItem>
+                                ) : printersDropdown.data.length > 0 ? (
+                                    printersDropdown.data.map((printer) => (
+                                        <MenuItem key={printer.printerId} value={printer.printerId}>
+                                            {printer.printerName}
+                                            {printer.printerIP ? ` - ${printer.printerIP}` : ''}
+                                        </MenuItem>
+                                    ))
+                                ) : (
+                                    <MenuItem value="" disabled>No printers available</MenuItem>
+                                )}
+                            </StyledTextField>
+                        </Stack>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<Iconify icon="mdi:printer" width={16} />}
+                            disabled={printersDropdown.loading || printLoading || !selectedPrinterId}
+                            onClick={handlePrintReceipt}
+                            sx={{ height: 36, minWidth: 82, mt: { xs: 0, sm: '21px' }, bgcolor: '#A22', color: '#fff', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            {printLoading ? 'Printing...' : 'Print'}
+                        </Button>
+                    </Stack>
+                </DialogContent>
+            </Dialog>
             <Dialog
                 open={reassignConfirmationOpen}
                 onClose={() => {

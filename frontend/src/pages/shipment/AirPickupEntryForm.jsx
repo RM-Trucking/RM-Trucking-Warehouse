@@ -3,9 +3,9 @@ import PropTypes from 'prop-types';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { Stack, Box, Typography, FormControlLabel, Checkbox } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import dayjs from 'dayjs';
 
 import StyledTextField from '../../sections/shared/StyledTextField';
 import ShipmentFormLayout from '../../sections/shared/ShipmentFormLayout';
@@ -16,51 +16,50 @@ AirPickupEntryForm.propTypes = {
     rowData: PropTypes.object
 };
 
-const firstValue = (source, keys, fallback = '') => {
-    const key = keys.find((candidate) => source?.[candidate] !== undefined && source?.[candidate] !== null && source?.[candidate] !== '');
-    return key ? source[key] : fallback;
+const getPickupDefaults = (pickupData = {}) => {
+    const entryDetails = pickupData.entryDetails || {};
+    const customerDetails = pickupData.customerDetails || {};
+    const shipmentDetails = pickupData.shipmentDetails || {};
+
+    return {
+        rmProNo: entryDetails.barcodeNumber || '',
+        shipmentType: entryDetails.shipmentType || '',
+        booking: entryDetails.booking || '',
+        customerRefNumber: entryDetails.customerRefNumber || '',
+        additionalRefNo: entryDetails.additionalRefNumber || '',
+        date: null,
+        customerId: customerDetails.customerId || '',
+        stationId: customerDetails.stationId || '',
+        stationName: customerDetails.stationName || '',
+        stationRMAccountNumber: customerDetails.stationRMAccountNumber || '',
+        contactName: customerDetails.stationContactName || '',
+        phoneNumber: '',
+        billTo: customerDetails.customerName || '',
+        addressLine1: customerDetails.stationAddressLine1 || '',
+        addressLine2: customerDetails.stationAddressLine2 || '',
+        state: customerDetails.stationState || '',
+        city: customerDetails.stationCity || '',
+        zipCode: customerDetails.stationZip || '',
+        contactPersonName: customerDetails.stationContactName || '',
+        customerPhoneNumber: customerDetails.stationPhoneNumber || '',
+        consigneeId: shipmentDetails.consigneeId || '',
+        airline: shipmentDetails.airlineCode || '',
+        airBillNo: shipmentDetails.airBillNumber || '',
+        hazmatInfo: false,
+        totalPieces: shipmentDetails.pieces ?? '',
+        totalWeight: shipmentDetails.weight ?? '',
+        manualEntry: true,
+        manualSkid: '',
+        manualPieces: shipmentDetails.pieces ?? '',
+        manualWeight: shipmentDetails.weight ?? '',
+        readyTime: null,
+        readyDate: null,
+        closeTime: null,
+        closeDate: null,
+        lockoutTime: null,
+        lockoutDate: null,
+    };
 };
-
-const toDateValue = (value) => {
-    if (!value) return null;
-    const parsed = dayjs(value);
-    return parsed.isValid() ? parsed : null;
-};
-
-const toBoolean = (value) => value === true || value === 1 || String(value || '').toUpperCase() === 'Y';
-
-const getPickupDefaults = (row = {}) => ({
-    rmProNo: firstValue(row, ['barcodeNumber', 'rmNumber']),
-    booking: firstValue(row, ['booking', 'bookingNumber']),
-    customerRefNumber: firstValue(row, ['customerRefNumber', 'customerReferenceNumber']),
-    additionalRefNo: firstValue(row, ['additionalRefNumber', 'additionalRefNo']),
-    date: toDateValue(firstValue(row, ['pickupDate', 'shipmentDate', 'date', 'createdAt'])),
-    contactName: firstValue(row, ['contactName', 'customerContactName', 'contactPersonName']),
-    phoneNumber: firstValue(row, ['phoneNumber', 'contactPhoneNumber', 'customerPhoneNumber']),
-    billTo: firstValue(row, ['billTo', 'customerName', 'customer']),
-    addressLine1: firstValue(row, ['addressLine1', 'customerAddressLine1', 'customerAddress', 'address']),
-    addressLine2: firstValue(row, ['addressLine2', 'customerAddressLine2']),
-    state: firstValue(row, ['state', 'customerState']),
-    city: firstValue(row, ['city', 'customerCity']),
-    zipCode: firstValue(row, ['zipCode', 'customerZipCode', 'postalCode']),
-    contactPersonName: firstValue(row, ['contactPersonName', 'customerContactName', 'contactName']),
-    customerPhoneNumber: firstValue(row, ['customerPhoneNumber', 'contactPhoneNumber', 'phoneNumber']),
-    airline: firstValue(row, ['airlineName', 'consigneeName', 'airline']),
-    airBillNo: firstValue(row, ['airBillNumber', 'airBillNo', 'billNumber']),
-    hazmatInfo: toBoolean(firstValue(row, ['hazmatInfo', 'isHazmat', 'hazmat'])),
-    totalPieces: firstValue(row, ['pieces', 'totalPieces']),
-    totalWeight: firstValue(row, ['weight', 'totalWeight']),
-    manualEntry: row.manualEntry === undefined ? true : toBoolean(row.manualEntry),
-    manualSkid: firstValue(row, ['skid', 'skids', 'totalSkids']),
-    manualPieces: firstValue(row, ['manualPieces', 'pieces', 'totalPieces']),
-    manualWeight: firstValue(row, ['manualWeight', 'weight', 'totalWeight']),
-    readyTime: firstValue(row, ['readyTime']),
-    readyDate: toDateValue(firstValue(row, ['readyDate'])),
-    closeTime: firstValue(row, ['closeTime']),
-    closeDate: toDateValue(firstValue(row, ['closeDate'])),
-    lockoutTime: firstValue(row, ['lockoutTime']),
-    lockoutDate: toDateValue(firstValue(row, ['lockoutDate'])),
-});
 
 export default function AirPickupEntryForm({ handleClose, rowData }) {
     const { control, handleSubmit, reset } = useForm({
@@ -115,13 +114,13 @@ export default function AirPickupEntryForm({ handleClose, rowData }) {
 
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                                <Controller name="readyTime" control={control} render={({ field }) => <StyledTextField {...field} variant="standard" fullWidth label="Ready Time*" />} />
+                                <Controller name="readyTime" control={control} render={({ field: { onChange, value } }) => <TimePicker label="Ready Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
                                 <Controller name="readyDate" control={control} render={({ field: { onChange, value } }) => <DatePicker label="Ready Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
-                                <Controller name="closeTime" control={control} render={({ field }) => <StyledTextField {...field} variant="standard" fullWidth label="Close Time*" />} />
+                                <Controller name="closeTime" control={control} render={({ field: { onChange, value } }) => <TimePicker label="Close Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
                                 <Controller name="closeDate" control={control} render={({ field: { onChange, value } }) => <DatePicker label="Close Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
                             </Stack>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ width: '50%' }}>
-                                <Controller name="lockoutTime" control={control} render={({ field }) => <StyledTextField {...field} variant="standard" fullWidth label="Lockout Time*" />} />
+                                <Controller name="lockoutTime" control={control} render={({ field: { onChange, value } }) => <TimePicker label="Lockout Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
                                 <Controller name="lockoutDate" control={control} render={({ field: { onChange, value } }) => <DatePicker label="Lockout Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
                             </Stack>
                         </LocalizationProvider>

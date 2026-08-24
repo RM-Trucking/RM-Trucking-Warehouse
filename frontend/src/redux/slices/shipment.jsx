@@ -312,6 +312,18 @@ export function getShipmentData({
     };
 }
 
+export function getShipmentForPickup(shipmentId) {
+    return async () => {
+        try {
+            const response = await axios.get(`shipment/${encodeURIComponent(shipmentId)}/for-pickup`);
+            return { success: true, data: response.data?.data || response.data };
+        } catch (error) {
+            const message = error.response?.data?.message || error?.message || error?.error || 'Failed to load pickup details';
+            return { success: false, error: message };
+        }
+    };
+}
+
 export function getExportAirlineOptions() {
     return async () => {
         dispatch(slice.actions.startExportAirlineLoading());
