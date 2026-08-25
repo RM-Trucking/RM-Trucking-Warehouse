@@ -12,6 +12,8 @@ const initialState = {
     shipmentSuccess: false,
     createShipmentLoading: false,
     createShipmentError: null,
+    pickupEntryLoading: false,
+    pickupEntryError: null,
     scanFreightLoading: false,
     scanFreightError: null,
     signOffLoading: false,
@@ -110,6 +112,18 @@ const slice = createSlice({
         createShipmentError(state, action) {
             state.createShipmentLoading = false;
             state.createShipmentError = action.payload;
+        },
+        startPickupEntry(state) {
+            state.pickupEntryLoading = true;
+            state.pickupEntryError = null;
+        },
+        pickupEntrySuccess(state) {
+            state.pickupEntryLoading = false;
+            state.pickupEntryError = null;
+        },
+        pickupEntryError(state, action) {
+            state.pickupEntryLoading = false;
+            state.pickupEntryError = action.payload;
         },
         startScanFreight(state) {
             state.scanFreightLoading = true;
@@ -319,6 +333,22 @@ export function getShipmentForPickup(shipmentId) {
             return { success: true, data: response.data?.data || response.data };
         } catch (error) {
             const message = error.response?.data?.message || error?.message || error?.error || 'Failed to load pickup details';
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function postPickupEntry(payload) {
+    return async () => {
+        dispatch(slice.actions.startPickupEntry());
+        try {
+            const response = await axios.post('shipment/pickup-entry', payload);
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.pickupEntrySuccess());
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to submit pickup entry';
+            dispatch(slice.actions.pickupEntryError(message));
             return { success: false, error: message };
         }
     };

@@ -166,7 +166,13 @@ const handleClosePickupForm = () => {
             return;
         }
 
-        setActiveForm({ type: 'airPickup', data: result.data });
+        setActiveForm({
+            type: 'airPickup',
+            data: {
+                ...result.data,
+                shipmentId: result.data?.shipmentId || shipmentId,
+            },
+        });
     };
 
     // Fetch the current server-side page.
@@ -326,9 +332,10 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
-                            disabled={params.row.isShipped === 'Y' && pickupLoadingId !== null}
+                            disabled={params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y' && pickupLoadingId !== null)}
                             onClick={(e) => {
                                 e.stopPropagation();
+                                if (params.row.pickupEntry === 'Y') return;
                                 if (params.row.isShipped !== 'Y') {
                                     handleHandExtended(params.row);
                                 } else {
@@ -341,6 +348,8 @@ const handleClosePickupForm = () => {
                                 <CircularProgress size={18} color="inherit" />
                             ) : params.row.isShipped !== 'Y' ? (
                                 <ScanActionIcon width={20} />
+                            ) : params.row.pickupEntry === 'Y' ? (
+                                <Iconify icon="mdi:truck-delivery" width={20} />
                             ) : (
                                 <Iconify icon="mdi:file-document-box" width={20} />
                             )}
@@ -490,6 +499,7 @@ const handleClosePickupForm = () => {
             <AirPickupEntryForm
                 rowData={activeForm.data}
                 handleClose={handleClosePickupForm}
+                onCompleteSuccess={handleCompleteSuccess}
             />
         )}
     </DialogContent>
