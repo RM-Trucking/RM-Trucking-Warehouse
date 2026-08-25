@@ -3431,6 +3431,43 @@ export default function WarehouseReceiptFormPage() {
     }
   };
 
+  const handleOpenShipmentView = async (barcodeNumber) => {
+    const cleanBarcodeNumber = String(barcodeNumber || '').trim();
+    if (!cleanBarcodeNumber) return;
+
+    const loadingKey = `shipment:${cleanBarcodeNumber}`;
+    setStatusHistoryLinkLoadingId(loadingKey);
+
+    try {
+      const response = await axios.get('shipment', {
+        params: { page: 1, pageSize: 10, searchTerm: cleanBarcodeNumber },
+      });
+      const shipments = Array.isArray(response.data?.data) ? response.data.data : [];
+      const shipment = shipments.find(
+        (item) => String(item.barcodeNumber || '').trim().toLowerCase() === cleanBarcodeNumber.toLowerCase()
+      );
+
+      if (!shipment) {
+        setSnackbar({
+          open: true,
+          message: `Shipment ${cleanBarcodeNumber} was not found`,
+          severity: 'error',
+        });
+        return;
+      }
+
+      setStatusHistoryDialogOpen(false);
+      navigate(PATH_DASHBOARD.shipmentBuilding, {
+        state: {
+          viewShipment: shipment,
+          shipmentGridResetKey: `status-history-${shipment.shipmentId || cleanBarcodeNumber}`,
+        },
+      });
+    } finally {
+      setStatusHistoryLinkLoadingId('');
+    }
+  };
+
   const renderLinkedStatusHistoryText = ({ text, match, loadingKey, onClick }) => {
     const [matchedText, label, linkValue] = match;
     const startIndex = text.indexOf(matchedText);
@@ -3515,8 +3552,40 @@ export default function WarehouseReceiptFormPage() {
     );
   };
 
+  const renderSplitApprovalLinks = (text) => {
+    const matches = [...text.matchAll(/\breceipt\s+(\d+)|shipment\s+barcode:\s*([A-Za-z0-9-]+)/gi)];
+    const hasShipmentBarcode = matches.some((match) => match[2]);
+    if (!hasShipmentBarcode) return null;
+
+    const linkedParts = [];
+    let cursor = 0;
+
+    matches.forEach((match) => {
+      const linkValue = match[1] || match[2];
+      const valueOffset = match[0].lastIndexOf(linkValue);
+      const valueStartIndex = match.index + valueOffset;
+      linkedParts.push(text.slice(cursor, valueStartIndex));
+      linkedParts.push(
+        <Box component="span" key={`${match[1] ? 'receipt' : 'shipment'}-${linkValue}-${match.index}`}>
+          {renderStatusHistoryLinkButton({
+            linkValue,
+            loadingKey: `${match[1] ? 'receipt' : 'shipment'}:${linkValue}`,
+            onClick: match[1] ? handleOpenWarehouseReceiptView : handleOpenShipmentView,
+          })}
+        </Box>
+      );
+      cursor = valueStartIndex + linkValue.length;
+    });
+
+    linkedParts.push(text.slice(cursor));
+    return <>{linkedParts}</>;
+  };
+
   const renderStatusHistoryDescription = (description) => {
     const text = String(description || '');
+    const splitApprovalLinks = renderSplitApprovalLinks(text);
+    if (splitApprovalLinks) return splitApprovalLinks;
+
     const splitIntoReceiptLinks = renderSplitIntoReceiptLinks(text);
 
     if (splitIntoReceiptLinks) {

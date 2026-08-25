@@ -1976,6 +1976,7 @@ export default function WarehouseCheckInPage({
   const buildLabelPrintPayload = (receipt, form) => {
     const row = receipt?.row || {};
     const items = form?.items || [];
+    const firstFreightItem = items[0] || {};
     const customerDisplay = getRowValue(row, ["customerName", "customer"], "");
     const carrierDisplay = getRowValue(row, ["carrierName", "carrier"], "");
 
@@ -2000,6 +2001,16 @@ export default function WarehouseCheckInPage({
         getRowValue(row, ["destination", "finalDestination"], ""),
       pieces: items.reduce((sum, item) => sum + Number(item.pieces || 0), 0),
       labelCount: items.length,
+      ...(showTrailerFreightHeader
+        ? {
+            freightBarcodeValue: "FRT1",
+            weight: toDecimal10_2NumberOrNull(firstFreightItem.weight),
+            length: toDecimal10_2NumberOrNull(firstFreightItem.length),
+            width: toDecimal10_2NumberOrNull(firstFreightItem.width),
+            height: toDecimal10_2NumberOrNull(firstFreightItem.height),
+            type: toValueOrNull(firstFreightItem.type),
+          }
+        : {}),
     };
   };
 
