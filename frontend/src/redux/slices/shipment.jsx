@@ -12,8 +12,22 @@ const initialState = {
     shipmentSuccess: false,
     createShipmentLoading: false,
     createShipmentError: null,
+    pickupEntryLoading: false,
+    pickupEntryError: null,
     scanFreightLoading: false,
     scanFreightError: null,
+    signOffLoading: false,
+    signOffError: null,
+    completeShipmentLoading: false,
+    completeShipmentError: null,
+    splitApprovalLoading: false,
+    splitApprovalError: null,
+    revokeCompletionLoading: false,
+    revokeCompletionError: null,
+    addShipmentReceiptLoading: false,
+    addShipmentReceiptError: null,
+    deleteShipmentReceiptLoading: false,
+    deleteShipmentReceiptError: null,
     shipmentData: [],
     shipmentSearchStr: '',
     exportAirlineOptions: [],
@@ -83,9 +97,33 @@ const slice = createSlice({
                 state.pagination.totalRecords += 1;
             }
         },
+        updateShipmentSuccess(state, action) {
+            state.createShipmentLoading = false;
+            state.createShipmentError = null;
+            const updatedShipment = action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            const index = state.shipmentData.findIndex((item) =>
+                String(item.shipmentId || item.id) === String(shipmentId)
+            );
+            if (index !== -1) {
+                state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+            }
+        },
         createShipmentError(state, action) {
             state.createShipmentLoading = false;
             state.createShipmentError = action.payload;
+        },
+        startPickupEntry(state) {
+            state.pickupEntryLoading = true;
+            state.pickupEntryError = null;
+        },
+        pickupEntrySuccess(state) {
+            state.pickupEntryLoading = false;
+            state.pickupEntryError = null;
+        },
+        pickupEntryError(state, action) {
+            state.pickupEntryLoading = false;
+            state.pickupEntryError = action.payload;
         },
         startScanFreight(state) {
             state.scanFreightLoading = true;
@@ -109,6 +147,138 @@ const slice = createSlice({
             state.scanFreightLoading = false;
             state.scanFreightError = action.payload;
         },
+        startSignOff(state) {
+            state.signOffLoading = true;
+            state.signOffError = null;
+        },
+        signOffSuccess(state, action) {
+            state.signOffLoading = false;
+            state.signOffError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        signOffError(state, action) {
+            state.signOffLoading = false;
+            state.signOffError = action.payload;
+        },
+        startCompleteShipment(state) {
+            state.completeShipmentLoading = true;
+            state.completeShipmentError = null;
+        },
+        completeShipmentSuccess(state, action) {
+            state.completeShipmentLoading = false;
+            state.completeShipmentError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        completeShipmentError(state, action) {
+            state.completeShipmentLoading = false;
+            state.completeShipmentError = action.payload;
+        },
+        startSplitApproval(state) {
+            state.splitApprovalLoading = true;
+            state.splitApprovalError = null;
+        },
+        splitApprovalSuccess(state, action) {
+            state.splitApprovalLoading = false;
+            state.splitApprovalError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        splitApprovalError(state, action) {
+            state.splitApprovalLoading = false;
+            state.splitApprovalError = action.payload;
+        },
+        startRevokeCompletion(state) {
+            state.revokeCompletionLoading = true;
+            state.revokeCompletionError = null;
+        },
+        revokeCompletionSuccess(state, action) {
+            state.revokeCompletionLoading = false;
+            state.revokeCompletionError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        revokeCompletionError(state, action) {
+            state.revokeCompletionLoading = false;
+            state.revokeCompletionError = action.payload;
+        },
+        startAddShipmentReceipt(state) {
+            state.addShipmentReceiptLoading = true;
+            state.addShipmentReceiptError = null;
+        },
+        addShipmentReceiptSuccess(state, action) {
+            state.addShipmentReceiptLoading = false;
+            state.addShipmentReceiptError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        addShipmentReceiptError(state, action) {
+            state.addShipmentReceiptLoading = false;
+            state.addShipmentReceiptError = action.payload;
+        },
+        startDeleteShipmentReceipt(state) {
+            state.deleteShipmentReceiptLoading = true;
+            state.deleteShipmentReceiptError = null;
+        },
+        deleteShipmentReceiptSuccess(state, action) {
+            state.deleteShipmentReceiptLoading = false;
+            state.deleteShipmentReceiptError = null;
+            const updatedShipment = action.payload?.shipment || action.payload;
+            const shipmentId = updatedShipment?.shipmentId || updatedShipment?.id;
+            if (shipmentId) {
+                const index = state.shipmentData.findIndex((item) =>
+                    String(item.shipmentId || item.id) === String(shipmentId)
+                );
+                if (index !== -1) {
+                    state.shipmentData[index] = { ...state.shipmentData[index], ...updatedShipment };
+                }
+            }
+        },
+        deleteShipmentReceiptError(state, action) {
+            state.deleteShipmentReceiptLoading = false;
+            state.deleteShipmentReceiptError = action.payload;
+        },
         // get shipment success
         getShipmentDataSuccess(state, action) {
             state.isLoading = false;
@@ -130,14 +300,56 @@ export default slice.reducer;
 
 // ----------------------------------------------------------------------
 // shipment api calls
-export function getShipmentData({ pageNo = 1, pageSize = 10 } = {}) {
+export function getShipmentData({
+    pageNo = 1,
+    pageSize = 10,
+    searchTerm = '',
+    request = false,
+    scanned = false,
+    pickup = false,
+    shipped = false,
+} = {}) {
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
-            const response = await axios.get(`shipment?page=${pageNo}&pageSize=${pageSize}`);
+            const params = { page: pageNo, pageSize };
+            if (String(searchTerm).trim()) params.searchTerm = String(searchTerm).trim();
+            if (request) params.request = true;
+            if (scanned) params.scanned = true;
+            if (pickup) params.pickup = true;
+            if (shipped) params.shipped = true;
+            const response = await axios.get('shipment', { params });
             dispatch(slice.actions.getShipmentDataSuccess(response.data));
         } catch (error) {
             dispatch(slice.actions.hasError(error));
+        }
+    };
+}
+
+export function getShipmentForPickup(shipmentId) {
+    return async () => {
+        try {
+            const response = await axios.get(`shipment/${encodeURIComponent(shipmentId)}/for-pickup`);
+            return { success: true, data: response.data?.data || response.data };
+        } catch (error) {
+            const message = error.response?.data?.message || error?.message || error?.error || 'Failed to load pickup details';
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function postPickupEntry(payload) {
+    return async () => {
+        dispatch(slice.actions.startPickupEntry());
+        try {
+            const response = await axios.post('shipment/pickup-entry', payload);
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.pickupEntrySuccess());
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to submit pickup entry';
+            dispatch(slice.actions.pickupEntryError(message));
+            return { success: false, error: message };
         }
     };
 }
@@ -196,6 +408,25 @@ export function postShipment(payload) {
     };
 }
 
+export function updateShipment(shipmentId, payload) {
+    return async () => {
+        dispatch(slice.actions.startCreateShipment());
+        try {
+            const response = await axios.put(`shipment/${encodeURIComponent(shipmentId)}`, payload);
+            const shipment = response.data?.data?.shipment || response.data?.data || { ...payload, shipmentId };
+            dispatch(slice.actions.updateShipmentSuccess(shipment));
+            return { success: true, data: shipment };
+        } catch (error) {
+            const message =
+                error?.message ||
+                error?.error ||
+                (typeof error === 'string' ? error : 'Failed to update shipment');
+            dispatch(slice.actions.createShipmentError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
 export function scanShipmentFreight({ id, barcodeValue }) {
     return async () => {
         dispatch(slice.actions.startScanFreight());
@@ -209,6 +440,124 @@ export function scanShipmentFreight({ id, barcodeValue }) {
         } catch (error) {
             const message = error?.message || error?.error || 'Failed to scan freight';
             dispatch(slice.actions.scanFreightError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function unscanShipmentFreight({ id, barcodeValue }) {
+    return async () => {
+        dispatch(slice.actions.startScanFreight());
+        try {
+            const response = await axios.get('shipment/unscan-freight', {
+                params: { id, barcodeValue },
+            });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.scanFreightSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to unscan freight';
+            dispatch(slice.actions.scanFreightError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function signOffShipment(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startSignOff());
+        try {
+            const response = await axios.post('shipment/sign-off', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.signOffSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to sign off shipment';
+            dispatch(slice.actions.signOffError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function completeShipment(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startCompleteShipment());
+        try {
+            const response = await axios.post('shipment/complete', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.completeShipmentSuccess(data));
+            return { success: true, data };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to complete shipment';
+            dispatch(slice.actions.completeShipmentError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function splitApprovalShipment(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startSplitApproval());
+        try {
+            const response = await axios.post('shipment/split-approval', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.splitApprovalSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to submit split approval';
+            dispatch(slice.actions.splitApprovalError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function revokeShipmentCompletion(shipmentId) {
+    return async () => {
+        dispatch(slice.actions.startRevokeCompletion());
+        try {
+            const response = await axios.post('shipment/revoke-completion', { shipmentId });
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.revokeCompletionSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to reassign shipment';
+            dispatch(slice.actions.revokeCompletionError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function addShipmentReceipt({ shipmentId, receiptId }) {
+    return async () => {
+        dispatch(slice.actions.startAddShipmentReceipt());
+        try {
+            const response = await axios.put(
+                `shipment/${encodeURIComponent(shipmentId)}/receipts/${encodeURIComponent(receiptId)}`
+            );
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.addShipmentReceiptSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to add receipt to shipment';
+            dispatch(slice.actions.addShipmentReceiptError(message));
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function deleteShipmentReceipt({ shipmentId, receiptId }) {
+    return async () => {
+        dispatch(slice.actions.startDeleteShipmentReceipt());
+        try {
+            const response = await axios.delete(
+                `shipment/${encodeURIComponent(shipmentId)}/receipts/${encodeURIComponent(receiptId)}`
+            );
+            const data = response.data?.data || response.data;
+            dispatch(slice.actions.deleteShipmentReceiptSuccess(data));
+            return { success: true, data, message: response.data?.message };
+        } catch (error) {
+            const message = error?.message || error?.error || 'Failed to delete receipt from shipment';
+            dispatch(slice.actions.deleteShipmentReceiptError(message));
             return { success: false, error: message };
         }
     };

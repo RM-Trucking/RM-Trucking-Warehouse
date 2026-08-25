@@ -8,6 +8,7 @@ import { getZoneData, setZoneSearchStr } from '../../redux/slices/zone';
 import { setAccessorialSearchStr, getAccessorialData } from '../../redux/slices/accessorial';
 import { setCarrierSearchStr, getCarrierData } from '../../redux/slices/carrier';
 import { setFuelSurchargeSearchStr, getFuelSurchargeData } from '../../redux/slices/fuel';
+import { getShipmentData, setShipmentSearchStr } from '../../redux/slices/shipment';
 // ----------------------------------------------------------------------
 
 
@@ -33,6 +34,8 @@ export default function SharedSearchField({ page }) {
     const carrierPagination = useSelector((state) => state?.carrierdata?.pagination);
     const currentCarrierTab = useSelector((state) => state?.carrierdata?.currentCarrierTab);
     const fuelPagination = useSelector((state) => state?.fueldata?.pagination);
+    const shipmentSearchStr = useSelector((state) => state?.shipmentdata?.shipmentSearchStr);
+    const shipmentPagination = useSelector((state) => state?.shipmentdata?.pagination);
 
     const handleSearch = (event) => {
         setSearchValue(event.target.value);
@@ -43,6 +46,7 @@ export default function SharedSearchField({ page }) {
         if (page === 'accessorial') dispatch(setAccessorialSearchStr(event?.target?.value));
         if (page === 'carrier') dispatch(setCarrierSearchStr(event?.target?.value));
         if (page === 'fuelSurcharge') dispatch(setFuelSurchargeSearchStr(event?.target?.value));
+        // Shipment search is committed only when the search icon is clicked.
         // calling api on each change of search input
         if (page === 'customers') { dispatch(getCustomerData({ pageNo: 1, pageSize: pagination.pageSize, searchStr: event.target.value })); }
         if (page === 'station') { dispatch(getCustomerStationData({ pageNo: 1, pageSize: pagination.pageSize, searchStr: event.target.value, customerId: selectedCustomerRowDetails.customerId })); }
@@ -63,6 +67,7 @@ export default function SharedSearchField({ page }) {
             if (page === 'accessorial') { dispatch(getAccessorialData({ pageNo: 1, pageSize: accessorialPagination.pageSize, searchStr: searchValue })); }
             if (page === 'carrier') { dispatch(getCarrierData({ pageNo: 1, pageSize: carrierPagination.pageSize, searchStr: searchValue, status: currentCarrierTab.charAt(0).toUpperCase() + currentCarrierTab.slice(1) })); }
             if (page === 'fuelSurcharge') { dispatch(getFuelSurchargeData({ pageNo: 1, pageSize: fuelPagination.pageSize, searchStr: searchValue })); }
+            // Shipment intentionally does not search on Enter.
         }
     };
     useEffect(() => {
@@ -84,7 +89,10 @@ export default function SharedSearchField({ page }) {
         if (page === 'fuelSurcharge') {
             setSearchValue(fuelSurchargeSearchStr);
         }
-    }, [customerSearchStr, stationSearchStr, zoneSearchStr, accessorialSearchStr, carrierSearchStr, fuelSurchargeSearchStr]);
+        if (page === 'shipment') {
+            setSearchValue(shipmentSearchStr);
+        }
+    }, [customerSearchStr, stationSearchStr, zoneSearchStr, accessorialSearchStr, carrierSearchStr, fuelSurchargeSearchStr, shipmentSearchStr]);
 
     return (
         <>
@@ -92,7 +100,7 @@ export default function SharedSearchField({ page }) {
                 <Stack flexDirection={'row'} alignItems={'center'} justifyContent={'flex-end'} sx={{ padding: 2 }}>
                     <TextField
                         variant="outlined"
-                        placeholder="Search..."
+                        placeholder={page === 'shipment' ? 'Search for RM number or Air Bill No' : 'Search...'}
                         fullWidth
                         value={searchValue}
                         onChange={handleSearch}
@@ -111,6 +119,10 @@ export default function SharedSearchField({ page }) {
                                                 if (page === 'zone') { dispatch(getZoneData({ pageNo: 1, pageSize: zonePagination.pageSize, searchStr: '' })); }
                                                 if (page === 'accessorial') { dispatch(getAccessorialData({ pageNo: 1, pageSize: accessorialPagination.pageSize, searchStr: '' })); }
                                                 if (page === 'carrier') { dispatch(getCarrierData({ pageNo: 1, pageSize: carrierPagination.pageSize, searchStr: '', status: currentCarrierTab.charAt(0).toUpperCase() + currentCarrierTab.slice(1) })); }
+                                                if (page === 'shipment') {
+                                                    dispatch(setShipmentSearchStr(''));
+                                                    dispatch(getShipmentData({ pageNo: 1, pageSize: shipmentPagination.pageSize, searchTerm: '' }));
+                                                }
                                             }}
                                             sx={{ mr: 0.5 }}
                                         >
@@ -123,6 +135,10 @@ export default function SharedSearchField({ page }) {
                                         if (page === 'zone') { dispatch(getZoneData({ pageNo: 1, pageSize: zonePagination.pageSize, searchStr: searchValue })); }
                                         if (page === 'accessorial') { dispatch(getAccessorialData({ pageNo: 1, pageSize: accessorialPagination.pageSize, searchStr: searchValue })); }
                                         if (page === 'carrier') { dispatch(getCarrierData({ pageNo: 1, pageSize: carrierPagination.pageSize, searchStr: searchValue, status: currentCarrierTab.charAt(0).toUpperCase() + currentCarrierTab.slice(1) })); }
+                                        if (page === 'shipment') {
+                                            dispatch(setShipmentSearchStr(searchValue.trim()));
+                                            dispatch(getShipmentData({ pageNo: 1, pageSize: shipmentPagination.pageSize, searchTerm: searchValue.trim() }));
+                                        }
                                     }}>
                                         <Iconify icon="material-symbols:search" sx={{ mr: 1 }} />
                                     </IconButton>

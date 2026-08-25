@@ -1,21 +1,21 @@
 import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
 import {
-    Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
-    FormControlLabel
+    Alert, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
+    CircularProgress, FormControlLabel, Snackbar
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getShipmentData } from '../../redux/slices/shipment';
+import { getShipmentData, getShipmentForPickup } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
+import AirPickupEntryForm from './AirPickupEntryForm';
 
 // ----------------------------------------------------------------------
 
@@ -47,23 +47,27 @@ ScanActionIcon.propTypes = {
 
 export default function ShipmentTabs({ onViewShipment }) {
     const dispatch = useDispatch();
-    const navigate = useNavigate();
-    
     const {
         shipmentData: apiShipmentData,
         isLoading,
         pagination,
+        shipmentSearchStr,
     } = useSelector((state) => state.shipmentdata);
     
     const [currentTab, setCurrentTab] = useState('active');
-    const [airStatusFilters, setAirStatusFilters] = useState([
-        'scan', 'shipment', 'pickup', 'ofd', 'pod'
-    ]);
+    const [airStatusFilters, setAirStatusFilters] = useState([]);
+    const requestFilterEnabled = airStatusFilters.includes('request');
+    const scannedFilterEnabled = airStatusFilters.includes('scan');
+    const pickupFilterEnabled = airStatusFilters.includes('pickup');
+    const shippedFilterEnabled = airStatusFilters.includes('shipment');
     // const [selectedRowData, setSelectedRowData] = useState(null);
     // const [openPickupFormType, setOpenPickupFormType] = useState(null);
     const [activeForm, setActiveForm] = useState({ type: null, data: null });
     const printRef = useRef();
     const [printData, setPrintData] = useState(null);
+    const [successMessage, setSuccessMessage] = useState('');
+    const [pickupError, setPickupError] = useState('');
+    const [pickupLoadingId, setPickupLoadingId] = useState(null);
     
     const shipmentTypeMap = { active: 'AIR', inactive: 'LCL', incomplete: 'FCL' };
     const shipmentData = apiShipmentData
@@ -87,6 +91,10 @@ export default function ShipmentTabs({ onViewShipment }) {
         page: 0,
         pageSize: 10,
     });
+    const shipmentSearchStrRef = useRef(shipmentSearchStr);
+    useEffect(() => {
+        shipmentSearchStrRef.current = shipmentSearchStr;
+    }, [shipmentSearchStr]);
 
     const handlePrint = useReactToPrint({
         contentRef: printRef,
@@ -128,19 +136,42 @@ const handleClosePickupForm = () => {
     setActiveForm({ type: null, data: null });
 };
 
-    const handleFileDocumentBox = (rowData) => {
-        console.log('File document clicked for:', rowData.rmNumber, 'on tab:', currentTab);
-        // Navigate based on current tab to the shipment form with the form type
-        const formTypeMap = {
-            active: 'air',
-            inactive: 'lcl',
-            incomplete: 'fcl',
-        };
-        navigate('/app/shipment-form', { 
-            state: { 
-                rowData,
-                openPickupForm: formTypeMap[currentTab]
-            } 
+    const handleCompleteSuccess = (message = 'Request submitted successfully') => {
+        handleClosePickupForm();
+        setSuccessMessage(message);
+        dispatch(getShipmentData({
+            pageNo: paginationModel.page + 1,
+            pageSize: paginationModel.pageSize,
+            searchTerm: shipmentSearchStrRef.current,
+            request: requestFilterEnabled,
+            scanned: scannedFilterEnabled,
+            pickup: pickupFilterEnabled,
+            shipped: shippedFilterEnabled,
+        }));
+    };
+
+    const handleFileDocumentBox = async (rowData) => {
+        const shipmentId = rowData?.shipmentId || rowData?.id;
+        if (!shipmentId) {
+            setPickupError('Shipment ID is unavailable.');
+            return;
+        }
+
+        setPickupLoadingId(shipmentId);
+        const result = await dispatch(getShipmentForPickup(shipmentId));
+        setPickupLoadingId(null);
+
+        if (!result?.success) {
+            setPickupError(result?.error || 'Failed to load pickup details.');
+            return;
+        }
+
+        setActiveForm({
+            type: 'airPickup',
+            data: {
+                ...result.data,
+                shipmentId: result.data?.shipmentId || shipmentId,
+            },
         });
     };
 
@@ -149,8 +180,21 @@ const handleClosePickupForm = () => {
         dispatch(getShipmentData({
             pageNo: paginationModel.page + 1,
             pageSize: paginationModel.pageSize,
+            searchTerm: shipmentSearchStrRef.current,
+            request: requestFilterEnabled,
+            scanned: scannedFilterEnabled,
+            pickup: pickupFilterEnabled,
+            shipped: shippedFilterEnabled,
         }));
-    }, [dispatch, paginationModel.page, paginationModel.pageSize]);
+    }, [
+        dispatch,
+        paginationModel.page,
+        paginationModel.pageSize,
+        pickupFilterEnabled,
+        requestFilterEnabled,
+        scannedFilterEnabled,
+        shippedFilterEnabled,
+    ]);
 
     useEffect(() => {
         setPaginationModel((prev) => ({ ...prev, page: 0 }));
@@ -178,9 +222,16 @@ const handleClosePickupForm = () => {
         { value: 'ofd', label: 'OFD', header: 'OFD Status' },
         { value: 'pod', label: 'POD', header: 'POD Status' },
     ];
+    const statusFilterOptions = [
+        ...statusOptions,
+        { value: 'request', label: 'Request' },
+    ];
 
     const handleStatusFilterChange = (value) => {
-        setAirStatusFilters([value]);
+        setAirStatusFilters((current) => current.includes(value) ? [] : [value]);
+        if (['request', 'scan', 'pickup', 'shipment'].includes(value)) {
+            setPaginationModel((current) => ({ ...current, page: 0 }));
+        }
     };
 
     const renderStatus = (complete) => (
@@ -224,7 +275,6 @@ const handleClosePickupForm = () => {
     ];
 
     const airStatusColumns = statusOptions
-        .filter((status) => airStatusFilters.includes(status.value))
         .map((status) => ({
             field: `${status.value}Status`,
             headerName: status.header,
@@ -258,6 +308,7 @@ const handleClosePickupForm = () => {
             renderCell: (params) => {
                 return (
                     <Box
+                        onMouseDown={(event) => event.stopPropagation()}
                         sx={{
                             display: 'flex',
                             alignItems: 'center',
@@ -281,8 +332,10 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
+                            disabled={params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y' && pickupLoadingId !== null)}
                             onClick={(e) => {
                                 e.stopPropagation();
+                                if (params.row.pickupEntry === 'Y') return;
                                 if (params.row.isShipped !== 'Y') {
                                     handleHandExtended(params.row);
                                 } else {
@@ -291,8 +344,12 @@ const handleClosePickupForm = () => {
                             }}
                             sx={{ color: '#A22' }}
                         >
-                            {params.row.isShipped !== 'Y' ? (
+                            {String(pickupLoadingId) === String(params.row.shipmentId || params.row.id) ? (
+                                <CircularProgress size={18} color="inherit" />
+                            ) : params.row.isShipped !== 'Y' ? (
                                 <ScanActionIcon width={20} />
+                            ) : params.row.pickupEntry === 'Y' ? (
+                                <Iconify icon="mdi:truck-delivery" width={20} />
                             ) : (
                                 <Iconify icon="mdi:file-document-box" width={20} />
                             )}
@@ -354,7 +411,7 @@ const handleClosePickupForm = () => {
 
                 {currentTab === 'active' && (
                     <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
-                        {statusOptions.map((status) => (
+                        {statusFilterOptions.map((status) => (
                             <FormControlLabel
                                 key={status.value}
                                 label={status.label}
@@ -380,6 +437,8 @@ const handleClosePickupForm = () => {
                         getRowId={(row) => row.shipmentId}
                         autoHeight
                         disableRowSelectionOnClick
+                        rowSelection={false}
+                        disableColumnMenu
                         
                         // Server-side Pagination Configuration
                         pagination
@@ -433,6 +492,14 @@ const handleClosePickupForm = () => {
             <ShipmentScanStatus
                 shipment={activeForm.data}
                 onClose={handleClosePickupForm}
+                onCompleteSuccess={handleCompleteSuccess}
+            />
+        )}
+        {activeForm.type === 'airPickup' && (
+            <AirPickupEntryForm
+                rowData={activeForm.data}
+                handleClose={handleClosePickupForm}
+                onCompleteSuccess={handleCompleteSuccess}
             />
         )}
     </DialogContent>
@@ -444,6 +511,30 @@ const handleClosePickupForm = () => {
         type={currentTab} 
     />
 </div>
+            <Snackbar
+                open={Boolean(successMessage)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setSuccessMessage('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="success" variant="filled" onClose={() => setSuccessMessage('')}>
+                    {successMessage}
+                </Alert>
+            </Snackbar>
+            <Snackbar
+                open={Boolean(pickupError)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setPickupError('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="error" variant="filled" onClose={() => setPickupError('')}>
+                    {pickupError}
+                </Alert>
+            </Snackbar>
         </>
         
     );

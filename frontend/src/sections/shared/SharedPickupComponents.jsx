@@ -7,9 +7,10 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import StyledTextField from '../shared/StyledTextField';
 import Iconify from '../../components/iconify';
+import formatPhoneNumber from '../../utils/formatPhoneNumber';
 
 // --- Updated Top Info Panel (Includes 'Update' button) ---
-export function TopInfoPanel({ showBarcodeGraphic, rmProInputNode, status = "Pickup Entry", onUpdateStatus }) {
+export function TopInfoPanel({ showBarcodeGraphic, rmProInputNode, status = "Pickup Entry", onUpdateStatus, showNotes = true }) {
     return (
         <Box sx={{ bgcolor: '#dbdbdb', p: 2, borderRadius: 1, position: 'relative', mb: 3 }}>
             <Stack spacing={2} sx={{ width: { xs: '100%', sm: '60%', md: '40%' } }}>
@@ -45,41 +46,62 @@ export function TopInfoPanel({ showBarcodeGraphic, rmProInputNode, status = "Pic
                     )}
                 </Stack>
             </Stack>
-            <Box sx={{ position: 'absolute', right: 16, bottom: 16, color: '#A22', cursor: 'pointer' }}>
-                <Iconify icon="mdi:file-document" width={24} height={24} />
-            </Box>
+            {showNotes && (
+                <Box sx={{ position: 'absolute', right: 16, bottom: 16, color: '#A22', cursor: 'pointer' }}>
+                    <Iconify icon="mdi:file-document" width={24} height={24} />
+                </Box>
+            )}
         </Box>
     );
 }
 
 // --- Shared Entry Details Section ---
-export function EntryDetailsSection({ control }) {
+export function EntryDetailsSection({ control, dateReadOnly = false, detailsReadOnly = false, formatPhone = false }) {
     return (
         <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px' }}>
             <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Entry Details</Typography></legend>
             <Stack spacing={3}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
                     <Controller name="booking" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Booking" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Booking" slotProps={{ input: { readOnly: detailsReadOnly } }} />
                     )} />
                     <Controller name="customerRefNumber" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Customer Ref Number *" error={!!error} />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Customer Ref Number *" error={!!error} slotProps={{ input: { readOnly: detailsReadOnly } }} />
                     )} />
                     <Controller name="additionalRefNo" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Additional Ref No" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Additional Ref No" slotProps={{ input: { readOnly: detailsReadOnly } }} />
                     )} />
-                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                        <Controller name="date" control={control} render={({ field: { onChange, value } }) => (
-                            <DatePicker label="Date" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />
+                    {dateReadOnly ? (
+                        <Controller name="date" control={control} render={({ field: { value } }) => (
+                            <StyledTextField
+                                label="Date"
+                                value={value?.format?.('MM/DD/YYYY') || ''}
+                                variant="standard"
+                                fullWidth
+                                slotProps={{ input: { readOnly: true }, inputLabel: { shrink: true } }}
+                            />
                         )} />
-                    </LocalizationProvider>
+                    ) : (
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <Controller name="date" control={control} render={({ field: { onChange, value } }) => (
+                                <DatePicker label="Date" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />
+                            )} />
+                        </LocalizationProvider>
+                    )}
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ width: '50%' }}>
                     <Controller name="contactName" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                         <StyledTextField {...field} variant="standard" fullWidth label="Contact Name *" error={!!error} />
                     )} />
                     <Controller name="phoneNumber" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Phone Number" />
+                        <StyledTextField
+                            {...field}
+                            variant="standard"
+                            fullWidth
+                            label="Phone Number"
+                            placeholder="(XXX) XXX-XXXX"
+                            onChange={(event) => field.onChange(formatPhone ? formatPhoneNumber(event.target.value) : event.target.value)}
+                        />
                     )} />
                 </Stack>
             </Stack>
@@ -88,37 +110,51 @@ export function EntryDetailsSection({ control }) {
 }
 
 // --- Shared Customer Details Section ---
-export function CustomerDetailsSection({ control }) {
+export function CustomerDetailsSection({ control, showCustomerName = false, hideContactPerson = false, stateOnSecondRow = false, readOnly = false }) {
     return (
         <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px' }}>
             <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Customer Details</Typography></legend>
             <Stack spacing={3}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
+                    {showCustomerName && (
+                        <Controller name="customerName" control={control} render={({ field }) => (
+                            <StyledTextField {...field} variant="standard" fullWidth label="Customer Name" slotProps={{ input: { readOnly } }} />
+                        )} />
+                    )}
                     <Controller name="billTo" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Bill To" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Bill To" slotProps={{ input: { readOnly } }} />
                     )} />
                     <Controller name="addressLine1" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Address Line 1" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Address Line 1" slotProps={{ input: { readOnly } }} />
                     )} />
                     <Controller name="addressLine2" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Address Line 2" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Address Line 2" slotProps={{ input: { readOnly } }} />
                     )} />
-                    <Controller name="state" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="State" />
-                    )} />
+                    {!stateOnSecondRow && (
+                        <Controller name="state" control={control} render={({ field }) => (
+                            <StyledTextField {...field} variant="standard" fullWidth label="State" slotProps={{ input: { readOnly } }} />
+                        )} />
+                    )}
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
+                    {stateOnSecondRow && (
+                        <Controller name="state" control={control} render={({ field }) => (
+                            <StyledTextField {...field} variant="standard" fullWidth label="State" slotProps={{ input: { readOnly } }} />
+                        )} />
+                    )}
                     <Controller name="city" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="City" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="City" slotProps={{ input: { readOnly } }} />
                     )} />
                     <Controller name="zipCode" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Zip Code" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Zip Code" slotProps={{ input: { readOnly } }} />
                     )} />
-                    <Controller name="contactPersonName" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Contact Person Name" />
-                    )} />
+                    {!hideContactPerson && (
+                        <Controller name="contactPersonName" control={control} render={({ field }) => (
+                            <StyledTextField {...field} variant="standard" fullWidth label="Contact Person Name" slotProps={{ input: { readOnly } }} />
+                        )} />
+                    )}
                     <Controller name="customerPhoneNumber" control={control} render={({ field }) => (
-                        <StyledTextField {...field} variant="standard" fullWidth label="Phone Number" />
+                        <StyledTextField {...field} variant="standard" fullWidth label="Phone Number" slotProps={{ input: { readOnly } }} />
                     )} />
                 </Stack>
             </Stack>
