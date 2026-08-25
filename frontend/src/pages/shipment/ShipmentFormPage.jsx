@@ -29,12 +29,13 @@ export default function ShipmentFormPage() {
 }
 
 function ShipmentFormPageContent() {
+  const location = useLocation();
   const isScanGunScreen = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [showAirShipmentForm, setShowAirShipmentForm] = useState(false);
   const [showOceanLCLForm, setShowOceanLCLForm] = useState(false);
   const [showOceanFCLForm, setShowOceanFCLForm] = useState(false);
-  const [viewShipment, setViewShipment] = useState(null);
+  const [viewShipment, setViewShipment] = useState(() => location.state?.viewShipment || null);
   const logError = (error, info) => {
     // Use an error reporting service here
     console.error("Error caught:", info);

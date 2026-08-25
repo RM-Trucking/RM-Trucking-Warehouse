@@ -764,6 +764,11 @@ export default function WarehouseCheckInScanGunPage({
               {visibleRows.map((row) => (
                 <Box key={row.id} sx={sectionSx}>
                   <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#000' }}>{getScanReceiptNumber(row)}</Typography>
+                  {searchType === 'pro' && searchBy === 'ID' && (
+                    <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#000' }}>
+                      {warehouseReceiptSearch.data?.proNumber || getScanRowValue(row, ['proNumber', 'proNo', 'pro']) || '-'}
+                    </Typography>
+                  )}
                   <Typography sx={{ fontSize: 11, color: '#000' }}>{getScanCarrier(row)}</Typography>
                   <Typography sx={{ fontSize: 11, color: '#000' }}>{getScanCustomer(row)}</Typography>
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75, mt: 1 }}>
