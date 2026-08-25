@@ -60,6 +60,22 @@ const getShipmentReceiptOptionLabel = (option) => {
     return String(option.receiptNumber || '');
 };
 
+const getReceiptStatus = (receipt = {}) => {
+    const summary = receipt?.freightSummary || {};
+    const total = Number(summary.total || 0);
+    const scanned = Number(summary.scanned || 0);
+
+    if (total > 0 && scanned >= total) return 'Scanned';
+    if (scanned > 0) return 'Unscanned';
+    return 'Available';
+};
+
+const statusStyles = {
+    Scanned: { bgcolor: '#58ad70', color: '#fff' },
+    Unscanned: { bgcolor: '#efb52e', color: '#fff' },
+    Available: { bgcolor: '#f1f1f1', color: '#333' },
+};
+
 const formatNoteTime = (value) => {
     if (!value) return '';
     const date = new Date(value);
@@ -141,6 +157,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
     const [rowSaveError, setRowSaveError] = useState('');
     const [isEditing, setIsEditing] = useState(!viewMode);
+    const [cancelEditDialogOpen, setCancelEditDialogOpen] = useState(false);
+    const [closeFormAfterDiscard, setCloseFormAfterDiscard] = useState(false);
     const [notesDialogOpen, setNotesDialogOpen] = useState(false);
     const [noteText, setNoteText] = useState('');
     const [notesMessage, setNotesMessage] = useState('');
@@ -325,17 +343,37 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     const handleCancel = () => {
         if (viewMode && isEditing) {
-            reset(defaultValues);
-            setBarcodeValue(rowData?.barcodeNumber || '');
-            setCustomerSearchValue(rowData?.customerName || rowData?.customer || '');
-            setStationSearchValue(rowData?.stationName || rowData?.station || '');
-            setSubmitError('');
-            setRowSaveError('');
-            setIsEditing(false);
+            setCloseFormAfterDiscard(false);
+            setCancelEditDialogOpen(true);
             return;
         }
 
         handleClose();
+    };
+
+    const handleHeaderClose = () => {
+        if (viewMode && isEditing) {
+            setCloseFormAfterDiscard(true);
+            setCancelEditDialogOpen(true);
+            return;
+        }
+        handleClose();
+    };
+
+    const handleDiscardChanges = () => {
+        reset(defaultValues);
+        setBarcodeValue(rowData?.barcodeNumber || '');
+        setCustomerSearchValue(rowData?.customerName || rowData?.customer || '');
+        setStationSearchValue(rowData?.stationName || rowData?.station || '');
+        setSubmitError('');
+        setRowSaveError('');
+        setCancelEditDialogOpen(false);
+        if (closeFormAfterDiscard) {
+            handleClose();
+        } else {
+            setIsEditing(false);
+        }
+        setCloseFormAfterDiscard(false);
     };
 
     const onSubmit = async (data) => {
@@ -405,20 +443,22 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     return (
         <ShipmentFormLayout
             title={viewMode ? 'View Air Shipment Form' : 'New Air Shipment Form'}
-            handleClose={handleClose}
+            handleClose={handleHeaderClose}
             onCancel={handleCancel}
             onSubmit={handleSubmit(onSubmit)}
             submitLoading={createShipmentLoading}
-            submitLabel={viewMode ? 'Update' : 'Submit'}
-            submitLoadingLabel={viewMode ? 'Updating...' : 'Submitting...'}
+            submitLabel={viewMode ? 'Save' : 'Submit'}
+            submitLoadingLabel={viewMode ? 'Saving...' : 'Submitting...'}
             showSubmit={!viewMode || isEditing}
             readOnly={viewMode && !isEditing}
+            stickyHeader={viewMode}
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false} // Hides the barcode to match the Air mockup
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     showEdit={viewMode && !isEditing}
+                    editDisabled={rowData?.completeStatus === 'APPROVED'}
                     onEdit={handleEdit}
                     showNotes={viewMode && !isEditing}
                     onNotes={handleOpenNotes}
@@ -669,20 +709,22 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                     <Grid item xs={12} md={6} sx={{ flex: 1 }}>
                         <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
                             <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: 1 }}>
-                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
-                                <Typography sx={{ width: viewMode ? '50%' : '40%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
-                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
-                                <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
-                                {!viewMode && <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>}
+                                <Typography sx={{ width: '8%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
+                                <Typography sx={{ width: '25%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
+                                <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
+                                <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
+                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px' }}>Items</Typography>
+                                <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Status</Typography>
+                                <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
                             </Stack>
                             {warehouseFields.map((item, index) => (
                                 <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
-                                    <Box sx={{ width: '10%', pl: 1 }}>
+                                    <Box sx={{ width: '8%', pl: 1 }}>
                                         <Typography sx={{ fontSize: '13px', color: '#555' }}>
                                             {String(index + 1).padStart(2, '0')}
                                         </Typography>
                                     </Box>
-                                    <Box sx={{ width: viewMode ? '50%' : '40%', pr: 1 }}>
+                                    <Box sx={{ width: '25%', pr: 1 }}>
                                         <Controller name={`warehouses.${index}.warehouseNo`} control={control} render={({ field }) => (
                                             <Autocomplete
                                                 fullWidth
@@ -690,8 +732,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                 options={canSelectWarehouse ? shipmentReceiptOptionsByField[item.id] || [] : []}
                                                 value={field.value}
                                                 inputValue={receiptInputValues[item.id] || ''}
-                                                readOnly={viewMode || !canSelectWarehouse}
-                                                openOnFocus={!viewMode && canSelectWarehouse}
+                                                readOnly={!canSelectWarehouse}
+                                                openOnFocus={canSelectWarehouse}
                                                 loading={Boolean(shipmentReceiptLoadingByField[item.id])}
                                                 getOptionLabel={getShipmentReceiptOptionLabel}
                                                 isOptionEqualToValue={(option, value) =>
@@ -728,16 +770,16 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                         error={warehouseReceiptError && index === 0}
                                                         inputProps={{
                                                             ...params.inputProps,
-                                                            readOnly: viewMode || !canSelectWarehouse,
+                                                            readOnly: !canSelectWarehouse,
                                                             onMouseDown: (event) => {
-                                                                if (!viewMode && !canSelectWarehouse) {
+                                                                if (!canSelectWarehouse) {
                                                                     event.preventDefault();
                                                                     setWarehouseAlertOpen(true);
                                                                 }
                                                             },
                                                             onFocus: (event) => {
                                                                 params.inputProps?.onFocus?.(event);
-                                                                if (!viewMode && !canSelectWarehouse) {
+                                                                if (!canSelectWarehouse) {
                                                                     setWarehouseAlertOpen(true);
                                                                 }
                                                             },
@@ -757,7 +799,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                             />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '20%', pr: 1 }}>
+                                    <Box sx={{ width: '12%', pr: 1 }}>
                                         <Controller name={`warehouses.${index}.pieces`} control={control} render={({ field }) => (
                                             <StyledTextField
                                                 {...field}
@@ -769,7 +811,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                             />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '20%', pr: 1 }}>
+                                    <Box sx={{ width: '15%', pr: 1 }}>
                                         <Controller name={`warehouses.${index}.weight`} control={control} render={({ field }) => (
                                             <StyledTextField
                                                 {...field}
@@ -781,46 +823,65 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                             />
                                         )} />
                                     </Box>
-                                    {!viewMode && (
-                                        <Box sx={{ width: '10%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
-                                            <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
-                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
-                                            </IconButton>
-                                            <IconButton
-                                                size="small"
-                                                onClick={() => saveWarehouseRow(item.id, index)}
-                                                color={savedWarehouseRows.has(item.id) ? 'success' : 'default'}
-                                                sx={{ p: 0.5, color: savedWarehouseRows.has(item.id) ? 'success.main' : '#000' }}
-                                            >
-                                                <Iconify icon="material-symbols:save" width={18} />
-                                            </IconButton>
+                                    <Box sx={{ width: '10%', pr: 1 }}>
+                                        <Box
+                                            component="span"
+                                            sx={{ px: 0.5, py: 0.25, borderRadius: 0.5, fontWeight: 700, ...statusStyles[getReceiptStatus(watchedWarehouses[index]?.warehouseNo)] }}
+                                        >
+                                            {Number(watchedWarehouses[index]?.warehouseNo?.freightSummary?.scanned || 0)}/
+                                            {Number(watchedWarehouses[index]?.warehouseNo?.freightSummary?.total || watchedWarehouses[index]?.warehouseNo?.piecesInland || 0)}
                                         </Box>
-                                    )}
+                                    </Box>
+                                    <Box sx={{ width: '15%', pr: 1, textAlign: 'center' }}>
+                                        <Box
+                                            component="span"
+                                            sx={{ display: 'inline-block', minWidth: 72, px: 1, py: 0.25, borderRadius: 5, textAlign: 'center', fontSize: 11, ...statusStyles[getReceiptStatus(watchedWarehouses[index]?.warehouseNo)] }}
+                                        >
+                                            {getReceiptStatus(watchedWarehouses[index]?.warehouseNo)}
+                                        </Box>
+                                    </Box>
+                                    <Box sx={{ width: '15%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
+                                        {getReceiptStatus(watchedWarehouses[index]?.warehouseNo) === 'Available' && (
+                                            <>
+                                                <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
+                                                    <Iconify icon="mingcute:delete-2-fill" width={18} />
+                                                </IconButton>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => saveWarehouseRow(item.id, index)}
+                                                    color={savedWarehouseRows.has(item.id) ? 'success' : 'default'}
+                                                    sx={{ p: 0.5, color: savedWarehouseRows.has(item.id) ? 'success.main' : '#000' }}
+                                                >
+                                                    <Iconify icon="material-symbols:save" width={18} />
+                                                </IconButton>
+                                            </>
+                                        )}
+                                    </Box>
                                 </Stack>
                             ))}
 
-                            {!viewMode && (
-                                <Box sx={{ p: 1, textAlign: 'right' }}>
-                                    <IconButton
-                                        size="small"
-                                        disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
-                                        onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
-                                        sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
-                                    >
-                                        <Iconify icon="akar-icons:plus" width={16} />
-                                    </IconButton>
-                                </Box>
-                            )}
+                            <Box sx={{ p: 1, textAlign: 'right' }}>
+                                <IconButton
+                                    size="small"
+                                    disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
+                                    onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
+                                    sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
+                                >
+                                    <Iconify icon="akar-icons:plus" width={16} />
+                                </IconButton>
+                            </Box>
 
                             <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
-                                <Box sx={{ width: '10%' }} />
-                                <Box sx={{ width: viewMode ? '50%' : '40%' }} />
-                                <Box sx={{ width: '20%' }}>
+                                <Box sx={{ width: '8%' }} />
+                                <Box sx={{ width: '25%' }} />
+                                <Box sx={{ width: '12%' }}>
                                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalPieces}</Typography>
                                 </Box>
-                                <Box sx={{ width: '20%' }}>
+                                <Box sx={{ width: '15%' }}>
                                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalWeight}</Typography>
                                 </Box>
+                                <Box sx={{ width: '15%' }} />
+                                <Box sx={{ width: '15%' }} />
                                 <Box sx={{ width: '10%' }} />
                             </Stack>
                         </Box>
@@ -882,6 +943,31 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                     </Button>
                     <Button onClick={handleConfirmReceiptSelection} variant="contained" color="warning">
                         Yes, proceed
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={cancelEditDialogOpen}
+                onClose={() => {
+                    setCancelEditDialogOpen(false);
+                    setCloseFormAfterDiscard(false);
+                }}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Discard unsaved changes?</DialogTitle>
+                <DialogContent>
+                    Your changes have not been saved. Do you want to discard them?
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => {
+                        setCancelEditDialogOpen(false);
+                        setCloseFormAfterDiscard(false);
+                    }} color="inherit">
+                        Keep Editing
+                    </Button>
+                    <Button onClick={handleDiscardChanges} variant="contained" sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' } }}>
+                        Discard
                     </Button>
                 </DialogActions>
             </Dialog>

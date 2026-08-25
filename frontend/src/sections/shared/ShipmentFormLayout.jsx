@@ -144,6 +144,7 @@ export function TopInfoPanel({
     onBarcodeGenerate,
     showEdit = false,
     onEdit,
+    editDisabled = false,
     showNotes = false,
     onNotes,
     readOnly = false,
@@ -189,7 +190,7 @@ export function TopInfoPanel({
             
             <Stack direction="row" alignItems="center" spacing={1} sx={{ position: 'absolute', right: 16, bottom: 16 }}>
                 {showEdit && (
-                    <Button variant="contained" size="small" onClick={onEdit} sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>
+                    <Button variant="contained" size="small" onClick={onEdit} disabled={editDisabled} sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>
                         Edit
                     </Button>
                 )}
@@ -220,6 +221,7 @@ TopInfoPanel.propTypes = {
     onBarcodeGenerate: PropTypes.func,
     showEdit: PropTypes.bool,
     onEdit: PropTypes.func,
+    editDisabled: PropTypes.bool,
     showNotes: PropTypes.bool,
     onNotes: PropTypes.func,
     readOnly: PropTypes.bool,
