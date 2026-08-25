@@ -4,7 +4,8 @@ import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import { emitAuditLog } from "../../utils/email";
-import { CreateWarehouseShipment, UpdateWarehouseShipment, WarehouseShipmentWithRelations } from "../../entities/shipment";
+import { generatePickupEDI } from "../../utils/pickupEDIHandler";
+import { CreateWarehouseShipment, ShipmentResposeForPickup, UpdateWarehouseShipment, WarehouseShipmentPickupRequest, WarehouseShipmentWithRelations } from "../../entities/shipment";
 
 function normalizeBarcodeNumber(value: unknown): string {
     if (typeof value === "string") {
@@ -23,6 +24,15 @@ function throwValidationError(message: string): never {
     error.name = "ValidationError";
     error.statusCode = 400;
     throw error;
+}
+
+function normalizeDateOnly(value: unknown): string {
+    const dateValue = value instanceof Date ? value.toISOString() : String(value ?? "");
+    const dateOnly = dateValue.split("T")[0];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+        throwValidationError("Pickup dates must use the YYYY-MM-DD format or an ISO date-time value.");
+    }
+    return dateOnly;
 }
 
 function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWarehouseShipment, userId: number) {
@@ -192,6 +202,95 @@ export async function updateShipmentWithRelations(
     }
 }
 
+export async function addReceiptToShipment(conn: Connection, shipmentId: number, receiptId: number, userId: number): Promise<WarehouseShipmentWithRelations> {
+    if (!(await shipmentDB.getShipmentById(conn, shipmentId))) {
+        throwValidationError(`Shipment with id ${shipmentId} was not found.`);
+    }
+    if (!(await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId))) {
+        throwValidationError(`Warehouse receipt with id ${receiptId} was not found.`);
+    }
+
+    const existingReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+    if (existingReceipts.some(receipt => receipt.receiptId === receiptId)) {
+        throwValidationError(`Warehouse receipt with id ${receiptId} is already linked to shipment ${shipmentId}.`);
+    }
+
+    try {
+        await conn.beginTransaction();
+        await shipmentDB.addReceiptToShipment(conn, shipmentId, receiptId);
+        await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { status: "PREPARED", updatedBy: userId });
+
+        const shipmentReceiptsAfterAdd = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+        const allShipmentReceiptsScanned = (await Promise.all(
+            shipmentReceiptsAfterAdd.map(async (shipmentReceipt: any) => {
+                const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(
+                    conn,
+                    Number(shipmentReceipt.receiptId)
+                );
+                return hasAllFreightScanned(freightInfos);
+            })
+        )).every(Boolean);
+
+        await shipmentDB.updateShipment(
+            conn,
+            shipmentId,
+            { isScanned: allShipmentReceiptsScanned ? "Y" : "N" },
+            userId
+        );
+
+        await conn.commit();
+        const shipment = await getShipmentById(conn, shipmentId);
+        if (!shipment) throw new Error("Shipment could not be loaded after adding the warehouse receipt");
+        return shipment;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
+export async function removeReceiptFromShipment(conn: Connection, shipmentId: number, receiptId: number, userId: number): Promise<WarehouseShipmentWithRelations> {
+    if (!(await shipmentDB.getShipmentById(conn, shipmentId))) {
+        throwValidationError(`Shipment with id ${shipmentId} was not found.`);
+    }
+
+    const existingReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+    if (!existingReceipts.some(receipt => receipt.receiptId === receiptId)) {
+        throwValidationError(`Warehouse receipt with id ${receiptId} is not linked to shipment ${shipmentId}.`);
+    }
+
+    try {
+        await conn.beginTransaction();
+        await shipmentDB.removeReceiptFromShipment(conn, shipmentId, receiptId);
+        await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { status: "ON_HAND", updatedBy: userId });
+
+        const shipmentReceiptsAfterRemove = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+        const allShipmentReceiptsScanned = (await Promise.all(
+            shipmentReceiptsAfterRemove.map(async (shipmentReceipt: any) => {
+                const freightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(
+                    conn,
+                    Number(shipmentReceipt.receiptId)
+                );
+                return hasAllFreightScanned(freightInfos);
+            })
+        )).every(Boolean);
+
+        await shipmentDB.updateShipment(
+            conn,
+            shipmentId,
+            { isScanned: allShipmentReceiptsScanned ? "Y" : "N" },
+            userId
+        );
+
+        await conn.commit();
+        const shipment = await getShipmentById(conn, shipmentId);
+        if (!shipment) throw new Error("Shipment could not be loaded after removing the warehouse receipt");
+        return shipment;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
 export async function getShipmentById(conn: Connection, shipmentId: number): Promise<WarehouseShipmentWithRelations | null> {
     const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
     if (!shipment) {
@@ -203,8 +302,38 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
         shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
     ]);
 
+    const receiptsById = new Map(receipts.map((receipt) => [Number(receipt.receiptId), receipt]));
+    const childrenByParentId = new Map<number, any[]>();
+    const orphanedChildren: any[] = [];
+    const parentReceipts: any[] = [];
 
-    await Promise.all(receipts.map(async (receipt) => {
+    for (const receipt of receipts) {
+        const parentReceiptId = Number(receipt.parentReceipt);
+
+        if (!Number.isFinite(parentReceiptId) || parentReceiptId <= 0) {
+            parentReceipts.push(receipt);
+            continue;
+        }
+
+        const children = childrenByParentId.get(parentReceiptId) ?? [];
+        children.push(receipt);
+        childrenByParentId.set(parentReceiptId, children);
+
+        if (!receiptsById.has(parentReceiptId)) {
+            orphanedChildren.push(receipt);
+        }
+    }
+
+    const orderedReceipts: any[] = [];
+    for (const parentReceipt of parentReceipts) {
+        orderedReceipts.push(parentReceipt);
+        orderedReceipts.push(...(childrenByParentId.get(Number(parentReceipt.receiptId)) ?? []));
+    }
+
+    orderedReceipts.push(...orphanedChildren);
+
+
+    await Promise.all(orderedReceipts.map(async (receipt) => {
         const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
         console.log("Freight info for receiptId", receipt.receiptId, freightInfo);
         const scannedItems = freightInfo.filter(f => f.isScanned === 'Y');
@@ -223,8 +352,48 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     return {
         ...shipment,
         containers,
-        receipts,
+        receipts: orderedReceipts,
     } as WarehouseShipmentWithRelations;
+}
+
+export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<ShipmentResposeForPickup | null> {
+
+    const shipment = await shipmentDB.getShipmentByIdForPickup(conn, shipmentId);
+    if (!shipment) {
+        return null;
+    }
+
+    return {
+        entryDetails: {
+            shipmentId: shipment.shipmentId,
+            barcodeNumber: shipment.barcodeNumber ?? "",
+            shipmentType: shipment.shipmentType,
+            booking: shipment.booking ?? "",
+            customerRefNumber: shipment.customerRefNumber ?? "",
+            additionalRefNumber: shipment.additionalRefNumber ?? "",
+        },
+        customerDetails: {
+            customerId: Number(shipment.customerId),
+            customerName: shipment.customerName ?? "",
+            stationId: Number(shipment.stationId),
+            stationName: shipment.stationName ?? "",
+            stationRMAccountNumber: shipment.stationRMAccountNumber ?? "",
+            stationAddressLine1: shipment.stationAddressLine1 ?? "",
+            stationAddressLine2: shipment.stationAddressLine2 ?? "",
+            stationCity: shipment.stationCity ?? "",
+            stationState: shipment.stationState ?? "",
+            stationZipCode: shipment.stationZipCode ?? "",
+            stationPhoneNumber: shipment.stationPhoneNumber ?? "",
+        },
+        shipmentDetails: {
+            consigneeId: Number(shipment.consigneeId),
+            airlineCode: shipment.airlineCode ?? "",
+            airBillNumber: shipment.airBillNumber ?? "",
+            pieces: Number(shipment.pieces),
+            weight: Number(shipment.weight),
+        },
+    };
+
 }
 
 export async function listShipments(
@@ -454,7 +623,7 @@ export async function signOffShipment(conn: Connection, shipmentId: number, user
                         proNumber: (wh as any)?.proNumber || undefined,
                         userId,
                         status: 'ON_HAND',
-                        description: `Moved to ON_HAND during sign-off for shipment ${shipmentId}`,
+                        description: `Receipt ${wh.receiptNumber} was moved to ON_HAND during sign-off because it contained no scanned freight. Shipment barcode: ${existingShipment.barcodeNumber}.`,
                         level: 'INFO'
                     });
                 }
@@ -612,6 +781,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                 accountOnHold: originalReceipt.accountOnHold ?? 'N',
                 sendToTellSystem: originalReceipt.sendToTellSystem ?? 'N',
                 hasFlatRate: originalReceipt.hasFlatRate ?? 'N',
+                parentReceipt: originalReceipt.receiptId ?? null,
             };
 
             const newReceiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, newReceiptPayload);
@@ -628,7 +798,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                     proNumber: originalReceipt.proNumber || undefined,
                     userId,
                     status: 'PREPARED',
-                    description: `Created by splitting receipt ${receiptId} (number ${originalReceipt.receiptNumber}). Reserved number ${reservedReceiptNumber}.`,
+                    description: `Receipt ${reservedReceiptNumber} was created from a split of receipt ${originalReceipt.receiptNumber} during shipment split approval. Shipment barcode: ${existingShipment.barcodeNumber}.`,
                     level: 'INFO'
                 });
             } catch (err) {
@@ -636,7 +806,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
             }
 
             // Move unscanned freight items to the new receipt
-            for (const unf of unscannedItems) {
+            for (const [freightIndex, unf] of unscannedItems.entries()) {
                 const freightCreate = {
                     receiptId: newReceiptId,
                     pieces: unf.pieces ?? null,
@@ -646,7 +816,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                     height: (unf as any).height ?? null,
                     weight: (unf as any).weight ?? null,
                     cubicMeter: (unf as any).cubicMeter ?? null,
-                    freightBarcodeValue: (unf as any).freightBarcodeValue ?? null,
+                    freightBarcodeValue: `FRT${freightIndex + 1}`,
                 };
 
                 const createdFreightId = await warehouseReceiptDB.createFreightInfo(conn, freightCreate as any);
@@ -694,7 +864,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                 updatedBy: userId,
             });
 
-            // Emit audit log for original receipt after split
+            // Record the parent receipt after its unscanned freight is split out.
             try {
                 emitAuditLog({
                     receiptNumber: originalReceipt.receiptNumber,
@@ -702,7 +872,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                     proNumber: originalReceipt.proNumber || undefined,
                     userId,
                     status: remainingFreightForOriginal.length > 0 && remainingFreightForOriginal.every(fi => String((fi as any).isScanned).toUpperCase() === 'Y') ? 'SCANNED' : 'PREPARED',
-                    description: `Split: moved ${newLabelCount} freight items to receipt ${newReceiptId} (number ${reservedReceiptNumber}). reWeight ${originalReceipt.reWeight ?? 0} -> ${originalReWeight}. labelCount ${originalReceipt.labelCount ?? 0} -> ${originalLabelCount}`,
+                    description: `Parent receipt ${originalReceipt.receiptNumber} was split during shipment split approval. ${unscannedItems.length} unscanned freight item(s) were moved to child receipt ${reservedReceiptNumber}; the parent retained ${remainingFreightForOriginal.length} freight item(s). Shipment barcode: ${existingShipment.barcodeNumber}.`,
                     level: 'INFO'
                 });
             } catch (err) {
@@ -725,7 +895,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                     proNumber: originalReceipt.proNumber || undefined,
                     userId,
                     status: newReceiptFreight.length > 0 && newReceiptFreight.every(fi => String((fi as any).isScanned).toUpperCase() === 'Y') ? 'SCANNED' : 'PREPARED',
-                    description: `Split: received ${newLabelCount} freight items migrated from receipt ${receiptId}. reWeight set to ${newReWeight}. labelCount set to ${newLabelCount}`,
+                    description: `Receipt ${reservedReceiptNumber} was updated with the unscanned freight separated from receipt ${originalReceipt.receiptNumber} during shipment split approval. Shipment barcode: ${existingShipment.barcodeNumber}.`,
                     level: 'INFO'
                 });
             } catch (err) {
@@ -741,8 +911,12 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
         await shipmentDB.replaceReceipts(conn, shipmentId, uniqueReceiptIds.map(id => ({ receiptId: id })));
 
         // After splitting receipts, mark the shipment as APPROVED
+        console.log(`Approving shipment completion for shipmentId: ${shipmentId} by userId: ${userId}`);
         await shipmentDB.approveShipmentCompletion(conn, shipmentId, userId, 'SPLIT_APPROVED');
 
+        console.log("Audit log for shipment split approval will be emitted for each receipt involved in the split.");
+
+        console.log(`Shipment ${shipmentId} split approval completed. Remaining receipts: ${uniqueReceiptIds.join(", ")}`);
         const updatedShipment = await getShipmentById(conn, shipmentId);
 
         await conn.commit();
@@ -796,6 +970,80 @@ export async function completeShipment(conn: Connection, shipmentId: number, use
         await conn.commit();
 
         return updated;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
+export async function revokeShipmentCompletion(conn: Connection, shipmentId: number, userId: number) {
+    if (!(await shipmentDB.getShipmentById(conn, shipmentId))) {
+        throwValidationError(`Shipment with id ${shipmentId} was not found.`);
+    }
+
+    try {
+        await conn.beginTransaction();
+        await shipmentDB.revokeShipmentCompletion(conn, shipmentId, userId);
+
+        const updatedShipment = await getShipmentById(conn, shipmentId);
+        if (!updatedShipment) {
+            throw new Error("Shipment could not be loaded after revoking completion");
+        }
+
+        await conn.commit();
+        return updatedShipment;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
+export async function createShipmentPickupEntry(
+    conn: Connection,
+    payload: WarehouseShipmentPickupRequest,
+    userId: number
+): Promise<any> {
+    const shipment = await shipmentDB.getShipmentById(conn, payload.shipmentId);
+    if (!shipment) {
+        throwValidationError(`Shipment with id ${payload.shipmentId} was not found.`);
+    }
+
+    if (!shipment.isScanned || shipment.isScanned.toUpperCase() !== "Y") {
+        throwValidationError(`Shipment with id ${payload.shipmentId} is not fully scanned. Cannot create pickup entry.`);
+    }
+
+    if (!shipment.isShipped || shipment.isShipped.toUpperCase() !== "Y") {
+        throwValidationError(`Shipment with id ${payload.shipmentId} is not fully shipped. Cannot create pickup entry.`);
+    }
+
+    if (shipment.pickupEntry === "Y") {
+        throwValidationError(`Pickup entry for shipment with id ${payload.shipmentId} already exists.`);
+    }
+
+    try {
+        await conn.beginTransaction();
+
+        console.log(`Creating pickup entry for shipmentId: ${payload.shipmentId} by userId: ${userId}`);
+
+        const pickupEntry = await shipmentDB.createShipmentPickupEntry(conn, {
+            ...payload,
+            pickupDate: normalizeDateOnly(payload.pickupDate),
+            readyDate: normalizeDateOnly(payload.readyDate),
+            closeDate: normalizeDateOnly(payload.closeDate),
+            loDate: normalizeDateOnly(payload.loDate),
+        }, userId);
+
+        console.log(`Created pickup entry for shipmentId: ${payload.shipmentId}, pickupEntryId: ${pickupEntry.pickupEntryId}`);
+
+        await generatePickupEDI({
+            ...payload,
+            ...pickupEntry,
+        });
+        await shipmentDB.updateShipment(conn, payload.shipmentId, {
+            pickupEntry: "Y"
+        }, userId);
+        await conn.commit();
+        return pickupEntry;
     } catch (error) {
         await conn.rollback();
         throw error;

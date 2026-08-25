@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { Connection } from "odbc";
 import * as shipmentService from "../../services/shipment";
-import { CreateWarehouseShipment, UpdateWarehouseShipment } from "../../entities/shipment";
+import { CreateWarehouseShipment, UpdateWarehouseShipment, WarehouseShipmentPickupRequest } from "../../entities/shipment";
 
 export async function createShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
@@ -80,6 +80,61 @@ export async function getShipment(req: Request, res: Response, conn: Connection)
     }
 }
 
+export async function getShipmentForPickup(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentIdParam = req.params.id;
+        const shipmentId = Array.isArray(shipmentIdParam) ? parseInt(shipmentIdParam[0], 10) : parseInt(shipmentIdParam, 10);
+
+        if (!shipmentId) {
+            res.status(400).json({ success: false, message: "shipmentId is required" });
+            return;
+        }
+        const shipment = await shipmentService.getShipmentByIdForPickup(conn, shipmentId);
+        if (!shipment) {
+            res.status(404).json({ success: false, message: "Shipment not found" });
+            return;
+        }
+
+        res.status(200).json({ success: true, data: shipment });
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ success: false, message: error.message || "Failed to fetch shipment for pickup" });
+    }
+}
+
+export async function createShipmentPickupEntry(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const payload = req.body as WarehouseShipmentPickupRequest;
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        const shipmentId = Number(payload.shipmentId);
+        const pieces = Number(payload.pieces);
+        const weight = Number(payload.weight);
+
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
+            res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
+            return;
+        }
+        if (!payload.barcodeNumber || !payload.pickupDate || !payload.contactName || !payload.customerId || !payload.stationId || !payload.readyDate || !payload.closeDate || !payload.loDate || !Number.isFinite(pieces) || !Number.isFinite(weight)) {
+            res.status(400).json({ success: false, message: "barcodeNumber, pickupDate, contactName, customerId, stationId, pieces, weight, readyDate, closeDate and loDate are required" });
+            return;
+        }
+
+        const pickupEntry = await shipmentService.createShipmentPickupEntry(conn, {
+            ...payload,
+            shipmentId,
+            customerId: Number(payload.customerId),
+            stationId: Number(payload.stationId),
+            pieces,
+            weight,
+        }, userId);
+        res.status(201).json({ success: true, message: "Shipment pickup entry created successfully", data: pickupEntry });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to create shipment pickup entry" });
+    }
+}
+
 export async function updateShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const shipmentIdParam = req.params.id;
@@ -98,6 +153,48 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
         console.error(error);
         const statusCode = error?.name === "ValidationError" || error?.message?.toLowerCase().includes("duplicate") ? 400 : 500;
         res.status(statusCode).json({ success: false, message: error.message || "Failed to update shipment" });
+    }
+}
+
+function getShipmentReceiptIds(req: Request): { shipmentId: number; receiptId: number } | null {
+    const shipmentId = Number(req.params.shipmentId ?? req.body?.shipmentId);
+    const receiptId = Number(req.params.receiptId ?? req.body?.receiptId);
+    return Number.isInteger(shipmentId) && shipmentId > 0 && Number.isInteger(receiptId) && receiptId > 0
+        ? { shipmentId, receiptId }
+        : null;
+}
+
+export async function addReceiptToShipment(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const ids = getShipmentReceiptIds(req);
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!ids) {
+            res.status(400).json({ success: false, message: "shipmentId and receiptId must be positive integers" });
+            return;
+        }
+        const shipment = await shipmentService.addReceiptToShipment(conn, ids.shipmentId, ids.receiptId, userId);
+        res.status(200).json({ success: true, message: "Warehouse receipt added to shipment successfully", data: shipment });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to add warehouse receipt to shipment" });
+    }
+}
+
+export async function removeReceiptFromShipment(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const ids = getShipmentReceiptIds(req);
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        if (!ids) {
+            res.status(400).json({ success: false, message: "shipmentId and receiptId must be positive integers" });
+            return;
+        }
+        const shipment = await shipmentService.removeReceiptFromShipment(conn, ids.shipmentId, ids.receiptId, userId);
+        res.status(200).json({ success: true, message: "Warehouse receipt removed from shipment successfully", data: shipment });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to remove warehouse receipt from shipment" });
     }
 }
 
@@ -195,5 +292,25 @@ export async function completeShipment(req: Request, res: Response, conn: Connec
         console.error(error);
         const statusCode = error?.name === "ValidationError" ? 400 : 500;
         res.status(statusCode).json({ success: false, message: error.message || "Failed to complete shipment" });
+    }
+}
+
+export async function revokeShipmentCompletion(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentId = Number(req.body.shipmentId);
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
+            res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
+            return;
+        }
+
+        const updatedShipment = await shipmentService.revokeShipmentCompletion(conn, shipmentId, userId);
+        res.status(200).json({ success: true, message: "Shipment completion revoked successfully", data: updatedShipment });
+    }
+    catch (error: any) {
+        console.error(error);
+        const statusCode = error?.name === "ValidationError" ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to revoke shipment completion" });
     }
 }

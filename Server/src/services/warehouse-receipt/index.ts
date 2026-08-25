@@ -1059,6 +1059,7 @@ export async function batchProcessWarehouseReceiptsService(
             receipt.status = "ON_HAND";
             if (split && parentReceiptId && parentReceipt?.createdAt) {
                 receipt.createdAt = parentReceipt.createdAt;
+                receipt.parentReceipt = parentReceiptId;
             }
 
             // Check if this is an update (receipt has receiptId) or create (doesn't have receiptId)
@@ -2103,6 +2104,8 @@ export async function getWarehouseReceiptForShipmentService(
 
     const result = await warehouseReceiptDB.getWarehouseReceiptForShipment(conn, receiptNumber, startDate, endDate, proNumbers as any);
     if (!result) return null;
+
+    console.log(result);
 
     // Normalize numeric fields and JSON fields
     return result;

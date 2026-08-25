@@ -85,6 +85,51 @@ paths:
         "500":
           description: Server error
 
+  /api/shipment/{shipmentId}/receipts/{receiptId}:
+    put:
+      tags:
+        - Shipments
+      summary: Add a warehouse receipt to a shipment
+      description: Links a warehouse receipt to a shipment and changes the receipt status to `PREPARED`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ShipmentId"
+        - $ref: "#/components/parameters/ReceiptId"
+      responses:
+        "200":
+          description: Warehouse receipt added to shipment successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Invalid IDs, shipment or receipt not found, or receipt already linked
+        "500":
+          description: Server error
+
+    delete:
+      tags:
+        - Shipments
+      summary: Remove a warehouse receipt from a shipment
+      description: Unlinks a warehouse receipt from a shipment and changes the receipt status to `ON_HAND`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ShipmentId"
+        - $ref: "#/components/parameters/ReceiptId"
+      responses:
+        "200":
+          description: Warehouse receipt removed from shipment successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Invalid IDs, shipment not found, or receipt is not linked to the shipment
+        "500":
+          description: Server error
+
   /api/shipment/sign-off:
     post:
       tags:
@@ -187,6 +232,41 @@ paths:
         "500":
           description: Server error
 
+  /api/shipment/revoke-completion:
+    post:
+      tags:
+        - Shipments
+      summary: Revoke shipment completion
+      description: Reopens a shipment by resetting `completeStatus` to `IDEAL` and `isShipped` to `N`. Receipt associations and freight scan history are preserved so the shipment can be reassigned.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shipmentId
+              properties:
+                shipmentId:
+                  type: integer
+                  minimum: 1
+                  example: 1
+      responses:
+        "200":
+          description: Shipment completion revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Invalid shipment ID or validation error
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
   /api/shipment/scan-freight:
     get:
       tags:
@@ -266,6 +346,73 @@ paths:
           description: Missing shipment id or barcode value or validation error
         "500":
           description: Server error
+
+  /api/shipment/{id}/for-pickup:
+    get:
+      tags:
+        - Shipments
+      summary: Get shipment pickup details by ID
+      description: Retrieves the shipment entry, customer/station, and consignee details required for pickup entry.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: ID of the shipment.
+      responses:
+        "200":
+          description: Shipment pickup details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentPickupResponse"
+        "400":
+          description: Shipment ID is required or invalid
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
+  /api/shipment/pickup-entry:
+    post:
+      tags:
+        - Shipments
+      summary: Create shipment pickup entry
+      description: Stores pickup-entry details and marks the shipment as having a pickup entry.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShipmentPickupEntryRequest"
+      responses:
+        "201":
+          description: Shipment pickup entry created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                  data:
+                    type: object
+        "400":
+          description: Invalid or missing pickup-entry fields
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
   /api/shipment/{id}:
     get:
       tags:
@@ -321,6 +468,23 @@ paths:
           description: Server error
 
 components:
+  parameters:
+    ShipmentId:
+      in: path
+      name: shipmentId
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: ID of the shipment.
+    ReceiptId:
+      in: path
+      name: receiptId
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: ID of the warehouse receipt.
   schemas:
     ShipmentContainer:
       type: object
@@ -493,6 +657,170 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/WarehouseShipment"
+    ShipmentPickupResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/ShipmentPickupDetails"
+    ShipmentPickupDetails:
+      type: object
+      required:
+        - entryDetails
+        - customerDetails
+        - shipmentDetails
+      properties:
+        entryDetails:
+          $ref: "#/components/schemas/ShipmentPickupEntryDetails"
+        customerDetails:
+          $ref: "#/components/schemas/ShipmentPickupCustomerDetails"
+        shipmentDetails:
+          $ref: "#/components/schemas/ShipmentPickupShipmentDetails"
+    ShipmentPickupEntryRequest:
+      type: object
+      required:
+        - shipmentId
+        - barcodeNumber
+        - pickupDate
+        - contactName
+        - customerId
+        - stationId
+        - pieces
+        - weight
+        - readyDate
+        - closeDate
+        - loDate
+      properties:
+        shipmentId:
+          type: integer
+          minimum: 1
+        barcodeNumber:
+          type: string
+        pickupDate:
+          type: string
+          format: date
+        contactName:
+          type: string
+        contactPhoneNumber:
+          type: string
+        customerId:
+          type: integer
+        customerName:
+          type: string
+        stationId:
+          type: integer
+        stationName:
+          type: string
+        billTo:
+          type: string
+        stationAddressLine1:
+          type: string
+        stationAddressLine2:
+          type: string
+        stationCity:
+          type: string
+        stationState:
+          type: string
+        stationZipCode:
+          type: string
+        stationPhoneNumber:
+          type: string
+        airlineCode:
+          type: string
+        airBillNumber:
+          type: string
+        hazmat:
+          type: string
+          enum: [Y, N]
+        pieces:
+          type: number
+        weight:
+          type: number
+        readyTime:
+          type: string
+        readyDate:
+          type: string
+          format: date
+        closeTime:
+          type: string
+        closeDate:
+          type: string
+          format: date
+        loTime:
+          type: string
+        loDate:
+          type: string
+          format: date
+    ShipmentPickupEntryDetails:
+      type: object
+      properties:
+        barcodeNumber:
+          type: string
+          example: "SHIP-1001"
+        shipmentType:
+          type: string
+          enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+        booking:
+          type: string
+          example: "BK-2026"
+        customerRefNumber:
+          type: string
+          example: "CR-001"
+        additionalRefNumber:
+          type: string
+          example: "AR-001"
+    ShipmentPickupCustomerDetails:
+      type: object
+      properties:
+        customerId:
+          type: integer
+          example: 10
+        customerName:
+          type: string
+          example: "Example Customer"
+        stationId:
+          type: integer
+          example: 20
+        stationName:
+          type: string
+          example: "Toronto Station"
+        stationRMAccountNumber:
+          type: string
+          example: "RM-12345"
+        stationAddressLine1:
+          type: string
+        stationAddressLine2:
+          type: string
+        stationCity:
+          type: string
+        stationState:
+          type: string
+        stationZip:
+          type: string
+        stationContactName:
+          type: string
+        stationPhoneNumber:
+          type: string
+    ShipmentPickupShipmentDetails:
+      type: object
+      properties:
+        consigneeId:
+          type: integer
+          example: 30
+        airlineCode:
+          type: string
+          example: "AC"
+        airBillNumber:
+          type: string
+          example: "AB-001"
+        pieces:
+          type: integer
+          example: 5
+        weight:
+          type: number
+          example: 250.5
     ShipmentListResponse:
       type: object
       properties:

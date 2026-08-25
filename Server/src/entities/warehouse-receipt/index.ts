@@ -89,6 +89,7 @@ export interface WarehouseReceipt {
     requestedAt?: Date;
     approvedBy?: number;
     approvedAt?: Date;
+    parentReceipt?: number | bigint | null;
 }
 
 /**

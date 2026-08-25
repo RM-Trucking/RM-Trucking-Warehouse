@@ -41,6 +41,24 @@ router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     }
 });
 
+router.get("/:id/for-pickup", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.getShipmentForPickup(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+router.post("/pickup-entry", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.createShipmentPickupEntry(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
@@ -68,6 +86,24 @@ router.put("/:id", authenticateJWT, async (req: Request, res: Response) => {
     }
 });
 
+router.put("/:shipmentId/receipts/:receiptId", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.addReceiptToShipment(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+router.delete("/:shipmentId/receipts/:receiptId", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.removeReceiptFromShipment(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.post("/split-approval", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
@@ -82,6 +118,16 @@ router.post("/complete", authenticateJWT, async (req: Request, res: Response) =>
     const conn = await db();
     try {
         await shipmentController.completeShipment(req, res, conn);
+    }
+    finally {
+        if (conn) conn.close();
+    }
+});
+
+router.post("/revoke-completion", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.revokeShipmentCompletion(req, res, conn);
     }
     finally {
         if (conn) conn.close();

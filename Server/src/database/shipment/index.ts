@@ -98,6 +98,30 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     return result.length > 0 ? result[0] : null;
 }
 
+export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<any | null> {
+    const query = `
+         SELECT ws.*, cus."customerName", st."stationName",
+             st."rmAccountNumber" AS "stationRMAccountNumber",
+             addr."line1" AS "stationAddressLine1",
+             addr."line2" AS "stationAddressLine2",
+             addr."city" AS "stationCity",
+             addr."state" AS "stationState",
+             addr."zipCode" AS "stationZipCode",
+             st."phoneNumber" AS "stationPhoneNumber",
+             air."airlineName", air."airlineCode", air."airlineNumber", air."airportCode"
+        FROM ${SCHEMA}."Warehouse_Shipment" as ws
+        LEFT JOIN ${SCHEMA}."Customer" as cus ON ws."customerId" = cus."customerId"
+        LEFT JOIN ${SCHEMA}."Station" as st ON ws."stationId" = st."stationId"
+        LEFT JOIN ${SCHEMA}."Entity_Address_Map" as eam ON st."entityId" = eam."entityId"
+        LEFT JOIN ${SCHEMA}."Address" as addr ON eam."addressId" = addr."addressId"
+        LEFT JOIN ${SCHEMA}."Airline" as air ON ws."consigneeId" = air."airlineId"
+        WHERE ws."shipmentId" = ?
+    `;
+
+    const result = await conn.query(query, [shipmentId]) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
 export async function listShipments(
     conn: Connection,
     filters: { searchTerm?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean }
@@ -247,6 +271,20 @@ export async function replaceReceipts(conn: Connection, shipmentId: number, rece
     }
 }
 
+export async function addReceiptToShipment(conn: Connection, shipmentId: number, receiptId: number): Promise<void> {
+    await conn.query(
+        `INSERT INTO ${SCHEMA}."Warehouse_Shipment_Receipts" ("shipmentId", "receiptId") VALUES (?, ?)`,
+        [shipmentId, receiptId]
+    );
+}
+
+export async function removeReceiptFromShipment(conn: Connection, shipmentId: number, receiptId: number): Promise<void> {
+    await conn.query(
+        `DELETE FROM ${SCHEMA}."Warehouse_Shipment_Receipts" WHERE "shipmentId" = ? AND "receiptId" = ?`,
+        [shipmentId, receiptId]
+    );
+}
+
 export async function getContainersByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
     const query = `SELECT "containerId", "shipmentId", "container" 
     FROM ${SCHEMA}."Warehouse_Shipment_Containers" 
@@ -255,7 +293,7 @@ export async function getContainersByShipmentId(conn: Connection, shipmentId: nu
 }
 
 export async function getReceiptsByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
-    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."status", wr."piecesInland", wr."weightInland", wr."reWeight", wr."location"
+    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."parentReceipt", wr."status", wr."piecesInland", wr."weightInland", wr."reWeight", wr."location"
     FROM ${SCHEMA}."Warehouse_Shipment_Receipts" as wsr 
     LEFT JOIN ${SCHEMA}."Warehouse_Receipt" as wr ON wsr."receiptId" = wr."receiptId"
     WHERE wsr."shipmentId" = ?`;
@@ -267,6 +305,7 @@ export async function getReceiptsByShipmentId(conn: Connection, shipmentId: numb
         shipmentId: row.shipmentId,
         receiptId: parseInt(row.receiptId),
         receiptNumber: parseInt(row.receiptNumber),
+        parentReceipt: row.parentReceipt != null ? parseInt(row.parentReceipt) : null,
     }));
 }
 
@@ -315,4 +354,65 @@ export async function approveShipmentCompletion(conn: Connection, shipmentId: nu
     `;
 
     await conn.query(query, [completeStatus, userId, userId, shipmentId]);
+}
+
+export async function revokeShipmentCompletion(conn: Connection, shipmentId: number, userId: number): Promise<void> {
+    const query = `
+        UPDATE ${SCHEMA}."Warehouse_Shipment"
+        SET "completeStatus" = 'IDEAL',
+            "isShipped" = 'N',
+            "requestedBy" = NULL,
+            "requestedAt" = NULL,
+            "approvedBy" = NULL,
+            "approvedAt" = NULL,
+            "updatedBy" = ?,
+            "updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)
+        WHERE "shipmentId" = ?
+    `;
+
+    await conn.query(query, [userId, shipmentId]);
+}
+
+
+export async function createShipmentPickupEntry(conn: Connection, payload: any, userId: number): Promise<any> {
+    const query = `
+        SELECT "pickupId" FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Warehouse_Shipment_Pickup_Entry"
+            (
+                "shipmentId", "barcodeNumber", "pickupDate", "contactName", "contactPhoneNumber",
+                "customerId", "customerName", "stationId", "stationName", "billTo",
+                "stationAddressLine1", "stationAddressLine2", "stationCity", "stationState",
+                "stationZipCode", "stationPhoneNumber", "airlineCode", "airBillNumber", "hazmat",
+                "pieces", "weight", "readyTime", "readyDate", "closeTime", "closeDate",
+                "loTime", "loDate", "createdBy", "createdAt"
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+        )
+    `;
+
+    const params = [
+        payload.shipmentId, payload.barcodeNumber, payload.pickupDate, payload.contactName,
+        payload.contactPhoneNumber, payload.customerId, payload.customerName, payload.stationId,
+        payload.stationName, payload.billTo, payload.stationAddressLine1, payload.stationAddressLine2,
+        payload.stationCity, payload.stationState, payload.stationZipCode, payload.stationPhoneNumber,
+        payload.airlineCode, payload.airBillNumber, payload.hazmat, payload.pieces, payload.weight,
+        payload.readyTime, payload.readyDate, payload.closeTime, payload.closeDate, payload.loTime,
+        payload.loDate, payload.createdBy ?? userId,
+    ];
+
+    const result = await conn.query(query, params as any[]) as any[];
+    const pickupId = result[0]?.pickupId;
+    if (!pickupId) {
+        throw new Error("Pickup entry could not be created");
+    }
+
+    return getShipmentPickupEntryById(conn, pickupId);
+}
+
+export async function getShipmentPickupEntryById(conn: Connection, pickupId: number): Promise<any | null> {
+    const result = await conn.query(
+        `SELECT * FROM ${SCHEMA}."Warehouse_Shipment_Pickup_Entry" WHERE "pickupId" = ?`,
+        [pickupId]
+    ) as any[];
+    return result.length > 0 ? result[0] : null;
 }

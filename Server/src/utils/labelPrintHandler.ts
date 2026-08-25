@@ -11,6 +11,7 @@ export const dataToZPL = (data: { labelCount: number, receiptNumber: number, cus
     let zpl = '';
     for (let i = 0; i < data.labelCount; i++) {
         const barcodeValue = `${safeText(data.receiptNumber, "")}${safeText(data.freightBarcodeValue, "") ? `-${safeText(data.freightBarcodeValue, "")}` : ""}`;
+        const receiptLastFour = safeText(data.receiptNumber, "").slice(-4);
         const customerName = safeText(data.customerName, 'N/A').toUpperCase();
         const packageId = safeText(data.packageId, 'N/A');
         const shipper = safeText(data.shipper, 'N/A');
@@ -54,23 +55,26 @@ export const dataToZPL = (data: { labelCount: number, receiptNumber: number, cus
             ^FO400,10^GB2,1198,4^FS
 
             ^FX --- SECTION 3: SHIPPING DETAILS --- ^FS
+
+            ^FO140,780^A0R,210,210^FD${receiptLastFour}^FS
+
             ^FO360,30^A0R,28,28^FDShipper^FS
-            ^FO360,320^A0R,32,32^FD${shipper}^FS
+            ^FO360,200^A0R,24,24^FD${shipper}^FS
 
             ^FO320,30^A0R,28,28^FDCarrier^FS
-            ^FO320,320^A0R,32,32^FD${carrierName}^FS
+            ^FO320,200^A0R,24,24^FD${carrierName}^FS
 
             ^FO280,30^A0R,28,28^FDPackage ID^FS
-            ^FO280,320^A0R,32,32^FD${packageId}^FS
+            ^FO280,200^A0R,24,24^FD${packageId}^FS
 
             ^FO240,30^A0R,28,28^FDPro Number^FS
-            ^FO240,320^A0R,32,32^FD${proNumber}^FS
+            ^FO240,200^A0R,24,24^FD${proNumber}^FS
 
             ^FO200,30^A0R,28,28^FDDestination^FS
-            ^FO200,320^A0R,32,32^FD${destination}^FS
+            ^FO200,200^A0R,24,24^FD${destination}^FS
 
             ^FO160,30^A0R,28,28^FDPieces^FS
-            ^FO160,320^A0R,32,32^FD${pieces}^FS
+            ^FO160,200^A0R,24,24^FD${pieces}^FS
 
             ^FX --- LINE 3 --- ^FS
             ^FO130,10^GB2,1198,4^FS

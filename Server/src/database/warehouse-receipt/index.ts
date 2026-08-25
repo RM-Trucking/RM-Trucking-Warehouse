@@ -119,9 +119,10 @@ export async function createWarehouseReceipt(
                 "receivedBy",
                 "location",
                 "reWeight",
-                "approvalStatus"
+                "approvalStatus",
+                "parentReceipt"
             )
-            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -167,7 +168,8 @@ export async function createWarehouseReceipt(
         receipt.receivedBy ?? '',
         receipt.location ?? '',
         receipt.reWeight ?? 0,
-        receipt.approvalStatus ?? null
+        receipt.approvalStatus ?? null,
+        receipt.parentReceipt !== undefined && receipt.parentReceipt !== null ? Number(receipt.parentReceipt) : null
     ];
 
     console.log("Executing createWarehouseReceipt query:", query, "with params:", params);
