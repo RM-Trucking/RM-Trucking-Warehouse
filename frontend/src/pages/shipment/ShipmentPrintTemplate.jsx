@@ -11,7 +11,7 @@ const TITLES = {
 
 const border = '1px solid #111';
 const cell = { border, padding: '4px 6px', fontSize: 11, lineHeight: 1.3, verticalAlign: 'top' };
-const heading = { ...cell, background: '#050505', color: '#fff', fontWeight: 700, textAlign: 'center', fontSize: 11, letterSpacing: 0.2 };
+const heading = { ...cell, background: '#cccccc', color: '#000', fontWeight: 700, textAlign: 'center', fontSize: 11, letterSpacing: 0.2 };
 const valueOrBlank = (value) => value ?? '';
 const firstValue = (data, fields) => fields.find((field) => data?.[field] !== undefined && data?.[field] !== null && data?.[field] !== '')
     ? data[fields.find((field) => data?.[field] !== undefined && data?.[field] !== null && data?.[field] !== '')]

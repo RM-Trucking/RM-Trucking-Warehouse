@@ -453,6 +453,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                         <Controller name="customer" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
                                 fullWidth
+                                readOnly={viewMode}
                                 options={customerOptions}
                                 value={field.value}
                                 inputValue={customerSearchValue}
@@ -495,6 +496,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                         <Controller name="station" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
                                 fullWidth
+                                readOnly={viewMode}
                                 options={stationOptions}
                                 value={field.value}
                                 inputValue={stationSearchValue}
@@ -668,10 +670,10 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                         <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
                             <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: 1 }}>
                                 <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
-                                <Typography sx={{ width: '40%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
+                                <Typography sx={{ width: viewMode ? '50%' : '40%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
                                 <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
                                 <Typography sx={{ width: '20%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
-                                <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
+                                {!viewMode && <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>}
                             </Stack>
                             {warehouseFields.map((item, index) => (
                                 <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
@@ -680,7 +682,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                             {String(index + 1).padStart(2, '0')}
                                         </Typography>
                                     </Box>
-                                    <Box sx={{ width: '40%', pr: 1 }}>
+                                    <Box sx={{ width: viewMode ? '50%' : '40%', pr: 1 }}>
                                         <Controller name={`warehouses.${index}.warehouseNo`} control={control} render={({ field }) => (
                                             <Autocomplete
                                                 fullWidth
@@ -688,8 +690,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                 options={canSelectWarehouse ? shipmentReceiptOptionsByField[item.id] || [] : []}
                                                 value={field.value}
                                                 inputValue={receiptInputValues[item.id] || ''}
-                                                readOnly={!canSelectWarehouse}
-                                                openOnFocus={canSelectWarehouse}
+                                                readOnly={viewMode || !canSelectWarehouse}
+                                                openOnFocus={!viewMode && canSelectWarehouse}
                                                 loading={Boolean(shipmentReceiptLoadingByField[item.id])}
                                                 getOptionLabel={getShipmentReceiptOptionLabel}
                                                 isOptionEqualToValue={(option, value) =>
@@ -726,16 +728,16 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                         error={warehouseReceiptError && index === 0}
                                                         inputProps={{
                                                             ...params.inputProps,
-                                                            readOnly: !canSelectWarehouse,
+                                                            readOnly: viewMode || !canSelectWarehouse,
                                                             onMouseDown: (event) => {
-                                                                if (!canSelectWarehouse) {
+                                                                if (!viewMode && !canSelectWarehouse) {
                                                                     event.preventDefault();
                                                                     setWarehouseAlertOpen(true);
                                                                 }
                                                             },
                                                             onFocus: (event) => {
                                                                 params.inputProps?.onFocus?.(event);
-                                                                if (!canSelectWarehouse) {
+                                                                if (!viewMode && !canSelectWarehouse) {
                                                                     setWarehouseAlertOpen(true);
                                                                 }
                                                             },
@@ -779,36 +781,40 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                             />
                                         )} />
                                     </Box>
-                                    <Box sx={{ width: '10%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
-                                        <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
-                                            <Iconify icon="mingcute:delete-2-fill" width={18} />
-                                        </IconButton>
-                                        <IconButton
-                                            size="small"
-                                            onClick={() => saveWarehouseRow(item.id, index)}
-                                            color={savedWarehouseRows.has(item.id) ? 'success' : 'default'}
-                                            sx={{ p: 0.5, color: savedWarehouseRows.has(item.id) ? 'success.main' : '#000' }}
-                                        >
-                                            <Iconify icon="material-symbols:save" width={18} />
-                                        </IconButton>
-                                    </Box>
+                                    {!viewMode && (
+                                        <Box sx={{ width: '10%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
+                                            <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
+                                                <Iconify icon="mingcute:delete-2-fill" width={18} />
+                                            </IconButton>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => saveWarehouseRow(item.id, index)}
+                                                color={savedWarehouseRows.has(item.id) ? 'success' : 'default'}
+                                                sx={{ p: 0.5, color: savedWarehouseRows.has(item.id) ? 'success.main' : '#000' }}
+                                            >
+                                                <Iconify icon="material-symbols:save" width={18} />
+                                            </IconButton>
+                                        </Box>
+                                    )}
                                 </Stack>
                             ))}
 
-                            <Box sx={{ p: 1, textAlign: 'right' }}>
-                                <IconButton
-                                    size="small"
-                                    disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
-                                    onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
-                                    sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
-                                >
-                                    <Iconify icon="akar-icons:plus" width={16} />
-                                </IconButton>
-                            </Box>
+                            {!viewMode && (
+                                <Box sx={{ p: 1, textAlign: 'right' }}>
+                                    <IconButton
+                                        size="small"
+                                        disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
+                                        onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
+                                        sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
+                                    >
+                                        <Iconify icon="akar-icons:plus" width={16} />
+                                    </IconButton>
+                                </Box>
+                            )}
 
                             <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
                                 <Box sx={{ width: '10%' }} />
-                                <Box sx={{ width: '40%' }} />
+                                <Box sx={{ width: viewMode ? '50%' : '40%' }} />
                                 <Box sx={{ width: '20%' }}>
                                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalPieces}</Typography>
                                 </Box>
