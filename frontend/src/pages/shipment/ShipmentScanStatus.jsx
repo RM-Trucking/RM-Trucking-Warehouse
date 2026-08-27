@@ -442,11 +442,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 receipts.map((receipt) => String(receipt.receiptId || receipt.shipmentReceiptId))
             );
             const updatedReceipts = Array.isArray(updatedShipment?.receipts)
-                ? [...updatedShipment.receipts].sort((first, second) => {
-                    const firstIsOriginal = originalReceiptIds.has(String(first.receiptId || first.shipmentReceiptId));
-                    const secondIsOriginal = originalReceiptIds.has(String(second.receiptId || second.shipmentReceiptId));
-                    return Number(secondIsOriginal) - Number(firstIsOriginal);
-                })
+                ? updatedShipment.receipts
                 : receipts;
             const newSplitReceiptIds = updatedReceipts
                 .filter((receipt) => !originalReceiptIds.has(String(receipt.receiptId || receipt.shipmentReceiptId)))
@@ -735,7 +731,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 {!mobile && <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>}
                                 <TableCell sx={{ fontWeight: 700 }}>{mobile ? 'Warehouse #' : 'Warehouse Receipt #'}</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
-                                <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                <TableCell sx={{ fontWeight: 700 }}>Items</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                                 <TableCell sx={{ position: mobile ? 'sticky' : 'static', right: mobile ? 0 : 'auto', zIndex: mobile ? 3 : 'auto', bgcolor: '#d7d7d7', boxShadow: mobile ? '-4px 0 6px -4px rgba(0,0,0,0.35)' : 'none', fontWeight: 700, textAlign: 'left' }}>Action</TableCell>
@@ -1022,9 +1018,9 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                             <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
                                             <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
                                             <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
-                                            <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                            <TableCell sx={{ fontWeight: 700 }}>Items</TableCell>
                                             <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
-                                            <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                                            <TableCell align="center" sx={{ fontWeight: 700 }}>Status</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
@@ -1105,7 +1101,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                     <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
                                     <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
                                     <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
-                                    <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                    <TableCell sx={{ fontWeight: 700 }}>Items</TableCell>
                                     <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                     <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                                 </TableRow>
@@ -1195,7 +1191,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                         <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>
                                         <TableCell sx={{ fontWeight: 700 }}>Warehouse Receipt #</TableCell>
                                         <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
-                                        <TableCell sx={{ fontWeight: 700 }}>Pieces</TableCell>
+                                        <TableCell sx={{ fontWeight: 700 }}>Items</TableCell>
                                         <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                         <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                                     </TableRow>
@@ -1377,7 +1373,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             <TableHead>
                                 <TableRow sx={{ bgcolor: '#f1f1f1' }}>
                                     <TableCell sx={{ width: 48, fontSize: 11 }}>Sno</TableCell>
-                                    <TableCell sx={{ fontSize: 11 }}>Piece</TableCell>
+                                    <TableCell sx={{ fontSize: 11 }}>Pieces</TableCell>
                                     <TableCell sx={{ fontSize: 11 }}>Weight (lbs)</TableCell>
                                     <TableCell sx={{ fontSize: 11 }}>Status</TableCell>
                                 </TableRow>

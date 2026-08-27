@@ -116,12 +116,12 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     // Define default values based on the Air Shipment image mockup
     const defaultValues = {
         rmProNo: rowData?.barcodeNumber || '',
-        customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || '' } : null,
-        station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || '' } : null,
+        customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || String(rowData.customerId || '') } : null,
+        station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || String(rowData.stationId || '') } : null,
         airBill: rowData?.airBillNumber || '',
         consignee: rowData ? {
             airlineId: rowData.consigneeId || rowData.airlineId,
-            airlineName: rowData.airlineName || '',
+            airlineName: rowData.airlineName || String(rowData.consigneeId || ''),
             airlineCode: rowData.airlineCode || '',
             airlineNumber: rowData.airlineNumber || '',
             airportCode: rowData.airportCode || '',
@@ -135,7 +135,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             : [{ containerNo: '' }],
         warehouses: rowData?.receipts?.length
             ? rowData.receipts.map((item) => ({
-                warehouseNo: item,
+                warehouseNo: { ...item, receiptNumber: item.receiptNumber || item.receiptId || '' },
                 pieces: item.pieces ?? item.piecesInland ?? '',
                 weight: item.weight ?? item.reWeight ?? '',
             }))
@@ -145,8 +145,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const { control, handleSubmit, setValue, clearErrors, reset } = useForm({ defaultValues });
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? rowData?.barcodeNumber || '' : '');
-    const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || '');
-    const [stationSearchValue, setStationSearchValue] = useState(rowData?.stationName || rowData?.station || '');
+    const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
+    const [stationSearchValue, setStationSearchValue] = useState(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
     const [warehouseAlertOpen, setWarehouseAlertOpen] = useState(false);
     const [duplicateReceiptAlertOpen, setDuplicateReceiptAlertOpen] = useState(false);
     const [pendingReceiptSelection, setPendingReceiptSelection] = useState(null);
@@ -363,8 +363,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const handleDiscardChanges = () => {
         reset(defaultValues);
         setBarcodeValue(rowData?.barcodeNumber || '');
-        setCustomerSearchValue(rowData?.customerName || rowData?.customer || '');
-        setStationSearchValue(rowData?.stationName || rowData?.station || '');
+        setCustomerSearchValue(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
+        setStationSearchValue(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
         setSubmitError('');
         setRowSaveError('');
         setCancelEditDialogOpen(false);
@@ -440,12 +440,16 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
         setSubmitError(result?.error || `Failed to ${viewMode ? 'update' : 'create'} shipment`);
     };
 
+    const onInvalid = () => {
+        setSubmitError('Please fill all mandatory fields before submitting');
+    };
+
     return (
         <ShipmentFormLayout
             title={viewMode ? 'View Air Shipment Form' : 'New Air Shipment Form'}
             handleClose={handleHeaderClose}
             onCancel={handleCancel}
-            onSubmit={handleSubmit(onSubmit)}
+            onSubmit={handleSubmit(onSubmit, onInvalid)}
             submitLoading={createShipmentLoading}
             submitLabel={viewMode ? 'Save' : 'Submit'}
             submitLoadingLabel={viewMode ? 'Saving...' : 'Submitting...'}
