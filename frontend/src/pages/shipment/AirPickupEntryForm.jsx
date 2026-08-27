@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { useForm, Controller } from 'react-hook-form';
-import { Alert, Stack, Typography, FormControlLabel, Checkbox } from '@mui/material';
+import { Alert, Stack, Typography, FormControlLabel, Checkbox, Snackbar } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -68,6 +68,7 @@ export default function AirPickupEntryForm({ handleClose, rowData, onCompleteSuc
     const dispatch = useDispatch();
     const pickupEntryLoading = useSelector((state) => state.shipmentdata.pickupEntryLoading);
     const [submitError, setSubmitError] = useState('');
+    const [validationSnackbarOpen, setValidationSnackbarOpen] = useState(false);
     const { control, handleSubmit, reset } = useForm({
         defaultValues: getPickupDefaults(rowData),
     });
@@ -123,8 +124,12 @@ export default function AirPickupEntryForm({ handleClose, rowData, onCompleteSuc
         setSubmitError(result?.error || 'Failed to submit pickup entry');
     };
 
+    const onInvalid = () => {
+        setValidationSnackbarOpen(true);
+    };
+
     return (
-        <ShipmentFormLayout title="AIR Pickup Entry" handleClose={handleClose} onSubmit={handleSubmit(onSubmit)} submitLoading={pickupEntryLoading}
+        <ShipmentFormLayout title="AIR Pickup Entry" handleClose={handleClose} onSubmit={handleSubmit(onSubmit, onInvalid)} submitLoading={pickupEntryLoading}
             topInfoPanel={
                 <TopInfoPanel showBarcodeGraphic={true} status="Pickup Entry" showNotes={false}
                     rmProInputNode={<Controller name="rmProNo" control={control} render={({ field }) => (<StyledTextField {...field} variant="outlined" size="small" fullWidth slotProps={{ input: { readOnly: true } }} sx={{ '& .MuiOutlinedInput-root': { height: '30px', bgcolor: '#fff' } }} />)} />}
@@ -140,8 +145,8 @@ export default function AirPickupEntryForm({ handleClose, rowData, onCompleteSuc
                     <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Shipment Details</Typography></legend>
                     <Stack spacing={3}>
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
-                            <Controller name="airline" control={control} rules={{ required: true }} render={({ field }) => <StyledTextField {...field} variant="standard" fullWidth label="Airline *" slotProps={{ input: { readOnly: true } }} />} />
-                            <Controller name="airBillNo" control={control} rules={{ required: true }} render={({ field }) => <StyledTextField {...field} variant="standard" fullWidth label="Air Bill No *" slotProps={{ input: { readOnly: true } }} />} />
+                            <Controller name="airline" control={control} rules={{ required: true }} render={({ field, fieldState: { error } }) => <StyledTextField {...field} variant="standard" fullWidth label="Airline *" error={!!error} slotProps={{ input: { readOnly: true } }} />} />
+                            <Controller name="airBillNo" control={control} rules={{ required: true }} render={({ field, fieldState: { error } }) => <StyledTextField {...field} variant="standard" fullWidth label="Air Bill No *" error={!!error} slotProps={{ input: { readOnly: true } }} />} />
                         </Stack>
 
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
@@ -152,19 +157,29 @@ export default function AirPickupEntryForm({ handleClose, rowData, onCompleteSuc
 
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                                <Controller name="readyTime" control={control} render={({ field: { onChange, value } }) => <TimePicker label="Ready Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
-                                <Controller name="readyDate" control={control} render={({ field: { onChange, value } }) => <DatePicker label="Ready Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
-                                <Controller name="closeTime" control={control} render={({ field: { onChange, value } }) => <TimePicker label="Close Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
-                                <Controller name="closeDate" control={control} render={({ field: { onChange, value } }) => <DatePicker label="Close Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="readyTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker label="Ready Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="readyDate" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <DatePicker label="Ready Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="closeTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker label="Close Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="closeDate" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <DatePicker label="Close Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
                             </Stack>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ width: '50%' }}>
-                                <Controller name="lockoutTime" control={control} render={({ field: { onChange, value } }) => <TimePicker label="Lockout Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
-                                <Controller name="lockoutDate" control={control} render={({ field: { onChange, value } }) => <DatePicker label="Lockout Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="lockoutTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker label="Lockout Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="lockoutDate" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <DatePicker label="Lockout Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
                             </Stack>
                         </LocalizationProvider>
                     </Stack>
                 </fieldset>
             </Stack>
+            <Snackbar
+                open={validationSnackbarOpen}
+                autoHideDuration={4000}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+                onClose={() => setValidationSnackbarOpen(false)}
+            >
+                <Alert severity="error" onClose={() => setValidationSnackbarOpen(false)} sx={{ width: '100%' }}>
+                    Please fill all mandatory fields before submitting
+                </Alert>
+            </Snackbar>
         </ShipmentFormLayout>
     );
 }

@@ -9,7 +9,7 @@ import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getShipmentData, getShipmentForPickup } from '../../redux/slices/shipment';
+import { getShipmentById, getShipmentData, getShipmentForPickup } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
@@ -65,9 +65,11 @@ export default function ShipmentTabs({ onViewShipment }) {
     const [activeForm, setActiveForm] = useState({ type: null, data: null });
     const printRef = useRef();
     const [printData, setPrintData] = useState(null);
+    const [printLoadingId, setPrintLoadingId] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
     const [pickupError, setPickupError] = useState('');
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
+    const [viewLoadingId, setViewLoadingId] = useState(null);
     
     const shipmentTypeMap = { active: 'AIR', inactive: 'LCL', incomplete: 'FCL' };
     const shipmentData = apiShipmentData
@@ -101,10 +103,24 @@ export default function ShipmentTabs({ onViewShipment }) {
         onAfterPrint: () => setPrintData(null),
     });
 
-    const onPrintClick = (rowData) => {
+    const onPrintClick = async (rowData) => {
+        const shipmentId = rowData?.shipmentId || rowData?.id;
+        if (!shipmentId) {
+            setPickupError('Shipment ID is unavailable.');
+            return;
+        }
+
+        setPrintLoadingId(shipmentId);
+        const result = await dispatch(getShipmentById(shipmentId));
+        setPrintLoadingId(null);
+        if (!result?.success) {
+            setPickupError(result?.error || 'Failed to load shipment details for printing.');
+            return;
+        }
+
         // flushSync forces React to synchronously commit the DOM update before
         // handlePrint() reads the ref — fixes first-click issue after reload.
-        flushSync(() => setPrintData(rowData));
+        flushSync(() => setPrintData(result.data));
         handlePrint();
     };
 
@@ -124,8 +140,26 @@ export default function ShipmentTabs({ onViewShipment }) {
         setCurrentTab(newValue);
     };
 
-    const handleAction = (rowData) => {
-        onViewShipment(rowData);
+    const handleAction = async (rowData) => {
+        const shipmentId = rowData?.shipmentId || rowData?.id;
+        if (!shipmentId) {
+            setPickupError('Shipment ID is unavailable.');
+            return;
+        }
+
+        setViewLoadingId(shipmentId);
+        const result = await dispatch(getShipmentById(shipmentId));
+        setViewLoadingId(null);
+
+        if (!result?.success) {
+            setPickupError(result?.error || 'Failed to load shipment details.');
+            return;
+        }
+
+        onViewShipment({
+            ...result.data,
+            shipmentId: result.data?.shipmentId || shipmentId,
+        });
     };
 
     const handleHandExtended = (rowData) => {
@@ -318,17 +352,27 @@ const handleClosePickupForm = () => {
                     >
                         <IconButton
                             size="small"
+                            disabled={viewLoadingId !== null}
                             onClick={(e) => { e.stopPropagation(); handleAction(params.row); }}
                             sx={{ color: '#A22' }}
                         >
-                            <Iconify icon="eva:eye-fill" width={20} />
+                            {String(viewLoadingId) === String(params.row.shipmentId || params.row.id) ? (
+                                <CircularProgress size={18} color="inherit" />
+                            ) : (
+                                <Iconify icon="eva:eye-fill" width={20} />
+                            )}
                         </IconButton>
                         <IconButton
                             size="small"
+                            disabled={printLoadingId !== null}
                             onClick={(e) => { e.stopPropagation(); onPrintClick(params.row); }}
                             sx={{ color: '#A22' }}
                         >
-                            <Iconify icon="mdi:printer" width={20} />
+                            {String(printLoadingId) === String(params.row.shipmentId || params.row.id) ? (
+                                <CircularProgress size={18} color="inherit" />
+                            ) : (
+                                <Iconify icon="mdi:printer" width={20} />
+                            )}
                         </IconButton>
                         <IconButton
                             size="small"

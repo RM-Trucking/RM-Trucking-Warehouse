@@ -4,9 +4,9 @@ import Barcode from 'react-barcode';
 import RMLogo from '../../assets/RM.png';
 
 const TITLES = {
-    active: 'Airport Transfer',
-    inactive: 'Ocean LCL Transfer',
-    incomplete: 'Ocean FCL Transfer',
+    AIR: 'Airport Transfer',
+    LCL: 'Ocean LCL Transfer',
+    FCL: 'Ocean FCL Transfer',
 };
 
 const border = '1px solid #111';
@@ -17,27 +17,37 @@ const firstValue = (data, fields) => fields.find((field) => data?.[field] !== un
     ? data[fields.find((field) => data?.[field] !== undefined && data?.[field] !== null && data?.[field] !== '')]
     : '';
 const formatDate = (value) => {
-    const date = value ? new Date(value) : new Date();
+    if (!value) return '';
+    const date = new Date(value);
     return Number.isNaN(date.getTime()) ? valueOrBlank(value) : date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 };
 const getReceiptNumber = (receipt) => typeof receipt === 'object'
-    ? firstValue(receipt, ['receiptNumber', 'warehouseReceiptNumber', 'warehouseNo', 'id'])
+    ? firstValue(receipt, ['receiptId', 'receiptNumber', 'warehouseReceiptNumber', 'warehouseNo', 'id'])
     : receipt;
 const getContainerNumber = (container) => typeof container === 'object'
     ? firstValue(container, ['container', 'containerNo', 'containerNumber'])
     : container;
 
-const ShipmentPrintTemplate = forwardRef(({ data, type }, ref) => {
-    const title = TITLES[type] || TITLES.active;
+const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
+    const title = TITLES[data?.shipmentType] || '';
     const barcode = firstValue(data, ['barcodeNumber', 'rmNumber', 'rmProNo']);
-    const receipts = Array.isArray(data?.receipts) ? data.receipts : [];
+    const hasReceipts = Array.isArray(data?.receipts);
+    const receipts = hasReceipts ? data.receipts : [];
     const containers = Array.isArray(data?.containers) ? data.containers : [];
-    const totalPieces = firstValue(data, ['pieces', 'totalPieces']) || receipts.reduce((sum, item) => sum + (Number(item?.pieces ?? item?.piecesInland) || 0), 0);
-    const totalWeight = firstValue(data, ['weight', 'totalWeight']) || receipts.reduce((sum, item) => sum + (Number(item?.weight ?? item?.reWeight) || 0), 0);
-    const consigneeName = firstValue(data, ['airlineName', 'consigneeName', 'consignee']);
+    const totalPieces = firstValue(data, ['pieces', 'totalPieces']);
+    const totalWeight = firstValue(data, ['weight', 'totalWeight']);
+    const companyAddressLine1 = firstValue(data, ['companyAddressLine1']);
+    const companyAddressLine2 = firstValue(data, ['companyAddressLine2']);
+    const companyPhoneNumber = firstValue(data, ['companyPhoneNumber']);
+    const companyFaxNumber = firstValue(data, ['companyFaxNumber']);
+    const shipperName = firstValue(data, ['shipperName']);
+    const shipperAddress = firstValue(data, ['shipperAddress']);
+    const shipperCityStateZip = firstValue(data, ['shipperCityStateZip']);
+    const shipperContact = firstValue(data, ['shipperContact']);
+    const consigneeName = firstValue(data, ['airlineName', 'consigneeName', 'consignee', 'consigneeId']);
     const consigneeAddress = firstValue(data, ['consigneeAddress', 'airlineAddress', 'destination']);
     const consigneeCity = firstValue(data, ['consigneeCityStateZip', 'airlineCityStateZip']);
-    const consigneeContact = firstValue(data, ['consigneeContact', 'airlineContact', 'airlineNumber']);
+    const consigneeContact = firstValue(data, ['consigneeContact', 'airlineContact']);
     const instructions = firstValue(data, ['instructions', 'specialInstructions', 'remarks', 'notes']);
     const receiptNumbers = receipts.map(getReceiptNumber).filter(Boolean);
     const containerNumbers = containers.map(getContainerNumber).filter(Boolean);
@@ -70,9 +80,9 @@ const ShipmentPrintTemplate = forwardRef(({ data, type }, ref) => {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
                                 <img src={RMLogo} alt="R&M Trucking" style={{ width: 160, height: 60, objectFit: 'contain' }} />
                                 <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700 }}>
-                                    840 E Green St STE 100,<br />
-                                    Bensenville, IL 60106<br />
-                                    Ph# (847)616-1080&nbsp;&nbsp;Fax# (847)616-8811
+                                    {companyAddressLine1}<br />
+                                    {companyAddressLine2}<br />
+                                    {companyPhoneNumber}{companyPhoneNumber && companyFaxNumber ? '  ' : ''}{companyFaxNumber}
                                 </div>
                             </div>
                         </td>
@@ -100,19 +110,19 @@ const ShipmentPrintTemplate = forwardRef(({ data, type }, ref) => {
                         <td style={{ ...heading, width: '50%', fontSize: 11, padding: '5px 7px' }}>CONSIGNEE</td>
                     </tr>
                     <tr>
-                        <td style={{ ...cell, fontSize: 11 }}><strong>Bill To :</strong>&nbsp; {firstValue(data, ['customerName', 'customer'])}</td>
+                        <td style={{ ...cell, fontSize: 11 }}><strong>Bill To :</strong>&nbsp; {firstValue(data, ['customerName', 'customer', 'customerId'])}</td>
                         <td style={{ ...cell, fontSize: 11 }}><strong>Name :</strong>&nbsp; {consigneeName}</td>
                     </tr>
                     <tr>
-                        <td style={{ ...cell, fontSize: 11 }}><strong>Name :</strong>&nbsp; R &amp; M TRUCKING CO</td>
+                        <td style={{ ...cell, fontSize: 11 }}><strong>Name :</strong>&nbsp; {shipperName}</td>
                         <td style={{ ...cell, fontSize: 11 }}><strong>Address :</strong>&nbsp; {consigneeAddress}</td>
                     </tr>
                     <tr>
-                        <td style={{ ...cell, fontSize: 11 }}><strong>Address :</strong>&nbsp; 840 E GREEN ST STE 100</td>
+                        <td style={{ ...cell, fontSize: 11 }}><strong>Address :</strong>&nbsp; {shipperAddress}</td>
                         <td style={{ ...cell, fontSize: 11 }}><strong>City/State/Zip :</strong>&nbsp; {consigneeCity}</td>
                     </tr>
                     <tr>
-                        <td style={{ ...cell, fontSize: 11 }}><strong>City/State/Zip :</strong>&nbsp; BENSENVILLE, IL 60106&nbsp;&nbsp;&nbsp; <strong>Contact :</strong></td>
+                        <td style={{ ...cell, fontSize: 11 }}><strong>City/State/Zip :</strong>&nbsp; {shipperCityStateZip}&nbsp;&nbsp;&nbsp; <strong>Contact :</strong>&nbsp; {shipperContact}</td>
                         <td style={{ ...cell, fontSize: 11 }}><strong>Contact :</strong>&nbsp; {consigneeContact}</td>
                     </tr>
                 </tbody>
@@ -123,9 +133,9 @@ const ShipmentPrintTemplate = forwardRef(({ data, type }, ref) => {
                     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                         <tbody>
                             <tr><td style={{ ...heading, width: '23%' }}>Total<br />No of Pieces</td><td style={{ ...heading, width: '34%' }}>Total<br />Weight</td><td style={{ ...heading, width: '43%' }}>Total<br />No of Warehouse Receipt</td></tr>
-                            <tr><td style={{ ...cell, height: 43, textAlign: 'center', fontWeight: 700 }}>{totalPieces}</td><td style={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{totalWeight}</td><td style={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{receipts.length}</td></tr>
+                            <tr><td style={{ ...cell, height: 43, textAlign: 'center', fontWeight: 700 }}>{totalPieces}</td><td style={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{totalWeight}</td><td style={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{hasReceipts ? receipts.length : ''}</td></tr>
                             <tr><td style={{ ...cell, height: 22 }} colSpan={1}>Booking #</td><td style={cell} colSpan={2}>{firstValue(data, ['booking', 'bookingNumber'])}</td></tr>
-                            <tr><td style={{ ...cell, height: 22, fontSize: 10 }} colSpan={1}>Customer Ref #</td><td style={{ ...cell, fontSize: 9 }} colSpan={2}>{firstValue(data, ['customerRefNumber', 'additionalRefNumber', 'airBillNumber', 'billNumber'])}</td></tr>
+                            <tr><td style={{ ...cell, height: 22, fontSize: 10 }} colSpan={1}>Customer Ref #</td><td style={{ ...cell, fontSize: 9 }} colSpan={2}>{firstValue(data, ['customerRefNumber'])}</td></tr>
                             <tr><td style={{ ...cell, height: 22 }} colSpan={1}>MISC</td><td style={cell} colSpan={2}>{firstValue(data, ['additionalRefNumber', 'additionalRefNo'])}</td></tr>
                             <tr><td style={heading} colSpan={3}>RECEIVED IN GOOD ORDER EXCEPT AS NOTED</td></tr>
                             <tr><td style={{ ...cell, height: 80 }} colSpan={3}>{firstValue(data, ['receivedConditionNotes', 'conditionNotes'])}</td></tr>
@@ -183,7 +193,6 @@ ShipmentPrintTemplate.displayName = 'ShipmentPrintTemplate';
 
 ShipmentPrintTemplate.propTypes = {
     data: PropTypes.object,
-    type: PropTypes.string,
 };
 
 export default ShipmentPrintTemplate;

@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
-  DialogContent, useMediaQuery
+  DialogContent, useMediaQuery, Alert, CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -20,6 +20,8 @@ import NewAirShipmentForm from './AirShipmentForm';
 import OceanLCLForm from './OceanLCLForm';
 import OceanFCLForm from './OceanFCLForm';
 import ShipmentMobileScanPage from './ShipmentMobileScanPage';
+import { useDispatch } from '../../redux/store';
+import { getShipmentById } from '../../redux/slices/shipment';
 // ----------------------------------------------------------------------
 
 export default function ShipmentFormPage() {
@@ -29,13 +31,71 @@ export default function ShipmentFormPage() {
 }
 
 function ShipmentFormPageContent() {
+  const dispatch = useDispatch();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isScanGunScreen = useMediaQuery('(max-width:599.95px)', { noSsr: true });
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [showAirShipmentForm, setShowAirShipmentForm] = useState(false);
   const [showOceanLCLForm, setShowOceanLCLForm] = useState(false);
   const [showOceanFCLForm, setShowOceanFCLForm] = useState(false);
-  const [viewShipment, setViewShipment] = useState(() => location.state?.viewShipment || null);
+  const [viewShipment, setViewShipment] = useState(null);
+  const [viewShipmentError, setViewShipmentError] = useState('');
+  const requestedViewShipmentId = searchParams.get('viewShipmentId')
+    || location.state?.viewShipment?.shipmentId
+    || location.state?.viewShipment?.id
+    || '';
+
+  useEffect(() => {
+    if (!requestedViewShipmentId) return;
+    if (String(viewShipment?.shipmentId || viewShipment?.id || '') === String(requestedViewShipmentId)) return;
+
+    let active = true;
+    dispatch(getShipmentById(requestedViewShipmentId)).then((result) => {
+      if (!active) return;
+      if (!result?.success) {
+        setViewShipmentError(result?.error || 'Failed to load shipment details.');
+        return;
+      }
+      setViewShipment({
+        ...result.data,
+        shipmentId: result.data?.shipmentId || requestedViewShipmentId,
+      });
+      if (!searchParams.get('viewShipmentId')) {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set('viewShipmentId', String(requestedViewShipmentId));
+        setSearchParams(nextParams, { replace: true });
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [dispatch, requestedViewShipmentId, searchParams, setSearchParams, viewShipment]);
+
+  const handleViewShipment = (shipmentData) => {
+    const shipmentId = shipmentData?.shipmentId || shipmentData?.id;
+    setViewShipment(shipmentData);
+    setViewShipmentError('');
+    if (shipmentId) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('viewShipmentId', String(shipmentId));
+      setSearchParams(nextParams);
+    }
+  };
+
+  const handleCloseViewShipment = () => {
+    setViewShipment(null);
+    setViewShipmentError('');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('viewShipmentId');
+    setSearchParams(nextParams);
+  };
+  const viewShipmentLoading = Boolean(
+    requestedViewShipmentId
+    && String(viewShipment?.shipmentId || viewShipment?.id || '') !== String(requestedViewShipmentId)
+    && !viewShipmentError
+  );
   const logError = (error, info) => {
     // Use an error reporting service here
     console.error("Error caught:", info);
@@ -87,6 +147,14 @@ function ShipmentFormPageContent() {
     setShowOceanFCLForm(true);
   };
 
+  if (viewShipmentLoading) {
+    return (
+      <Box sx={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress sx={{ color: '#A22' }} />
+      </Box>
+    );
+  }
+
   if (isScanGunScreen && !viewShipment && !showAirShipmentForm && !showOceanLCLForm && !showOceanFCLForm) {
     return <ShipmentMobileScanPage />;
   }
@@ -102,11 +170,11 @@ function ShipmentFormPageContent() {
         }}
       >
         {viewShipment?.shipmentType === 'AIR' ? (
-          <NewAirShipmentForm handleClose={() => setViewShipment(null)} rowData={viewShipment} viewMode />
+          <NewAirShipmentForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : viewShipment?.shipmentType === 'LCL' ? (
-          <OceanLCLForm handleClose={() => setViewShipment(null)} rowData={viewShipment} viewMode />
+          <OceanLCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : viewShipment?.shipmentType === 'FCL' ? (
-          <OceanFCLForm handleClose={() => setViewShipment(null)} rowData={viewShipment} viewMode />
+          <OceanFCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : showAirShipmentForm ? (
           <NewAirShipmentForm handleClose={handleCloseAirShipmentForm} />
         ) : showOceanLCLForm ? (
@@ -116,9 +184,10 @@ function ShipmentFormPageContent() {
         ) : (
           <>
             <Box>
+              {viewShipmentError && <Alert severity="error" sx={{ mb: 2 }}>{viewShipmentError}</Alert>}
               <SharedHomepageHeader title="Shipment Form" buttonText='New Shipment' onButtonClick={onClickOfNewShipment} />
               <SharedSearchField page="shipment" />
-              <ShipmentTabs onViewShipment={setViewShipment} />
+              <ShipmentTabs onViewShipment={handleViewShipment} />
               {/* <CarrierTable /> */}
             </Box>
             {/* <Dialog open={openConfirmDialog} onClose={handleCloseConfirm} onKeyDown={(event) => {

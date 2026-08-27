@@ -326,6 +326,18 @@ export function getShipmentData({
     };
 }
 
+export function getShipmentById(shipmentId) {
+    return async () => {
+        try {
+            const response = await axios.get(`shipment/${encodeURIComponent(shipmentId)}`);
+            return { success: true, data: response.data?.data || response.data };
+        } catch (error) {
+            const message = error.response?.data?.message || error?.message || error?.error || 'Failed to load shipment details';
+            return { success: false, error: message };
+        }
+    };
+}
+
 export function getShipmentForPickup(shipmentId) {
     return async () => {
         try {
