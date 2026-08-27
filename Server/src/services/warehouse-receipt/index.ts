@@ -297,8 +297,11 @@ export async function listWarehouseReceiptsService(
         pageSize: pageSize,
         total: total
     }
+    console.log(`Fetched ${data.length} receipts for page ${page} with pageSize ${pageSize}. Total receipts: ${total}.`);
 
     const countList = await warehouseReceiptDB.getCountOfWarehouseReceipts(conn);
+
+    console.log(`Count list of warehouse receipts:`, countList);
 
     return { data, ...pagination, countList };
 }
@@ -2105,10 +2108,22 @@ export async function getWarehouseReceiptForShipmentService(
     const result = await warehouseReceiptDB.getWarehouseReceiptForShipment(conn, receiptNumber, startDate, endDate, proNumbers as any);
     if (!result) return null;
 
-    console.log(result);
+    return Promise.all(result.map(async (receipt) => {
+        const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+        const scannedItems = freightInfo.filter((freight) => String(freight.isScanned).toUpperCase() === "Y");
+        const unscannedItems = freightInfo.filter((freight) => String(freight.isScanned).toUpperCase() !== "Y");
 
-    // Normalize numeric fields and JSON fields
-    return result;
+        return {
+            ...receipt,
+            freightSummary: {
+                total: freightInfo.length,
+                scanned: scannedItems.length,
+                unscanned: unscannedItems.length,
+                scannedItems,
+                unscannedItems,
+            },
+        };
+    }));
 }
 
 export async function createFreightInfoTempService(conn: Connection) {

@@ -10,6 +10,10 @@ type WarehouseReceiptListItem = WarehouseReceipt & {
     requestedByName: string | null;
 };
 
+type WarehouseReceiptRateResult = Omit<WarehouseReceiptRate, "rate"> & {
+    finalRate: number;
+};
+
 /**
  * WAREHOUSE RECEIPT TEMP
  */
@@ -586,19 +590,20 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
     const archivedCount = await conn.query(archivedCountQuery, params) as { total: number }[];
     const readyCount = await conn.query(readyCountQuery, params) as { total: number }[];
     const pendingCount = await conn.query(pendingCountQuery, params) as { total: number }[];
+    const getCount = (result: { total: number | bigint }[]) => Number(result[0]?.total ?? 0);
 
     return {
-        active: activeCount[0]?.total || 0,
-        accounting: accountingCount[0]?.total || 0,
-        initiate: initiateCount[0]?.total || 0,
-        onHand: onHandCount[0]?.total || 0,
-        prepared: preparedCount[0]?.total || 0,
-        scanned: scannedCount[0]?.total || 0,
-        shipped: shippedCount[0]?.total || 0,
-        rejected: rejectedCount[0]?.total || 0,
-        archived: archivedCount[0]?.total || 0,
-        ready: readyCount[0]?.total || 0,
-        pending: pendingCount[0]?.total || 0
+        active: getCount(activeCount),
+        accounting: getCount(accountingCount),
+        initiate: getCount(initiateCount),
+        onHand: getCount(onHandCount),
+        prepared: getCount(preparedCount),
+        scanned: getCount(scannedCount),
+        shipped: getCount(shippedCount),
+        rejected: getCount(rejectedCount),
+        archived: getCount(archivedCount),
+        ready: getCount(readyCount),
+        pending: getCount(pendingCount)
     };
 }
 
@@ -1387,7 +1392,7 @@ export async function createWarehouseReceiptRate(conn: Connection, rateData: Omi
 export async function getWarehouseReceiptRate(
     conn: Connection,
     receiptId: number | bigint
-): Promise<WarehouseReceiptRate | null> {
+): Promise<WarehouseReceiptRateResult | null> {
     const query = `
     SELECT 
       "receiptId",
@@ -1399,8 +1404,16 @@ export async function getWarehouseReceiptRate(
     FROM ${SCHEMA}."Warehouse_Receipt_Rate" 
     WHERE "receiptId" = ?
   `;
-    const result = (await conn.query(query, [Number(receiptId)])) as WarehouseReceiptRate[];
-    return result.length > 0 ? result[0] : null;
+    const result = (await conn.query(query, [Number(receiptId)])) as WarehouseReceiptRateResult[];
+    return result.length > 0 ? {
+        ...result[0],
+        receiptId: Number(result[0].receiptId),
+        rateId: Number(result[0].rateId),
+        finalRate: Number(result[0].finalRate),
+        minRate: Number(result[0].minRate),
+        maxRate: Number(result[0].maxRate),
+        baseRate: Number(result[0].baseRate),
+    } : null;
 }
 
 

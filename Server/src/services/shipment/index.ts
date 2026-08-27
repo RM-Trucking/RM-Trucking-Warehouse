@@ -70,6 +70,22 @@ export async function createShipmentWithRelations(
 ): Promise<WarehouseShipmentWithRelations> {
     const normalizedPayload = normalizeShipmentPayload(payload, userId);
 
+    if (payload.receipts !== undefined) {
+        for (const receipt of payload.receipts) {
+            const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
+
+            if (!warehouseReceipt) {
+                throwValidationError(`Warehouse receipt with id ${receipt.receiptId} was not found.`);
+            }
+
+            if (String(warehouseReceipt.status).toUpperCase() !== "ON_HAND") {
+                throwValidationError(
+                    `Warehouse receipt ${warehouseReceipt.receiptNumber ?? receipt.receiptId} has status "${warehouseReceipt.status}". Only ON_HAND receipts can be added to a new shipment.`
+                );
+            }
+        }
+    }
+
     if (normalizedPayload.barcodeNumber) {
         const duplicateBarcode = await shipmentDB.checkShipmentUniqueFields(conn, { barcodeNumber: normalizedPayload.barcodeNumber });
         if (duplicateBarcode) {
