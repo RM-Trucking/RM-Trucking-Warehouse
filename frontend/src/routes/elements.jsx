@@ -27,6 +27,7 @@ export const IdVerificationViewPage = Loadable(lazy(() => import('../pages/IdVer
 export const WarehouseRecieptPage = Loadable(lazy(() => import('../pages/warehouse-receipt-form/WarehouseRecieptPage')));
 export const WarehouseReceiptFormPage = Loadable(lazy(() => import('../pages/warehouse-check-in/WarehouseReceiptFormPage')));
 export const ShipmentFormPage = Loadable(lazy(() => import('../pages/shipment/ShipmentFormPage')));
+export const LocationScanPage = Loadable(lazy(() => import('../pages/warehouse-receipt-form/LocationScanPage')));
 
 
 // Error pages

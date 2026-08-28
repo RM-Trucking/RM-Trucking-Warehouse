@@ -47,5 +47,6 @@ export const PATH_DASHBOARD = {
   warehouseReceiptDashboard: path(ROOTS_DASHBOARD, '/warehouse-receipts'),
   warehouseReceiptForm: path(ROOTS_DASHBOARD, '/warehouse-receipt-form'),
   shipmentBuilding: path(ROOTS_DASHBOARD, '/shipment-form'),
+  locationViewUpdate: path(ROOTS_DASHBOARD, '/location-view-update'),
 };
 

@@ -20,6 +20,7 @@ import {
   WarehouseRecieptPage,
   WarehouseReceiptFormPage,
   ShipmentFormPage,
+  LocationScanPage,
   Page500,
   Page403,
   Page404,
@@ -78,6 +79,7 @@ export default function Router() {
         { path: 'warehouse-receipts', element: <WarehouseRecieptPage /> },
         { path: 'warehouse-receipt-form', element: <WarehouseReceiptFormPage /> },
         { path: 'shipment-form', element: <ShipmentFormPage /> },
+        { path: 'location-view-update', element: <LocationScanPage /> },
       ],
     },
     {

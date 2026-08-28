@@ -39,6 +39,11 @@ const mobileNavConfig = [
     icon: null,
     resetToGrid: true,
   },
+  {
+    title: 'Location - View/Update',
+    path: PATH_DASHBOARD.locationViewUpdate,
+    icon: null,
+  },
 ];
 
 Header.propTypes = {
