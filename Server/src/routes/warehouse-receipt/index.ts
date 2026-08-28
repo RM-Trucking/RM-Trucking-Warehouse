@@ -177,6 +177,12 @@ router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     if (conn) conn.close();
 });
 
+router.get("/:id/with-freight", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    await warehouseReceiptController.getWarehouseReceiptWithFreight(req, res, conn);
+    if (conn) conn.close();
+});
+
 // ===== PUT/PATCH ENDPOINTS (UPDATE ROUTES) =====
 
 // Create warehouse receipt with freight info

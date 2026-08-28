@@ -19,7 +19,7 @@ import ExcelJS from 'exceljs';
 
 
 export async function getWarehouseReceiptWithDetailsService(conn: Connection, receiptId: number) {
-    const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, receiptId);
+    const receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumberForInitiated(conn, receiptId);
     if (!receipt) return null;
 
     const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
@@ -52,7 +52,7 @@ export async function getWarehouseReceiptWithDetailsService(conn: Connection, re
  * - Fetches receipt by PRO number, including freight info with images, rates, and audit logs
  */
 export async function getWarehouseReceiptsByProService(conn: Connection, proNumber: string) {
-    const receipts = await warehouseReceiptDB.getWarehouseReceiptsByProNumber(conn, proNumber);
+    const receipts = await warehouseReceiptDB.getWarehouseReceiptsByProNumberForInitiated(conn, proNumber);
     if (!receipts || receipts.length === 0) return [];
 
     return Promise.all(
@@ -305,6 +305,104 @@ export async function listWarehouseReceiptsService(
 
     return { data, ...pagination, countList };
 }
+
+export async function getWarehouseReceiptByIdOrReceiptNumberService(conn: Connection, id: number, searchBy: string = "receiptId") {
+
+
+    let receipt: WarehouseReceipt | null = null;
+
+    if (searchBy === "receiptId") {
+        receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, id);
+    } else if (searchBy === "receiptNumber") {
+        receipt = await warehouseReceiptDB.getWarehouseReceiptByReceiptNumber(conn, id);
+    }
+
+    if (!receipt) {
+        return null;
+    }
+
+    const freightInformation = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
+    const freightWithImages = await Promise.all(
+        freightInformation.map(async (freight) => ({
+            ...freight,
+            images: await warehouseReceiptDB.getFreightImages(conn, freight.freightId)
+        }))
+    );
+
+    const [badFreightConditionImages, uploadedDocuments, customerEmails, stationDefaultEmails] = await Promise.all([
+        warehouseReceiptDB.getBadFreightConditionImages(conn, receipt.receiptId),
+        warehouseReceiptDB.getDocumentsByReceiptId(conn, receipt.receiptId),
+        customerDB.getDepartmentAndPersonnelEmails(conn, receipt.stationId),
+        customerDB.getStationDefaultEmails(conn, receipt.stationId)
+    ]);
+
+    const warehouseRate = await warehouseReceiptDB.getWarehouseReceiptRate(conn, receipt.receiptId);
+    const rate = warehouseRate || await customerDB.getStationRateDetails(conn, receipt.stationId);
+    const dimFactor = 166;
+    const freightBreakdown = freightInformation.map((freight) => {
+        const pieces = freight.pieces || 0;
+        const length = freight.length || 0;
+        const width = freight.width || 0;
+        const height = freight.height || 0;
+        const weight = freight.weight || 0;
+        const actualWeight = pieces * weight;
+        const dimensionalWeight = (pieces * length * width * height) / dimFactor;
+
+        return {
+            pieces,
+            type: freight.type || "UNKNOWN",
+            length,
+            width,
+            height,
+            actualWeight,
+            dimensionalWeight
+        };
+    });
+
+    const totalActualWeight = freightBreakdown.reduce((sum, freight) => sum + freight.actualWeight, 0);
+    const totalDimensionalWeight = freightBreakdown.reduce((sum, freight) => sum + freight.dimensionalWeight, 0);
+    let rateInformation: any = null;
+
+    if (rate) {
+        const finalRate = receipt.hasFlatRate === "Y" && warehouseRate?.finalRate
+            ? warehouseRate.finalRate
+            : Math.max(totalActualWeight, totalDimensionalWeight) * (rate.baseRate / 100);
+
+        rateInformation = {
+            minRate: rate.minRate,
+            maxRate: rate.maxRate,
+            baseRate: rate.baseRate,
+            baseRatePerPound: rate.baseRate / 100,
+            finalRate,
+            rateCalculatedBy: receipt.hasFlatRate === "Y" && warehouseRate?.finalRate
+                ? "FLAT_RATE"
+                : totalActualWeight >= totalDimensionalWeight ? "ACTUAL_WEIGHT" : "DIMENSIONAL_WEIGHT",
+            totalActualWeight,
+            totalDimensionalWeight,
+            dimFactor,
+            freightBreakdown
+        };
+
+        if (rateInformation.minRate && rateInformation.finalRate < rateInformation.minRate) {
+            rateInformation.finalRate = rateInformation.minRate;
+        }
+        if (rateInformation.maxRate && rateInformation.finalRate > rateInformation.maxRate) {
+            rateInformation.finalRate = rateInformation.maxRate;
+        }
+    }
+
+    return {
+        ...receipt,
+        badFreightConditionImages,
+        uploadedDocuments,
+        customerEmails,
+        stationDefaultEmails,
+        freightInformation: freightWithImages,
+        rateInformation
+    };
+}
+
+
 
 /**
  * GET RECEIPTS BY VERIFICATION ID
