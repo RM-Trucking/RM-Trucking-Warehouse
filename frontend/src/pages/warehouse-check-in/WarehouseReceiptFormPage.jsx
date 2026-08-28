@@ -3553,7 +3553,7 @@ export default function WarehouseReceiptFormPage() {
   };
 
   const renderSplitApprovalLinks = (text) => {
-    const matches = [...text.matchAll(/\breceipt\s+(\d+)|shipment\s+barcode:\s*([A-Za-z0-9-]+)/gi)];
+    const matches = [...text.matchAll(/\breceipt\s+(\d+)|\bshipment(?:\s+barcode:)?\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)/gi)];
     const hasShipmentBarcode = matches.some((match) => match[2]);
     if (!hasShipmentBarcode) return null;
 
