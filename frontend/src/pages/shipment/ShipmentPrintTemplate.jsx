@@ -168,7 +168,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                 <tbody>
                     <tr>
                         <td style={heading} colSpan={2}>WAREHOUSE RECEIPT NUMBERS</td>
-                        <td style={heading} colSpan={2}>CONTAINER NUMBER</td>
+                        <td style={heading} colSpan={2}>CONTAINER NUMBERS</td>
                     </tr>
                     {Array.from({ length: 10 }, (_, rowIndex) => {
                         const pageOffset = pageIndex * 20;
