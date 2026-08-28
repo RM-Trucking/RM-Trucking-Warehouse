@@ -1042,6 +1042,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/{id}/with-freight:
+    get:
+      tags:
+        - Receipts
+      summary: Get warehouse receipt with freight details
+      description: |
+        Retrieve a warehouse receipt with its freight items, freight images,
+        rate information, uploaded documents, and related email details.
+        Supports lookup by receipt ID or receipt number. The default lookup is
+        by receipt number.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: Numeric receipt ID or receipt number, depending on searchBy
+          example: "100000001"
+        - in: query
+          name: searchBy
+          schema:
+            type: string
+            enum: [receiptId, receiptNumber]
+            default: receiptNumber
+          description: Field used to find the receipt. Use receiptId for the database ID or receiptNumber for the warehouse receipt number.
+          example: receiptNumber
+      responses:
+        "200":
+          description: Warehouse receipt retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceiptWithFreightDetails"
+        "400":
+          description: Missing receipt identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Receipt not found for the provided identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt/{receiptId}/reject:
     put:
       tags:
@@ -2283,6 +2343,40 @@ components:
     WarehouseReceiptWithDetails:
       allOf:
         - $ref: "#/components/schemas/WarehouseReceipt"
+
+    WarehouseReceiptWithFreightDetails:
+      allOf:
+        - $ref: "#/components/schemas/WarehouseReceipt"
+        - type: object
+          properties:
+            badFreightConditionImages:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            uploadedDocuments:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            customerEmails:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            stationDefaultEmails:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            freightInformation:
+              type: array
+              items:
+                $ref: "#/components/schemas/FreightInfo"
+            rateInformation:
+              type: object
+              nullable: true
+              additionalProperties: true
 
     ReceiptSummary:
       type: object

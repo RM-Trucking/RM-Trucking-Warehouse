@@ -209,12 +209,18 @@ export async function getWarehouseReceiptById(
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
         verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
-        documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
-        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : [],
+        unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
+        class: row.class ? JSON.parse(row.class) : [],
+        createdByName: row.createdBy ? await getUserName(conn, row.createdBy) : null,
+        approvedByName: row.approvedBy ? await getUserName(conn, row.approvedBy) : null,
+        requestedByName: row.requestedBy ? await getUserName(conn, row.requestedBy) : null,
         createdAt: row.createdAt ? toUtcDate(row.createdAt) : null,
         updatedAt: row.updatedAt ? toUtcDate(row.updatedAt) : null,
+        requestedAt: row.requestedAt ? toUtcDate(row.requestedAt) : null,
+        approvedAt: row.approvedAt ? toUtcDate(row.approvedAt) : null,
     };
 }
 
@@ -245,12 +251,18 @@ export async function getWarehouseReceiptByReceiptNumber(
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
         verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
-        documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
-        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : [],
+        unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
+        class: row.class ? JSON.parse(row.class) : [],
+        createdByName: row.createdBy ? await getUserName(conn, row.createdBy) : null,
+        approvedByName: row.approvedBy ? await getUserName(conn, row.approvedBy) : null,
+        requestedByName: row.requestedBy ? await getUserName(conn, row.requestedBy) : null,
         createdAt: row.createdAt ? toUtcDate(row.createdAt) : null,
         updatedAt: row.updatedAt ? toUtcDate(row.updatedAt) : null,
+        requestedAt: row.requestedAt ? toUtcDate(row.requestedAt) : null,
+        approvedAt: row.approvedAt ? toUtcDate(row.approvedAt) : null,
     };
 }
 

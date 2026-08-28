@@ -113,6 +113,7 @@ export async function createShipmentWithRelations(
             await shipmentDB.replaceReceipts(conn, shipmentId, payload.receipts ?? []);
 
             await Promise.all(payload.receipts.map(async (receipt) => {
+                const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
                 const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
                 const scannedItems = freightInfo.filter(f => f.isScanned === 'Y');
                 const unscannedItems = freightInfo.filter(f => f.isScanned === 'N' || f.isScanned === null || f.isScanned === undefined);
@@ -123,7 +124,19 @@ export async function createShipmentWithRelations(
                     scannedItems: scannedItems,
                     unscannedItems: unscannedItems,
                 };
-                await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, { status: "PREPARED" });
+                await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, { status: "PREPARED", updatedBy: userId });
+
+                if (warehouseReceipt) {
+                    emitAuditLog({
+                        receiptNumber: warehouseReceipt.receiptNumber,
+                        receiptId: Number(receipt.receiptId),
+                        proNumber: warehouseReceipt.proNumber || undefined,
+                        userId,
+                        status: "PREPARED",
+                        description: `Receipt ${warehouseReceipt.receiptNumber} was added to shipment ${normalizedPayload.barcodeNumber} during shipment creation and moved to PREPARED.`,
+                        level: "INFO",
+                    });
+                }
             }));
         }
 
