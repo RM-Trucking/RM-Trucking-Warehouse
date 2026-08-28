@@ -22,7 +22,7 @@ const formatDate = (value) => {
     return Number.isNaN(date.getTime()) ? valueOrBlank(value) : date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 };
 const getReceiptNumber = (receipt) => typeof receipt === 'object'
-    ? firstValue(receipt, ['receiptId', 'receiptNumber', 'warehouseReceiptNumber', 'warehouseNo', 'id'])
+    ? firstValue(receipt, ['receiptNumber', 'warehouseReceiptNumber', 'warehouseNo'])
     : receipt;
 const getContainerNumber = (container) => typeof container === 'object'
     ? firstValue(container, ['container', 'containerNo', 'containerNumber'])
@@ -167,7 +167,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <tbody>
                     <tr>
-                        <td style={heading} colSpan={2}>WAREHOUSE RECEIPT ID&apos;S</td>
+                        <td style={heading} colSpan={2}>WAREHOUSE RECEIPT NUMBERS</td>
                         <td style={heading} colSpan={2}>CONTAINER NUMBER</td>
                     </tr>
                     {Array.from({ length: 10 }, (_, rowIndex) => {
@@ -183,6 +183,9 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                     })}
                 </tbody>
             </table>
+            <div style={{ marginTop: 8, textAlign: 'right', fontSize: 10, fontWeight: 700 }}>
+                Pages {String(pageIndex + 1).padStart(2, '0')}/{String(receiptContainerPageCount).padStart(2, '0')}
+            </div>
                 </div>
             ))}
         </div>

@@ -818,7 +818,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                         onClick={() => {
                                                             if (mobile) {
                                                                 setUnscanReceipt(receipt);
-                                                                if (hasScannedReceipts) {
+                                                                if (hasScannedOrUnscannedItems) {
                                                                     openScanner('unscan', receipt.receiptNumber);
                                                                 }
                                                             } else {
@@ -1356,7 +1356,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         </Alert>
                     )}
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.75 }}>
-                        {(!mobile || hasScannedReceipts) && (
+                        {(!mobile || hasScannedOrUnscannedItems) && (
                             <Button
                                 variant="contained"
                                 size="small"
