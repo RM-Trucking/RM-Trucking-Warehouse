@@ -67,6 +67,7 @@ export default function ShipmentTabs({ onViewShipment }) {
     const [printData, setPrintData] = useState(null);
     const [printLoadingId, setPrintLoadingId] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
+    const [comingSoonMessage, setComingSoonMessage] = useState('');
     const [pickupError, setPickupError] = useState('');
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
     const [viewLoadingId, setViewLoadingId] = useState(null);
@@ -126,8 +127,8 @@ export default function ShipmentTabs({ onViewShipment }) {
 
     const TABS = [
         { value: 'active', label: 'Air Form' },
-        { value: 'inactive', label: 'LCL Form' },
-        { value: 'incomplete', label: 'FCL Form' },
+        { value: 'inactive', label: 'LCL Form', comingSoon: true },
+        { value: 'incomplete', label: 'FCL Form', comingSoon: true },
     ];
 
     // Error boundary info
@@ -137,6 +138,11 @@ export default function ShipmentTabs({ onViewShipment }) {
     };
 
     const OnTabChange = (newValue) => {
+        const selectedTab = TABS.find((tab) => tab.value === newValue);
+        if (selectedTab?.comingSoon) {
+            setComingSoonMessage(`${selectedTab.label} will be available soon.`);
+            return;
+        }
         setCurrentTab(newValue);
     };
 
@@ -440,12 +446,17 @@ const handleClosePickupForm = () => {
                                 key={tab.value}
                                 value={tab.value}
                                 label={tab.label}
+                                aria-disabled={tab.comingSoon || undefined}
+                                onClick={() => {
+                                    if (tab.comingSoon) setComingSoonMessage(`${tab.label} will be available soon.`);
+                                }}
                                 sx={{
                                     '&.Mui-selected': {
                                         color: '#A22',
                                         fontWeight: '600',
                                     },
                                     color: 'black',
+                                    ...(tab.comingSoon && { opacity: 0.5, cursor: 'not-allowed' }),
                                 }}
                             />
                         ))}
@@ -565,6 +576,18 @@ const handleClosePickupForm = () => {
             >
                 <Alert severity="success" variant="filled" onClose={() => setSuccessMessage('')}>
                     {successMessage}
+                </Alert>
+            </Snackbar>
+            <Snackbar
+                open={Boolean(comingSoonMessage)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setComingSoonMessage('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="info" variant="filled" onClose={() => setComingSoonMessage('')}>
+                    {comingSoonMessage}
                 </Alert>
             </Snackbar>
             <Snackbar

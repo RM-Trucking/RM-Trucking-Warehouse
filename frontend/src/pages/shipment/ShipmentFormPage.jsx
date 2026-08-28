@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
-  DialogContent, useMediaQuery, Alert, CircularProgress
+  DialogContent, useMediaQuery, Alert, CircularProgress, Snackbar
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -41,6 +41,7 @@ function ShipmentFormPageContent() {
   const [showOceanFCLForm, setShowOceanFCLForm] = useState(false);
   const [viewShipment, setViewShipment] = useState(null);
   const [viewShipmentError, setViewShipmentError] = useState('');
+  const [comingSoonMessage, setComingSoonMessage] = useState('');
   const requestedViewShipmentId = searchParams.get('viewShipmentId')
     || location.state?.viewShipment?.shipmentId
     || location.state?.viewShipment?.id
@@ -133,18 +134,8 @@ function ShipmentFormPageContent() {
     setShowOceanLCLForm(false);
   };
 
-  const handleOpenOceanLCLForm = () => {
-    setOpenConfirmDialog(false);
-    setShowOceanLCLForm(true);
-  };
-
   const handleCloseOceanFCLForm = () => {
     setShowOceanFCLForm(false);
-  };
-
-  const handleOpenOceanFCLForm = () => {
-    setOpenConfirmDialog(false);
-    setShowOceanFCLForm(true);
   };
 
   if (viewShipmentLoading) {
@@ -236,16 +227,40 @@ function ShipmentFormPageContent() {
                   Air Shipment Form
                 </Button>
 
-                <Button variant="contained" size="small" sx={btnStyle} onClick={handleOpenOceanLCLForm}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  aria-disabled="true"
+                  sx={{ ...btnStyle, opacity: 0.5, cursor: 'not-allowed' }}
+                  onClick={() => setComingSoonMessage('LCL Shipment Form will be available soon.')}
+                >
                   LCL Shipment Form
                 </Button>
 
-                <Button variant="contained" size="small" sx={btnStyle} onClick={handleOpenOceanFCLForm}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  aria-disabled="true"
+                  sx={{ ...btnStyle, opacity: 0.5, cursor: 'not-allowed' }}
+                  onClick={() => setComingSoonMessage('FCL Shipment Form will be available soon.')}
+                >
                   FCL Shipment Form
                 </Button>
               </Stack>
             </DialogContent>
           </Dialog>
+          <Snackbar
+            open={Boolean(comingSoonMessage)}
+            autoHideDuration={4000}
+            onClose={(event, reason) => {
+              if (reason !== 'clickaway') setComingSoonMessage('');
+            }}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          >
+            <Alert severity="info" variant="filled" onClose={() => setComingSoonMessage('')}>
+              {comingSoonMessage}
+            </Alert>
+          </Snackbar>
           </>
         )}
       </ErrorBoundary>

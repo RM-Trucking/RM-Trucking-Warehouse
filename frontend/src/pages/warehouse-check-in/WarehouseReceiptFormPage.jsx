@@ -5039,6 +5039,7 @@ export default function WarehouseReceiptFormPage() {
     const status = String(viewReceiptSummary.status || getRowValue(activeForm?.row, 'status', '') || '').toUpperCase();
     const isArchivedReceipt = status === 'ARCHIVED';
     const disableViewHeaderActions = isArchivedReceipt || ['INITIATED', 'REJECTED'].includes(status);
+    const disableSplitAndEdit = disableViewHeaderActions || ['PREPARED', 'SCANNED', 'SHIPPED'].includes(status);
 
     return (
       <Box sx={{ bgcolor: '#efefef', px: 2, pt: 1.2, pb: 1.4 }}>
@@ -5136,7 +5137,7 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleOpenSplitDialog}
-              disabled={disableViewHeaderActions}
+              disabled={disableSplitAndEdit}
               sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Split
@@ -5145,7 +5146,7 @@ export default function WarehouseReceiptFormPage() {
               variant="contained"
               size="small"
               onClick={handleEditWarehouseReceipt}
-              disabled={disableViewHeaderActions}
+              disabled={disableSplitAndEdit}
               sx={{ ...actionBtnSx, height: 26, minWidth: 60, fontSize: 11 }}
             >
               Edit
