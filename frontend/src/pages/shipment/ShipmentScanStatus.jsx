@@ -152,7 +152,9 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const receiptSearchTimersRef = useRef({});
     const videoRef = useRef(null);
     const barcodeImageInputRef = useRef(null);
+    const scanGunInputRef = useRef(null);
     const scannerControlsRef = useRef(null);
+    const screenWakeLockRef = useRef(null);
     const scanInProgressRef = useRef(false);
     const mobileAutoScanHandledRef = useRef(false);
     const scanGunBufferRef = useRef('');
@@ -313,17 +315,24 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     useEffect(() => {
         if (!scannerOpen || !mobile) return undefined;
 
+        const submitBufferedScan = () => {
+            const inputValue = scanGunInputRef.current?.value || '';
+            const barcodeValue = String(inputValue || scanGunBufferRef.current).trim();
+            scanGunBufferRef.current = '';
+            if (scanGunInputRef.current) scanGunInputRef.current.value = '';
+            clearTimeout(scanGunResetTimerRef.current);
+            if (barcodeValue) submitBarcode(barcodeValue.slice(0, 100));
+        };
+
         const handleScanGunInput = (event) => {
             if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
 
+            // The focused scanner input handles Android/keyboard-wedge scan guns.
+            if (event.target === scanGunInputRef.current) return;
+
             if (event.key === 'Enter' || event.key === 'Tab') {
-                const barcodeValue = scanGunBufferRef.current.trim();
-                scanGunBufferRef.current = '';
-                clearTimeout(scanGunResetTimerRef.current);
-                if (barcodeValue) {
-                    event.preventDefault();
-                    submitBarcode(barcodeValue.slice(0, 100));
-                }
+                event.preventDefault();
+                submitBufferedScan();
                 return;
             }
 
@@ -336,12 +345,46 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         };
 
         window.addEventListener('keydown', handleScanGunInput, true);
+        const focusTimer = setTimeout(() => scanGunInputRef.current?.focus(), 100);
         return () => {
             window.removeEventListener('keydown', handleScanGunInput, true);
+            clearTimeout(focusTimer);
             clearTimeout(scanGunResetTimerRef.current);
             scanGunBufferRef.current = '';
         };
     }, [mobile, scannerOpen, submitBarcode]);
+
+    useEffect(() => {
+        if (!scannerOpen || !mobile) return undefined;
+        let disposed = false;
+
+        const keepScreenAwake = async () => {
+            if (disposed || document.visibilityState !== 'visible' || !navigator.wakeLock?.request) return;
+            try {
+                screenWakeLockRef.current = await navigator.wakeLock.request('screen');
+            } catch {
+                // Wake Lock is optional and is not supported by every scan-gun browser.
+            }
+        };
+        const restoreScanner = () => {
+            if (document.visibilityState === 'visible') {
+                keepScreenAwake();
+                setTimeout(() => scanGunInputRef.current?.focus(), 100);
+            }
+        };
+
+        keepScreenAwake();
+        document.addEventListener('visibilitychange', restoreScanner);
+        screen.orientation?.lock?.('portrait').catch(() => {});
+
+        return () => {
+            disposed = true;
+            document.removeEventListener('visibilitychange', restoreScanner);
+            screenWakeLockRef.current?.release?.().catch(() => {});
+            screenWakeLockRef.current = null;
+            screen.orientation?.unlock?.();
+        };
+    }, [mobile, scannerOpen]);
 
     useEffect(() => () => stopScanner(), [stopScanner]);
 
@@ -1291,6 +1334,38 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                         </Typography>
                                     </Stack>
                                 )}
+                                <input
+                                    ref={scanGunInputRef}
+                                    aria-label="Scan gun barcode input"
+                                    autoComplete="off"
+                                    autoCapitalize="none"
+                                    inputMode="none"
+                                    onBlur={() => {
+                                        if (scannerOpen && !scanFreightLoading) {
+                                            setTimeout(() => scanGunInputRef.current?.focus(), 100);
+                                        }
+                                    }}
+                                    onChange={(event) => {
+                                        clearTimeout(scanGunResetTimerRef.current);
+                                        scanGunResetTimerRef.current = setTimeout(() => {
+                                            const barcodeValue = event.target.value.trim();
+                                            event.target.value = '';
+                                            if (barcodeValue) submitBarcode(barcodeValue.slice(0, 100));
+                                        }, 300);
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key !== 'Enter' && event.key !== 'Tab') return;
+                                        event.preventDefault();
+                                        clearTimeout(scanGunResetTimerRef.current);
+                                        const barcodeValue = event.currentTarget.value.trim();
+                                        event.currentTarget.value = '';
+                                        if (barcodeValue) submitBarcode(barcodeValue.slice(0, 100));
+                                    }}
+                                    style={{
+                                        position: 'absolute', width: 1, height: 1, opacity: 0,
+                                        pointerEvents: 'none', left: -10000,
+                                    }}
+                                />
                             </Box>
                         ) : (
                             <Box sx={{ position: 'relative', bgcolor: '#000', borderRadius: 1, overflow: 'hidden', minHeight: { xs: 320, sm: 460 } }}>
