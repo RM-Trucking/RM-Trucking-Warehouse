@@ -14,6 +14,7 @@ import enrouteReducer from './slices/enroute';
 import idVerificationReducer from './slices/idVerification';
 import warehouseReducer from './slices/warehouse';
 import warehouseReceiptReducer from './slices/warehouseReceipt';
+import locationScanReducer from './slices/locationScan';
 // ----------------------------------------------------------------------
 
 const rootPersistConfig = {
@@ -37,6 +38,7 @@ const rootReducer = combineReducers({
   enroutedata: enrouteReducer,
   warehousedata: warehouseReducer,
   warehouseReceiptdata: warehouseReceiptReducer,
+  locationScandata: locationScanReducer,
   idVerificationdata: idVerificationReducer,
 });
 

@@ -3,6 +3,7 @@ import {
   Alert, Box, Button, CircularProgress, IconButton, Paper, Stack, TextField, Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from '../../redux/store';
 import { PATH_DASHBOARD } from '../../routes/paths';
@@ -10,6 +11,7 @@ import {
   getWarehouseReceipts,
   updateWarehouseReceiptLocation,
 } from '../../redux/slices/warehouseReceipt';
+import { getLocationScanReceipt } from '../../redux/slices/locationScan';
 
 const normalizeBarcode = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 
@@ -32,8 +34,10 @@ export default function LocationScanPage() {
   const [location, setLocation] = useState('');
   const [message, setMessage] = useState(null);
   const [saving, setSaving] = useState(false);
+  const { loading: uploadLoading = false } = useSelector((state) => state.locationScandata || {});
   const scanBufferRef = useRef('');
   const scanTimerRef = useRef(null);
+  const barcodeImageInputRef = useRef(null);
 
   useEffect(() => {
     dispatch(getWarehouseReceipts({ page: 1, pageSize: 500 }));
@@ -58,6 +62,44 @@ export default function LocationScanPage() {
     setLocation(receipt.location || '');
     setMessage(null);
   }, [receipts]);
+
+  const handleBarcodeImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setMessage(null);
+    const imageUrl = URL.createObjectURL(file);
+
+    try {
+      const reader = new BrowserMultiFormatReader();
+      const result = await reader.decodeFromImageUrl(imageUrl);
+      const receiptNumber = String(result?.getText?.() || '').trim();
+      if (!receiptNumber) throw new Error('No barcode was detected in the selected image.');
+
+      setMessage({ severity: 'info', text: `Barcode detected: ${receiptNumber}. Loading warehouse receipt...` });
+      const response = await dispatch(getLocationScanReceipt(receiptNumber));
+      const receipt = response?.data;
+
+      if (!receipt || response?.error) {
+        throw new Error(response?.message || `Warehouse receipt ${receiptNumber} was not found.`);
+      }
+
+      setSelectedReceipt(receipt);
+      setLocation(receipt.location || '');
+      setMessage({ severity: 'success', text: `Warehouse receipt ${receiptNumber} loaded.` });
+    } catch (error) {
+      const rawMessage = String(error?.message || 'Unable to read the barcode image.');
+      const messageText = rawMessage.includes('MultiFormat') || rawMessage.includes('No readers')
+        ? 'No readable barcode was found. Upload a clear image with the complete barcode visible.'
+        : rawMessage;
+      setSelectedReceipt(null);
+      setLocation('');
+      setMessage({ severity: 'error', text: messageText });
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  };
 
   useEffect(() => {
     const resetBufferTimer = () => {
@@ -145,6 +187,22 @@ export default function LocationScanPage() {
               <Typography sx={{ maxWidth: 280, fontSize: 12, color: '#555' }}>
                 Press the scan gun trigger and scan the warehouse receipt barcode.
               </Typography>
+              <input
+                ref={barcodeImageInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={handleBarcodeImageUpload}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                disabled={uploadLoading}
+                onClick={() => barcodeImageInputRef.current?.click()}
+                sx={{ mt: 1, bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+              >
+                {uploadLoading ? <CircularProgress size={18} color="inherit" /> : 'Upload Barcode Image'}
+              </Button>
             </Stack>
           )}
         </Paper>
