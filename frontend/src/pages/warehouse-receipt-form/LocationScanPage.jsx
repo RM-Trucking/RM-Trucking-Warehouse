@@ -7,23 +7,50 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from '../../redux/store';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { updateWarehouseReceiptLocation } from '../../redux/slices/warehouseReceipt';
-import { getLocationScanReceipt } from '../../redux/slices/locationScan';
+import {
+  addScannedFreightBarcode,
+  clearReceiptLookup,
+  getLocationScanReceipt,
+} from '../../redux/slices/locationScan';
+
+const getFreightInformation = (receipt) => {
+  const freightInformation = receipt?.freightInformation || receipt?.rawData?.freightInformation;
+  return Array.isArray(freightInformation) ? freightInformation : [];
+};
+
+const getRequiredFreightBarcodes = (receipt) => getFreightInformation(receipt)
+  .map((freight) => String(freight.freightBarcodeValue || '').trim().toUpperCase())
+  .filter(Boolean);
+
+const parseScannedFreightBarcode = (value) => {
+  const cleanValue = String(value || '').trim();
+  const [receiptNumber, ...freightParts] = cleanValue.split('-');
+  if (freightParts.length) {
+    return { receiptNumber: receiptNumber.trim(), freightBarcodeValue: freightParts.join('-').trim().toUpperCase() };
+  }
+  return { receiptNumber: '', freightBarcodeValue: cleanValue.toUpperCase() };
+};
 
 export default function LocationScanPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading: receiptLoading = false } = useSelector((state) => state.locationScandata || {});
+  const {
+    loading: receiptLoading = false,
+    scannedFreightBarcodes = [],
+  } = useSelector((state) => state.locationScandata || {});
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [barcodeValue, setBarcodeValue] = useState('');
+  const [freightScanValue, setFreightScanValue] = useState('');
   const [location, setLocation] = useState('');
   const [message, setMessage] = useState(null);
   const [notFoundSnackbarOpen, setNotFoundSnackbarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const scanTimerRef = useRef(null);
   const barcodeInputRef = useRef(null);
+  const freightInputRef = useRef(null);
   const lookupInProgressRef = useRef(false);
 
-  const loadReceipt = useCallback(async (value) => {
+  const loadReceipt = async (value) => {
     const receiptNumber = String(value || '').trim();
     if (!receiptNumber || lookupInProgressRef.current) return;
 
@@ -50,8 +77,14 @@ export default function LocationScanPage() {
     setBarcodeValue('');
     setSelectedReceipt(receipt);
     setLocation(receipt.location || '');
-    setMessage({ severity: 'success', text: `Warehouse receipt ${receipt.receiptNumber || receiptNumber} loaded.` });
-  }, [dispatch]);
+    const requiredFreightBarcodes = getRequiredFreightBarcodes(receipt);
+    const scannedFreightBarcode = String(response.scannedFreightBarcodeValue || '').toUpperCase();
+    if (scannedFreightBarcode && !requiredFreightBarcodes.includes(scannedFreightBarcode)) {
+      setMessage({ severity: 'error', text: `${scannedFreightBarcode} is not available on this warehouse receipt.` });
+    } else {
+      setMessage({ severity: 'success', text: `Warehouse receipt ${receipt.receiptNumber || receiptNumber} loaded.` });
+    }
+  };
 
   useEffect(() => {
     if (selectedReceipt || receiptLoading) return undefined;
@@ -61,7 +94,44 @@ export default function LocationScanPage() {
 
   useEffect(() => () => window.clearTimeout(scanTimerRef.current), []);
 
+  const requiredFreightBarcodes = getRequiredFreightBarcodes(selectedReceipt);
+  const scannedFreightBarcodeSet = new Set(scannedFreightBarcodes.map((value) => String(value).toUpperCase()));
+  const unscannedFreightBarcodes = requiredFreightBarcodes.filter(
+    (freightBarcode) => !scannedFreightBarcodeSet.has(freightBarcode)
+  );
+  const allFreightScanned = unscannedFreightBarcodes.length === 0;
+
+  const handleFreightScan = useCallback((value) => {
+    const { receiptNumber, freightBarcodeValue } = parseScannedFreightBarcode(value);
+    if (!freightBarcodeValue || !selectedReceipt) return;
+
+    const selectedReceiptNumber = String(selectedReceipt.receiptNumber || '').trim();
+    if (receiptNumber && receiptNumber !== selectedReceiptNumber) {
+      setMessage({ severity: 'error', text: `The scanned freight belongs to receipt ${receiptNumber}, not ${selectedReceiptNumber}.` });
+      return;
+    }
+
+    const availableFreightBarcodes = getRequiredFreightBarcodes(selectedReceipt);
+    if (!availableFreightBarcodes.includes(freightBarcodeValue)) {
+      setMessage({ severity: 'error', text: `${freightBarcodeValue} is not available on this warehouse receipt.` });
+      return;
+    }
+
+    dispatch(addScannedFreightBarcode(freightBarcodeValue));
+    setFreightScanValue('');
+    setMessage({ severity: 'success', text: `${freightBarcodeValue} scanned successfully.` });
+    window.setTimeout(() => freightInputRef.current?.focus(), 100);
+  }, [dispatch, selectedReceipt]);
+
   const handleUpdate = async () => {
+    if (!allFreightScanned) {
+      setMessage({
+        severity: 'warning',
+        text: `Scan all freight items before updating the location. Unscanned: ${unscannedFreightBarcodes.join(', ')}. Scan them or reach out to the office to split the receipt.`,
+      });
+      return;
+    }
+
     const cleanLocation = location.trim();
     if (!cleanLocation) {
       setMessage({ severity: 'error', text: 'Location is required.' });
@@ -82,6 +152,7 @@ export default function LocationScanPage() {
     }
 
     setSelectedReceipt(null);
+    dispatch(clearReceiptLookup());
     setLocation('');
     setMessage({ severity: 'success', text: 'Location updated successfully. Scan the next receipt.' });
   };
@@ -178,13 +249,51 @@ export default function LocationScanPage() {
                 {[selectedReceipt.customerName, selectedReceipt.stationName].filter(Boolean).join(' | ') || '-'}
               </Typography>
             </Box>
+            {!allFreightScanned && (
+              <Alert severity="warning">
+                <Typography sx={{ fontSize: 12, fontWeight: 700 }}>
+                  Scan all freight items before updating the location.
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  Unscanned: {unscannedFreightBarcodes.join(', ')}
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  Scan the remaining items or reach out to the office to split the receipt.
+                </Typography>
+              </Alert>
+            )}
+            {requiredFreightBarcodes.length > 0 && allFreightScanned && (
+              <Alert severity="success">All freight items have been scanned.</Alert>
+            )}
+            {!allFreightScanned && (
+              <TextField
+                inputRef={freightInputRef}
+                label="Freight Barcode"
+                variant="standard"
+                value={freightScanValue}
+                autoFocus
+                fullWidth
+                autoComplete="off"
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFreightScanValue(value);
+                  window.clearTimeout(scanTimerRef.current);
+                  scanTimerRef.current = window.setTimeout(() => handleFreightScan(value), 500);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== 'Tab') return;
+                  event.preventDefault();
+                  window.clearTimeout(scanTimerRef.current);
+                  handleFreightScan(event.currentTarget.value);
+                }}
+              />
+            )}
             <TextField
               label="Location"
               value={location}
               onChange={(event) => setLocation(event.target.value)}
               size="small"
               required
-              autoFocus
               fullWidth
             />
             <Stack direction="row" spacing={1} justifyContent="flex-end">
@@ -192,8 +301,10 @@ export default function LocationScanPage() {
                 variant="outlined"
                 onClick={() => {
                   setSelectedReceipt(null);
+                  setFreightScanValue('');
                   setLocation('');
                   setMessage(null);
+                  dispatch(clearReceiptLookup());
                 }}
                 disabled={saving}
                 sx={{ textTransform: 'none' }}
@@ -203,7 +314,7 @@ export default function LocationScanPage() {
               <Button
                 variant="contained"
                 onClick={handleUpdate}
-                disabled={saving}
+                disabled={saving || !allFreightScanned}
                 sx={{ bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
               >
                 {saving ? <CircularProgress size={18} color="inherit" /> : 'Update Location'}

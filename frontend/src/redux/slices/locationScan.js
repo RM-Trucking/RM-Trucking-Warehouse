@@ -4,6 +4,7 @@ import { dispatch } from '../store';
 
 const initialState = {
   receipt: null,
+  scannedFreightBarcodes: [],
   loading: false,
   error: null,
 };
@@ -15,20 +16,32 @@ const slice = createSlice({
     startReceiptLookup(state) {
       state.loading = true;
       state.receipt = null;
+      state.scannedFreightBarcodes = [];
       state.error = null;
     },
     receiptLookupSuccess(state, action) {
       state.loading = false;
-      state.receipt = action.payload;
+      state.receipt = action.payload.receipt;
+      state.scannedFreightBarcodes = action.payload.scannedFreightBarcodeValue
+        ? [action.payload.scannedFreightBarcodeValue]
+        : [];
       state.error = null;
     },
     receiptLookupError(state, action) {
       state.loading = false;
       state.receipt = null;
+      state.scannedFreightBarcodes = [];
       state.error = action.payload;
+    },
+    addScannedFreightBarcode(state, action) {
+      const freightBarcodeValue = String(action.payload || '').trim().toUpperCase();
+      if (freightBarcodeValue && !state.scannedFreightBarcodes.includes(freightBarcodeValue)) {
+        state.scannedFreightBarcodes.push(freightBarcodeValue);
+      }
     },
     clearReceiptLookup(state) {
       state.receipt = null;
+      state.scannedFreightBarcodes = [];
       state.loading = false;
       state.error = null;
     },
@@ -37,11 +50,14 @@ const slice = createSlice({
 
 export default slice.reducer;
 
-export const { clearReceiptLookup } = slice.actions;
+export const { addScannedFreightBarcode, clearReceiptLookup } = slice.actions;
 
 export function getLocationScanReceipt(receiptNumber) {
   return async () => {
-    const cleanReceiptNumber = String(receiptNumber || '').trim();
+    const scannedBarcode = String(receiptNumber || '').trim();
+    const [receiptBarcode, ...freightBarcodeParts] = scannedBarcode.split('-');
+    const cleanReceiptNumber = receiptBarcode.trim();
+    const scannedFreightBarcodeValue = freightBarcodeParts.join('-').trim().toUpperCase();
     if (!cleanReceiptNumber) return { error: true, message: 'Receipt number is required.' };
 
     dispatch(slice.actions.startReceiptLookup());
@@ -70,8 +86,11 @@ export function getLocationScanReceipt(receiptNumber) {
         id: receipt.receiptId || receipt.id,
         receiptNumber: receipt.receiptNumber || receipt.receiptNo || receipt.verificationId || cleanReceiptNumber,
       };
-      dispatch(slice.actions.receiptLookupSuccess(normalizedReceipt));
-      return { success: true, data: normalizedReceipt };
+      dispatch(slice.actions.receiptLookupSuccess({
+        receipt: normalizedReceipt,
+        scannedFreightBarcodeValue,
+      }));
+      return { success: true, data: normalizedReceipt, scannedFreightBarcodeValue };
     } catch (error) {
       const message = error?.message || error?.error || `Warehouse receipt ${cleanReceiptNumber} was not found.`;
       dispatch(slice.actions.receiptLookupError(message));
