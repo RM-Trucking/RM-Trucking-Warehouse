@@ -1,7 +1,6 @@
 import PropTypes from 'prop-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { DecodeHintType } from '@zxing/library';
 import {
     Alert, Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
     DialogTitle, IconButton, MenuItem, Paper, Snackbar, Stack, Table, TableBody, TableCell,
@@ -52,9 +51,9 @@ const getFreightItems = (receipt) => {
 
 const getFreightItemStatus = (item = {}) => {
     const status = String(item.status || item.scanStatus || item.isScanned || '').trim().toLowerCase();
-    return status === 'scanned' || status === 'y' || status === 'true' || status === '1'
-        ? 'Scanned'
-        : 'Unscanned';
+    if (status === 'scanned' || status === 'y' || status === 'true' || status === '1') return 'Scanned';
+    if (status === 'available') return 'Available';
+    return 'Unscanned';
 };
 
 const mergeScanResponse = (shipment, data) => {
@@ -77,50 +76,6 @@ const mergeScanResponse = (shipment, data) => {
     return shipment;
 };
 
-const decodeUploadedBarcode = async (image) => {
-    const hints = new Map();
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    const reader = new BrowserMultiFormatReader(hints);
-
-    try {
-        return await reader.decodeFromImageElement(image);
-    } catch (originalError) {
-        const longestSide = Math.max(image.naturalWidth, image.naturalHeight, 1);
-        const scale = Math.min(4, Math.max(2, 1800 / longestSide));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(image.naturalWidth * scale);
-        canvas.height = Math.round(image.naturalHeight * scale);
-        const context = canvas.getContext('2d', { willReadFrequently: true });
-        if (!context) throw originalError;
-
-        context.imageSmoothingEnabled = false;
-        context.fillStyle = '#fff';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-        try {
-            return reader.decodeFromCanvas(canvas);
-        } catch (scaledError) {
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            const { data } = imageData;
-            for (let index = 0; index < data.length; index += 4) {
-                const luminance = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
-                const value = luminance < 150 ? 0 : 255;
-                data[index] = value;
-                data[index + 1] = value;
-                data[index + 2] = value;
-            }
-            context.putImageData(imageData, 0, 0);
-
-            try {
-                return reader.decodeFromCanvas(canvas);
-            } catch {
-                throw scaledError;
-            }
-        }
-    }
-};
-
 export default function ShipmentScanStatus({ shipment, onClose, onCompleteSuccess, mobile = false }) {
     const dispatch = useDispatch();
     const {
@@ -133,6 +88,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const [scannerMode, setScannerMode] = useState('scan');
     const [unscanReceiptNumber, setUnscanReceiptNumber] = useState('');
     const [scannerStatus, setScannerStatus] = useState('');
+    const [scanGunValue, setScanGunValue] = useState('');
     const [scanMessage, setScanMessage] = useState({ text: '', severity: 'success' });
     const [unscanReceipt, setUnscanReceipt] = useState(null);
     const [completeConfirmationOpen, setCompleteConfirmationOpen] = useState(false);
@@ -151,7 +107,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const [deletingReceiptId, setDeletingReceiptId] = useState(null);
     const receiptSearchTimersRef = useRef({});
     const videoRef = useRef(null);
-    const barcodeImageInputRef = useRef(null);
+    const scanGunInputRef = useRef(null);
+    const pendingScannerReceiptNumberRef = useRef('');
     const scannerControlsRef = useRef(null);
     const scanInProgressRef = useRef(false);
     const mobileAutoScanHandledRef = useRef(false);
@@ -207,6 +164,11 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
             };
         });
     const splitApprovalRows = unscannedConfirmationRows;
+    const unscanFreightItems = getFreightItems(unscanReceipt);
+    const canUnscanFreight = unscanFreightItems.some((item) => {
+        const status = getFreightItemStatus(item);
+        return status === 'Available' || status === 'Scanned';
+    });
 
     const stopScanner = useCallback(() => {
         scannerControlsRef.current?.stop?.();
@@ -224,6 +186,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         stopScanner();
         setScannerOpen(false);
         setScannerStatus('');
+        setScanGunValue('');
     }, [stopScanner]);
 
     const submitBarcode = useCallback(async (barcodeValue) => {
@@ -278,6 +241,14 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         }
     }, [closeScanner, currentShipment, dispatch, mobile, scannerMode, stopScanner, unscanReceiptNumber]);
 
+    const handleScanGunSubmit = useCallback(() => {
+        const barcodeValue = scanGunValue.trim();
+        if (!barcodeValue || scanFreightLoading) return;
+        clearTimeout(scanGunResetTimerRef.current);
+        setScanGunValue('');
+        submitBarcode(barcodeValue.slice(0, 100));
+    }, [scanFreightLoading, scanGunValue, submitBarcode]);
+
     useEffect(() => {
         if (!scannerOpen || mobile) return undefined;
         let disposed = false;
@@ -315,6 +286,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
 
         const handleScanGunInput = (event) => {
             if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
+            if (event.target === scanGunInputRef.current) return;
 
             if (event.key === 'Enter' || event.key === 'Tab') {
                 const barcodeValue = scanGunBufferRef.current.trim();
@@ -336,12 +308,20 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         };
 
         window.addEventListener('keydown', handleScanGunInput, true);
+        const focusTimer = setTimeout(() => scanGunInputRef.current?.focus(), 100);
         return () => {
             window.removeEventListener('keydown', handleScanGunInput, true);
+            clearTimeout(focusTimer);
             clearTimeout(scanGunResetTimerRef.current);
             scanGunBufferRef.current = '';
         };
     }, [mobile, scannerOpen, submitBarcode]);
+
+    useEffect(() => {
+        if (!scannerOpen || !mobile || scanFreightLoading) return undefined;
+        const focusTimer = setTimeout(() => scanGunInputRef.current?.focus(), 100);
+        return () => clearTimeout(focusTimer);
+    }, [mobile, scanFreightLoading, scannerOpen]);
 
     useEffect(() => () => stopScanner(), [stopScanner]);
 
@@ -353,6 +333,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
         setScanMessage((previous) => ({ ...previous, text: '' }));
         setScannerMode(mode);
         setUnscanReceiptNumber(receiptNumber);
+        setScanGunValue('');
         setScannerStatus(mobile
             ? `Scan the freight barcode with the scan gun to ${mode}.`
             : `Point the camera at the freight barcode to ${mode}.`);
@@ -360,51 +341,23 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     }, [mobile]);
 
     useEffect(() => {
-        if (!mobile || mobileAutoScanHandledRef.current) return;
+        if (!mobile || mobileAutoScanHandledRef.current) return undefined;
         mobileAutoScanHandledRef.current = true;
-        if (hasPendingScanReceipts) openScanner('scan');
+        if (!hasPendingScanReceipts) return undefined;
+        const timer = setTimeout(() => openScanner('scan'), 0);
+        return () => clearTimeout(timer);
     }, [hasPendingScanReceipts, mobile, openScanner]);
-
-    const handleBarcodeImageUpload = async (event) => {
-        const file = event.target.files?.[0];
-        event.target.value = '';
-        if (!file) return;
-
-        stopScanner();
-        setScannerStatus('Reading barcode from image...');
-        const imageUrl = URL.createObjectURL(file);
-
-        try {
-            const image = new Image();
-            await new Promise((resolve, reject) => {
-                image.onload = resolve;
-                image.onerror = () => reject(new Error('Unable to load the selected image.'));
-                image.src = imageUrl;
-            });
-
-            const result = await decodeUploadedBarcode(image);
-            const barcodeValue = String(result?.getText?.() || '').trim();
-            if (!barcodeValue) throw new Error('No barcode found in the selected image.');
-            setScannerStatus(`Barcode detected: ${barcodeValue}. Updating freight scan status...`);
-            await submitBarcode(barcodeValue.slice(0, 100));
-        } catch (error) {
-            const decodeError = String(error?.message || '');
-            const message = decodeError.includes('MultiFormat')
-                ? 'No readable barcode was found. Upload a clear, tightly cropped image with the full barcode visible.'
-                : decodeError || 'Unable to read a barcode from this image.';
-            setScannerStatus(message);
-            setScanMessage({
-                text: message,
-                severity: 'error',
-            });
-        } finally {
-            URL.revokeObjectURL(imageUrl);
-        }
-    };
 
     const openUnscanScanner = () => {
         const receiptNumber = unscanReceipt?.receiptNumber;
-        setUnscanReceipt(null);
+        if (!receiptNumber) return;
+        openScanner('unscan', receiptNumber);
+    };
+
+    const handleUnscanReceiptDialogEntered = () => {
+        const receiptNumber = pendingScannerReceiptNumberRef.current;
+        if (!receiptNumber) return;
+        pendingScannerReceiptNumberRef.current = '';
         openScanner('unscan', receiptNumber);
     };
 
@@ -640,8 +593,18 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     return (
-        <Box sx={{ minHeight: mobile ? '100vh' : 500, bgcolor: '#e7e7e7' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25 }}>
+        <Box sx={{ minHeight: mobile ? '100vh' : 500, bgcolor: '#e7e7e7', color: mobile ? '#000' : undefined, colorScheme: mobile ? 'light' : undefined }}>
+            <Box
+                sx={{
+                    display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25,
+                    ...(mobile && {
+                        color: '#000',
+                        '& .MuiTypography-root': { color: '#000' },
+                        '& .MuiButton-text': { color: '#000' },
+                        '& .MuiButton-contained.Mui-disabled': { color: '#555', bgcolor: '#ccc' },
+                    }),
+                }}
+            >
                 <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
                         Shipment Form - {currentShipment?.barcodeNumber || currentShipment?.rmNumber || currentShipment?.shipmentId}
@@ -711,7 +674,18 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 </Box>
             </Box>
 
-            <Paper sx={{ mx: mobile ? 0 : 1.5, mt: 1, p: mobile ? 0 : 3, minHeight: 390, borderRadius: mobile ? 0 : 2, boxShadow: 'none' }}>
+            <Paper
+                sx={{
+                    mx: mobile ? 0 : 1.5, mt: 1, p: mobile ? 0 : 3, minHeight: 390,
+                    borderRadius: mobile ? 0 : 2, boxShadow: 'none', bgcolor: '#fff',
+                    ...(mobile && {
+                        color: '#000',
+                        '& .MuiTableCell-root': { color: '#000' },
+                        '& .MuiInputBase-input': { color: '#000', WebkitTextFillColor: '#000' },
+                        '& .MuiTypography-root': { color: '#000' },
+                    }),
+                }}
+            >
                 {splitApprovalCompleted && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
                         <Button
@@ -817,10 +791,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                                         size="small"
                                                         onClick={() => {
                                                             if (mobile) {
+                                                                pendingScannerReceiptNumberRef.current = receipt.receiptNumber;
                                                                 setUnscanReceipt(receipt);
-                                                                if (hasScannedOrUnscannedItems) {
-                                                                    openScanner('unscan', receipt.receiptNumber);
-                                                                }
                                                             } else {
                                                                 setUnscanReceipt(receipt);
                                                             }
@@ -1274,24 +1246,40 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             </Alert>
                         )}
                         {mobile ? (
-                            <Box
-                                sx={{
-                                    minHeight: 180, border: '1px dashed #999', borderRadius: 1,
-                                    bgcolor: '#f7f7f7', display: 'flex', alignItems: 'center',
-                                    justifyContent: 'center', px: 3, textAlign: 'center',
-                                }}
-                            >
+                            <Stack spacing={1.5} sx={{ py: 1 }}>
                                 {scanFreightLoading ? (
-                                    <CircularProgress size={32} />
-                                ) : (
-                                    <Stack spacing={1} alignItems="center">
-                                        <Typography sx={{ fontSize: 16, fontWeight: 700 }}>Scan gun ready</Typography>
-                                        <Typography sx={{ fontSize: 12, color: '#555' }}>
-                                            Press the scan gun trigger and scan the freight barcode.
-                                        </Typography>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <CircularProgress size={20} />
+                                        <Typography sx={{ fontSize: 12 }}>Processing barcode...</Typography>
                                     </Stack>
-                                )}
-                            </Box>
+                                ) : null}
+                                <TextField
+                                    inputRef={scanGunInputRef}
+                                    label="Freight Barcode"
+                                    variant="standard"
+                                    value={scanGunValue}
+                                    autoFocus
+                                    fullWidth
+                                    autoComplete="off"
+                                    disabled={scanFreightLoading}
+                                    onChange={(event) => {
+                                        const barcodeValue = event.target.value;
+                                        setScanGunValue(barcodeValue);
+                                        clearTimeout(scanGunResetTimerRef.current);
+                                        scanGunResetTimerRef.current = setTimeout(() => {
+                                            const cleanBarcodeValue = barcodeValue.trim();
+                                            if (!cleanBarcodeValue || scanInProgressRef.current) return;
+                                            setScanGunValue('');
+                                            submitBarcode(cleanBarcodeValue.slice(0, 100));
+                                        }, 500);
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (event.key !== 'Enter' && event.key !== 'Tab') return;
+                                        event.preventDefault();
+                                        handleScanGunSubmit();
+                                    }}
+                                />
+                            </Stack>
                         ) : (
                             <Box sx={{ position: 'relative', bgcolor: '#000', borderRadius: 1, overflow: 'hidden', minHeight: { xs: 320, sm: 460 } }}>
                                 <Box component="video" ref={videoRef} autoPlay playsInline muted sx={{ width: '100%', height: { xs: 320, sm: 460 }, display: 'block', objectFit: 'cover' }} />
@@ -1304,24 +1292,24 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         <Typography sx={{ fontSize: 12, color: '#555' }}>{scannerStatus}</Typography>
                     </Stack>
                 </DialogContent>
-                <DialogActions sx={{ justifyContent: 'space-between' }}>
-                    <input
-                        ref={barcodeImageInputRef}
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={handleBarcodeImageUpload}
-                    />
-                    <Button
-                        onClick={() => barcodeImageInputRef.current?.click()}
-                        variant="contained"
-                        size="small"
-                        disabled={scanFreightLoading}
-                        sx={{ bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
-                    >
-                        Upload Barcode Image
-                    </Button>
+                <DialogActions sx={{ justifyContent: 'flex-end', gap: 1 }}>
                     <Button onClick={closeScanner} variant="outlined" size="small" sx={{ textTransform: 'none' }}>Cancel</Button>
+                    {mobile && (
+                        <Button
+                            onClick={handleScanGunSubmit}
+                            onPointerDown={(event) => {
+                                if (event.pointerType === 'mouse') return;
+                                event.preventDefault();
+                                handleScanGunSubmit();
+                            }}
+                            variant="contained"
+                            size="small"
+                            disabled={scanFreightLoading || !scanGunValue.trim()}
+                            sx={{ bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            Submit
+                        </Button>
+                    )}
                 </DialogActions>
             </Dialog>
             <Dialog
@@ -1330,6 +1318,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 maxWidth="md"
                 fullWidth
                 disableRestoreFocus
+                disableEnforceFocus={scannerOpen}
+                slotProps={{ transition: { onEntered: handleUnscanReceiptDialogEntered } }}
                 PaperProps={{ sx: { minHeight: 325, borderRadius: 1.5 } }}
             >
                 <DialogTitle sx={{ position: 'relative', px: 2, pt: 2, pb: 1, pr: 6, fontSize: 13, fontWeight: 700 }}>
@@ -1356,7 +1346,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         </Alert>
                     )}
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.75 }}>
-                        {(!mobile || hasScannedOrUnscannedItems) && (
+                        {canUnscanFreight && (
                             <Button
                                 variant="contained"
                                 size="small"
@@ -1379,7 +1369,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {getFreightItems(unscanReceipt).map((item, index) => {
+                                {unscanFreightItems.map((item, index) => {
                                     const freightStatus = getFreightItemStatus(item);
                                     return (
                                         <TableRow key={item.freightId || item.id || item.freightBarcodeValue || index}>
@@ -1401,7 +1391,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                         </TableRow>
                                     );
                                 })}
-                                {!getFreightItems(unscanReceipt).length && (
+                                {!unscanFreightItems.length && (
                                     <TableRow>
                                         <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary', fontSize: 12 }}>
                                             No freight pieces available.
