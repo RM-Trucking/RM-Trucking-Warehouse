@@ -47,12 +47,19 @@ export function getLocationScanReceipt(receiptNumber) {
     dispatch(slice.actions.startReceiptLookup());
     try {
       const response = await axios.get(
-        `/warehouse-receipt/${encodeURIComponent(cleanReceiptNumber)}?searchBy=receiptNumber`
+        `/warehouse-receipt/${encodeURIComponent(cleanReceiptNumber)}/with-freight?searchBy=receiptNumber`
       );
-      const payload = response.data?.data ?? response.data;
-      const receipt = Array.isArray(payload) ? payload[0] : payload;
+      const payload = response.data?.data !== undefined ? response.data.data : response.data;
+      const receiptPayload = payload?.warehouseReceipt || payload?.receipt || payload;
+      const receipt = Array.isArray(receiptPayload) ? receiptPayload[0] : receiptPayload;
 
-      if (!receipt || response.data?.success === false) {
+      if (!receipt) {
+        const message = 'No data found.';
+        dispatch(slice.actions.receiptLookupError(message));
+        return { error: true, notFound: true, message };
+      }
+
+      if (response.data?.success === false) {
         const message = response.data?.message || `Warehouse receipt ${cleanReceiptNumber} was not found.`;
         dispatch(slice.actions.receiptLookupError(message));
         return { error: true, message };

@@ -1,135 +1,65 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Box, Button, CircularProgress, IconButton, Paper, Stack, TextField, Typography,
+  Alert, Box, Button, CircularProgress, IconButton, Paper, Snackbar, Stack, TextField, Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from '../../redux/store';
 import { PATH_DASHBOARD } from '../../routes/paths';
-import {
-  getWarehouseReceipts,
-  updateWarehouseReceiptLocation,
-} from '../../redux/slices/warehouseReceipt';
+import { updateWarehouseReceiptLocation } from '../../redux/slices/warehouseReceipt';
 import { getLocationScanReceipt } from '../../redux/slices/locationScan';
-
-const normalizeBarcode = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-
-const getReceiptBarcodes = (receipt) => {
-  const rawData = receipt.rawData || {};
-  return [
-    receipt.receiptNumber,
-    receipt.proNumber,
-    rawData.barcodeNumber,
-    rawData.receiptNumber,
-    rawData.proNumber,
-  ].filter(Boolean);
-};
 
 export default function LocationScanPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { receipts = [], isLoading = false } = useSelector((state) => state.warehouseReceiptdata || {});
+  const { loading: receiptLoading = false } = useSelector((state) => state.locationScandata || {});
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [barcodeValue, setBarcodeValue] = useState('');
   const [location, setLocation] = useState('');
   const [message, setMessage] = useState(null);
+  const [notFoundSnackbarOpen, setNotFoundSnackbarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const { loading: uploadLoading = false } = useSelector((state) => state.locationScandata || {});
-  const scanBufferRef = useRef('');
   const scanTimerRef = useRef(null);
-  const barcodeImageInputRef = useRef(null);
+  const barcodeInputRef = useRef(null);
+  const lookupInProgressRef = useRef(false);
 
-  useEffect(() => {
-    dispatch(getWarehouseReceipts({ page: 1, pageSize: 500 }));
-  }, [dispatch]);
+  const loadReceipt = useCallback(async (value) => {
+    const receiptNumber = String(value || '').trim();
+    if (!receiptNumber || lookupInProgressRef.current) return;
 
-  const processBarcode = useCallback((barcode) => {
-    const normalizedBarcode = normalizeBarcode(barcode);
-    if (!normalizedBarcode) return;
+    lookupInProgressRef.current = true;
+    window.clearTimeout(scanTimerRef.current);
+    setMessage(null);
+    const response = await dispatch(getLocationScanReceipt(receiptNumber.slice(0, 100)));
+    lookupInProgressRef.current = false;
+    const receipt = response?.data;
 
-    const receipt = receipts.find((row) =>
-      getReceiptBarcodes(row).some((value) => normalizeBarcode(value) === normalizedBarcode)
-    );
-
-    if (!receipt) {
+    if (response?.notFound) {
       setSelectedReceipt(null);
       setLocation('');
-      setMessage({ severity: 'error', text: `Warehouse receipt ${barcode} was not found.` });
+      setMessage(null);
+      setNotFoundSnackbarOpen(true);
       return;
     }
 
+    if (!receipt || response?.error) {
+      setMessage({ severity: 'error', text: response?.message || `Warehouse receipt ${receiptNumber} was not found.` });
+      return;
+    }
+
+    setBarcodeValue('');
     setSelectedReceipt(receipt);
     setLocation(receipt.location || '');
-    setMessage(null);
-  }, [receipts]);
-
-  const handleBarcodeImageUpload = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
-    setMessage(null);
-    const imageUrl = URL.createObjectURL(file);
-
-    try {
-      const reader = new BrowserMultiFormatReader();
-      const result = await reader.decodeFromImageUrl(imageUrl);
-      const receiptNumber = String(result?.getText?.() || '').trim();
-      if (!receiptNumber) throw new Error('No barcode was detected in the selected image.');
-
-      setMessage({ severity: 'info', text: `Barcode detected: ${receiptNumber}. Loading warehouse receipt...` });
-      const response = await dispatch(getLocationScanReceipt(receiptNumber));
-      const receipt = response?.data;
-
-      if (!receipt || response?.error) {
-        throw new Error(response?.message || `Warehouse receipt ${receiptNumber} was not found.`);
-      }
-
-      setSelectedReceipt(receipt);
-      setLocation(receipt.location || '');
-      setMessage({ severity: 'success', text: `Warehouse receipt ${receiptNumber} loaded.` });
-    } catch (error) {
-      const rawMessage = String(error?.message || 'Unable to read the barcode image.');
-      const messageText = rawMessage.includes('MultiFormat') || rawMessage.includes('No readers')
-        ? 'No readable barcode was found. Upload a clear image with the complete barcode visible.'
-        : rawMessage;
-      setSelectedReceipt(null);
-      setLocation('');
-      setMessage({ severity: 'error', text: messageText });
-    } finally {
-      URL.revokeObjectURL(imageUrl);
-    }
-  };
+    setMessage({ severity: 'success', text: `Warehouse receipt ${receipt.receiptNumber || receiptNumber} loaded.` });
+  }, [dispatch]);
 
   useEffect(() => {
-    const resetBufferTimer = () => {
-      window.clearTimeout(scanTimerRef.current);
-      scanTimerRef.current = window.setTimeout(() => {
-        scanBufferRef.current = '';
-      }, 250);
-    };
+    if (selectedReceipt || receiptLoading) return undefined;
+    const focusTimer = window.setTimeout(() => barcodeInputRef.current?.focus(), 100);
+    return () => window.clearTimeout(focusTimer);
+  }, [receiptLoading, selectedReceipt]);
 
-    const handleKeyDown = (event) => {
-      if (selectedReceipt || saving || event.ctrlKey || event.altKey || event.metaKey) return;
-      if (event.key === 'Enter') {
-        const barcode = scanBufferRef.current.trim();
-        scanBufferRef.current = '';
-        window.clearTimeout(scanTimerRef.current);
-        if (barcode) processBarcode(barcode.slice(0, 100));
-        return;
-      }
-      if (event.key.length === 1) {
-        scanBufferRef.current += event.key;
-        resetBufferTimer();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.clearTimeout(scanTimerRef.current);
-    };
-  }, [processBarcode, saving, selectedReceipt]);
+  useEffect(() => () => window.clearTimeout(scanTimerRef.current), []);
 
   const handleUpdate = async () => {
     const cleanLocation = location.trim();
@@ -175,36 +105,61 @@ export default function LocationScanPage() {
       {message && <Alert severity={message.severity} sx={{ mb: 1.5 }}>{message.text}</Alert>}
 
       {!selectedReceipt ? (
-        <Paper sx={{ minHeight: 240, p: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', boxShadow: 'none' }}>
-          {isLoading ? (
-            <Stack spacing={1.5} alignItems="center">
-              <CircularProgress size={32} />
-              <Typography sx={{ fontSize: 12 }}>Loading warehouse receipts...</Typography>
-            </Stack>
-          ) : (
-            <Stack spacing={1} alignItems="center">
-              <Typography sx={{ fontSize: 18, fontWeight: 700 }}>Scan gun ready</Typography>
-              <Typography sx={{ maxWidth: 280, fontSize: 12, color: '#555' }}>
-                Press the scan gun trigger and scan the warehouse receipt barcode.
-              </Typography>
-              <input
-                ref={barcodeImageInputRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={handleBarcodeImageUpload}
-              />
+        <Paper sx={{ p: 2, boxShadow: 'none', colorScheme: 'light' }}>
+          <Stack spacing={2}>
+            {receiptLoading && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <CircularProgress size={20} />
+                <Typography sx={{ fontSize: 12, color: '#000' }}>Loading warehouse receipt...</Typography>
+              </Stack>
+            )}
+            <TextField
+              inputRef={barcodeInputRef}
+              label="Warehouse Receipt Barcode"
+              variant="standard"
+              value={barcodeValue}
+              autoFocus
+              fullWidth
+              autoComplete="off"
+              disabled={receiptLoading}
+              sx={{ '& .MuiInputBase-input': { color: '#000', WebkitTextFillColor: '#000' } }}
+              onChange={(event) => {
+                const value = event.target.value;
+                setBarcodeValue(value);
+                window.clearTimeout(scanTimerRef.current);
+                scanTimerRef.current = window.setTimeout(() => loadReceipt(value), 500);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== 'Tab') return;
+                event.preventDefault();
+                window.clearTimeout(scanTimerRef.current);
+                loadReceipt(event.currentTarget.value);
+              }}
+            />
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button
+                variant="outlined"
+                onClick={() => navigate(PATH_DASHBOARD.shipmentBuilding)}
+                disabled={receiptLoading}
+                sx={{ textTransform: 'none' }}
+              >
+                Cancel
+              </Button>
               <Button
                 variant="contained"
-                size="small"
-                disabled={uploadLoading}
-                onClick={() => barcodeImageInputRef.current?.click()}
-                sx={{ mt: 1, bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                onClick={() => loadReceipt(barcodeValue)}
+                onPointerDown={(event) => {
+                  if (event.pointerType === 'mouse') return;
+                  event.preventDefault();
+                  loadReceipt(barcodeValue);
+                }}
+                disabled={receiptLoading || !barcodeValue.trim()}
+                sx={{ bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
               >
-                {uploadLoading ? <CircularProgress size={18} color="inherit" /> : 'Upload Barcode Image'}
+                {receiptLoading ? <CircularProgress size={18} color="inherit" /> : 'Submit'}
               </Button>
             </Stack>
-          )}
+          </Stack>
         </Paper>
       ) : (
         <Paper sx={{ p: 2, boxShadow: 'none' }}>
@@ -216,6 +171,12 @@ export default function LocationScanPage() {
             <Box>
               <Typography sx={{ fontSize: 11, color: '#666' }}>PRO Number</Typography>
               <Typography sx={{ fontSize: 14 }}>{selectedReceipt.proNumber || '-'}</Typography>
+            </Box>
+            <Box>
+              <Typography sx={{ fontSize: 11, color: '#666' }}>Customer Info</Typography>
+              <Typography sx={{ fontSize: 14 }}>
+                {[selectedReceipt.customerName, selectedReceipt.stationName].filter(Boolean).join(' | ') || '-'}
+              </Typography>
             </Box>
             <TextField
               label="Location"
@@ -251,6 +212,18 @@ export default function LocationScanPage() {
           </Stack>
         </Paper>
       )}
+      <Snackbar
+        open={notFoundSnackbarOpen}
+        autoHideDuration={4000}
+        onClose={(event, reason) => {
+          if (reason !== 'clickaway') setNotFoundSnackbarOpen(false);
+        }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="warning" variant="filled" onClose={() => setNotFoundSnackbarOpen(false)}>
+          No data found.
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
