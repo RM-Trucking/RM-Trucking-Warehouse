@@ -593,8 +593,18 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     return (
-        <Box sx={{ minHeight: mobile ? '100vh' : 500, bgcolor: '#e7e7e7' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25 }}>
+        <Box sx={{ minHeight: mobile ? '100vh' : 500, bgcolor: '#e7e7e7', color: mobile ? '#000' : undefined, colorScheme: mobile ? 'light' : undefined }}>
+            <Box
+                sx={{
+                    display: 'flex', justifyContent: 'space-between', px: 1.5, py: 1.25,
+                    ...(mobile && {
+                        color: '#000',
+                        '& .MuiTypography-root': { color: '#000' },
+                        '& .MuiButton-text': { color: '#000' },
+                        '& .MuiButton-contained.Mui-disabled': { color: '#555', bgcolor: '#ccc' },
+                    }),
+                }}
+            >
                 <Box>
                     <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
                         Shipment Form - {currentShipment?.barcodeNumber || currentShipment?.rmNumber || currentShipment?.shipmentId}
@@ -664,7 +674,18 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 </Box>
             </Box>
 
-            <Paper sx={{ mx: mobile ? 0 : 1.5, mt: 1, p: mobile ? 0 : 3, minHeight: 390, borderRadius: mobile ? 0 : 2, boxShadow: 'none' }}>
+            <Paper
+                sx={{
+                    mx: mobile ? 0 : 1.5, mt: 1, p: mobile ? 0 : 3, minHeight: 390,
+                    borderRadius: mobile ? 0 : 2, boxShadow: 'none', bgcolor: '#fff',
+                    ...(mobile && {
+                        color: '#000',
+                        '& .MuiTableCell-root': { color: '#000' },
+                        '& .MuiInputBase-input': { color: '#000', WebkitTextFillColor: '#000' },
+                        '& .MuiTypography-root': { color: '#000' },
+                    }),
+                }}
+            >
                 {splitApprovalCompleted && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
                         <Button
