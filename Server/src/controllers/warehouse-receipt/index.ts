@@ -120,6 +120,29 @@ export async function listWarehouseReceipts(req: Request, res: Response, conn: C
     }
 }
 
+export async function getWarehouseReceiptWithFreight(req: Request, res: Response, conn: Connection): Promise<void> {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const searchBy = (req.query.searchBy as string) || "receiptNumber"; // Default to receiptNumber
+
+    if (!id) {
+        res.status(400).json({ success: false, message: "Receipt ID or Receipt Number is required" });
+        return;
+    }
+
+    try {
+        const result = await warehouseReceiptService.getWarehouseReceiptByIdOrReceiptNumberService(conn, Number(id), searchBy);
+
+        res.status(200).json({ success: true, data: result });
+
+    }
+
+    catch (error: any) {
+        logger.error("Error fetching warehouse receipt with freight", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+
+}
+
 /**
  * GET RECEIPTS BY VERIFICATION ID
  * Endpoint: GET /warehouse-receipt/verification/:verificationId

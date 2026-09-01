@@ -209,12 +209,60 @@ export async function getWarehouseReceiptById(
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
         verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
-        documentId: row.documentId != null ? parseInt(row.documentId) : null,
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
-        toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : [],
+        unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
+        class: row.class ? JSON.parse(row.class) : [],
+        createdByName: row.createdBy ? await getUserName(conn, row.createdBy) : null,
+        approvedByName: row.approvedBy ? await getUserName(conn, row.approvedBy) : null,
+        requestedByName: row.requestedBy ? await getUserName(conn, row.requestedBy) : null,
         createdAt: row.createdAt ? toUtcDate(row.createdAt) : null,
         updatedAt: row.updatedAt ? toUtcDate(row.updatedAt) : null,
+        requestedAt: row.requestedAt ? toUtcDate(row.requestedAt) : null,
+        approvedAt: row.approvedAt ? toUtcDate(row.approvedAt) : null,
+    };
+}
+
+
+export async function getWarehouseReceiptByReceiptNumber(
+    conn: Connection,
+    receiptNumber: number
+): Promise<WarehouseReceipt & { carrierName: string; customerName: string; stationName: string } | null> {
+    console.log("Fetching warehouse receipt by ID:", receiptNumber);
+
+    const query = `
+        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
+        FROM ${SCHEMA}."Warehouse_Receipt" "wh"
+        LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
+        LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
+        LEFT JOIN ${SCHEMA}."Station" "s" ON "wh"."stationId" = "s"."stationId" 
+        WHERE "wh"."receiptNumber" = ?
+    `;
+    const result = await conn.query(query, [Number(receiptNumber)]) as any[];
+
+    if (!result || result.length === 0) {
+        return null;
+    }
+
+    const row = result[0];
+    return {
+        ...row,
+        receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
+        receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
+        verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
+        entityId: row.entityId != null ? parseInt(row.entityId) : null,
+        toEmails: row.toEmails ? JSON.parse(row.toEmails) : [],
+        unNumber: row.unNumber ? JSON.parse(row.unNumber) : [],
+        class: row.class ? JSON.parse(row.class) : [],
+        createdByName: row.createdBy ? await getUserName(conn, row.createdBy) : null,
+        approvedByName: row.approvedBy ? await getUserName(conn, row.approvedBy) : null,
+        requestedByName: row.requestedBy ? await getUserName(conn, row.requestedBy) : null,
+        createdAt: row.createdAt ? toUtcDate(row.createdAt) : null,
+        updatedAt: row.updatedAt ? toUtcDate(row.updatedAt) : null,
+        requestedAt: row.requestedAt ? toUtcDate(row.requestedAt) : null,
+        approvedAt: row.approvedAt ? toUtcDate(row.approvedAt) : null,
     };
 }
 
@@ -1146,7 +1194,7 @@ export async function deleteBadFreightConditionImageByPath(conn: Connection, rec
     await conn.query(query, [Number(receiptId), imagePath]);
 }
 
-export async function getWarehouseReceiptByReceiptNumber(
+export async function getWarehouseReceiptByReceiptNumberForInitiated(
     conn: Connection,
     receiptNumber: number
 ): Promise<WarehouseReceipt | null> {
@@ -1276,7 +1324,7 @@ export async function checkDuplicateProByCarrierName(
 /**
  * GET WAREHOUSE RECEIPT BY PRO NUMBER
  */
-export async function getWarehouseReceiptsByProNumber(
+export async function getWarehouseReceiptsByProNumberForInitiated(
     conn: Connection,
     proNumber: string
 ): Promise<WarehouseReceipt[]> {

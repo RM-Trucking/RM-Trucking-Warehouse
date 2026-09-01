@@ -115,7 +115,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     // Define default values based on the Air Shipment image mockup
     const defaultValues = {
-        rmProNo: rowData?.barcodeNumber || '',
+        rmProNo: String(rowData?.barcodeNumber || '').replace(/\s/g, ''),
         customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || String(rowData.customerId || '') } : null,
         station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || String(rowData.stationId || '') } : null,
         airBill: rowData?.airBillNumber || '',
@@ -144,7 +144,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     const { control, handleSubmit, setValue, clearErrors, reset } = useForm({ defaultValues });
 
-    const [barcodeValue, setBarcodeValue] = useState(viewMode ? rowData?.barcodeNumber || '' : '');
+    const [barcodeValue, setBarcodeValue] = useState(viewMode ? String(rowData?.barcodeNumber || '').replace(/\s/g, '') : '');
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
     const [stationSearchValue, setStationSearchValue] = useState(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
     const [warehouseAlertOpen, setWarehouseAlertOpen] = useState(false);
@@ -153,6 +153,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     const [submitError, setSubmitError] = useState('');
     const [warehouseReceiptError, setWarehouseReceiptError] = useState(false);
     const [receiptInputValues, setReceiptInputValues] = useState({});
+    const [receiptSearchSubmitted, setReceiptSearchSubmitted] = useState({});
     const [savedContainerRows, setSavedContainerRows] = useState(() => new Set());
     const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
     const [rowSaveError, setRowSaveError] = useState('');
@@ -205,12 +206,17 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     const handleReceiptSearch = (fieldKey, value, reason) => {
         if (reason === 'reset') return;
+        setReceiptSearchSubmitted((prev) => ({ ...prev, [fieldKey]: false }));
         if (!selectedCustomerId || !selectedStationId) {
             if (value) setWarehouseAlertOpen(true);
             return;
         }
         if (receiptSearchTimers.current[fieldKey]) clearTimeout(receiptSearchTimers.current[fieldKey]);
         receiptSearchTimers.current[fieldKey] = setTimeout(() => {
+            setReceiptSearchSubmitted((prev) => ({
+                ...prev,
+                [fieldKey]: Boolean(String(value || '').trim()),
+            }));
             dispatch(getShipmentReceiptOptions(value, fieldKey));
         }, 500);
     };
@@ -362,7 +368,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     const handleDiscardChanges = () => {
         reset(defaultValues);
-        setBarcodeValue(rowData?.barcodeNumber || '');
+        setBarcodeValue(String(rowData?.barcodeNumber || '').replace(/\s/g, ''));
         setCustomerSearchValue(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
         setStationSearchValue(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
         setSubmitError('');
@@ -470,11 +476,18 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                         <Controller
                             name="rmProNo"
                             control={control}
-                            rules={{ required: 'RM PRO Number is required' }}
+                            rules={{
+                                required: 'RM PRO Number is required',
+                                validate: (value) => !/\s/.test(value) || 'Spaces are not allowed in RM PRO Number',
+                            }}
                             render={({ field, fieldState: { error } }) => (
                                 <Box sx={{ bgcolor: '#fff', borderRadius: 0.5 }}>
                                     <StyledTextField
                                         {...field}
+                                        onChange={(event) => field.onChange(event.target.value.replace(/\s/g, ''))}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ') event.preventDefault();
+                                        }}
                                         variant="outlined"
                                         size="small"
                                         fullWidth
@@ -677,6 +690,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                 }}
                                                 fullWidth
                                                 size="small"
+                                                placeholder="Enter a container number"
                                                 sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }}
                                             />
                                         )} />
@@ -755,7 +769,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                     handleReceiptSelection(index, item.id, newValue);
                                                 }}
                                                 loadingText="Searching warehouse receipts..."
-                                                noOptionsText="Type a receipt number"
+                                                noOptionsText={receiptSearchSubmitted[item.id] ? 'No receipt found' : 'Type a receipt number'}
                                                 renderOption={(props, option) => (
                                                     <Box component="li" {...props} key={option.receiptId} sx={{ display: 'block !important' }}>
                                                         <Typography sx={{ fontSize: 12, fontWeight: 600, color: '#243e9b' }}>
