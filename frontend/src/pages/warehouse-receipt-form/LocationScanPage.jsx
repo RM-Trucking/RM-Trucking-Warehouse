@@ -48,6 +48,7 @@ export default function LocationScanPage() {
   const scanTimerRef = useRef(null);
   const barcodeInputRef = useRef(null);
   const freightInputRef = useRef(null);
+  const locationInputRef = useRef(null);
   const lookupInProgressRef = useRef(false);
 
   const loadReceipt = async (value) => {
@@ -94,12 +95,35 @@ export default function LocationScanPage() {
 
   useEffect(() => () => window.clearTimeout(scanTimerRef.current), []);
 
+  useEffect(() => {
+    if (!selectedReceipt) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = 'Your scanned freight and location changes will be lost.';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [selectedReceipt]);
+
   const requiredFreightBarcodes = getRequiredFreightBarcodes(selectedReceipt);
   const scannedFreightBarcodeSet = new Set(scannedFreightBarcodes.map((value) => String(value).toUpperCase()));
   const unscannedFreightBarcodes = requiredFreightBarcodes.filter(
     (freightBarcode) => !scannedFreightBarcodeSet.has(freightBarcode)
   );
   const allFreightScanned = unscannedFreightBarcodes.length === 0;
+
+  useEffect(() => {
+    if (!selectedReceipt || requiredFreightBarcodes.length === 0 || !allFreightScanned) return undefined;
+
+    const focusTimer = window.setTimeout(() => {
+      locationInputRef.current?.focus();
+      locationInputRef.current?.select();
+    }, 100);
+
+    return () => window.clearTimeout(focusTimer);
+  }, [allFreightScanned, requiredFreightBarcodes.length, selectedReceipt]);
 
   const handleFreightScan = useCallback((value) => {
     const { receiptNumber, freightBarcodeValue } = parseScannedFreightBarcode(value);
@@ -289,12 +313,21 @@ export default function LocationScanPage() {
               />
             )}
             <TextField
+              inputRef={locationInputRef}
               label="Location"
               value={location}
               onChange={(event) => setLocation(event.target.value)}
               size="small"
               required
               fullWidth
+              sx={allFreightScanned ? {
+                '& .MuiOutlinedInput-root.Mui-focused': {
+                  bgcolor: '#eaf3ff',
+                  boxShadow: '0 0 0 3px rgba(25, 118, 210, 0.18)',
+                  '& fieldset': { borderColor: '#1976d2', borderWidth: 2 },
+                },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#1976d2' },
+              } : undefined}
             />
             <Stack direction="row" spacing={1} justifyContent="flex-end">
               <Button
