@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, IconButton, Paper, Snackbar, Stack, TextField, Typography,
 } from '@mui/material';
@@ -41,6 +41,7 @@ export default function LocationScanPage() {
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [barcodeValue, setBarcodeValue] = useState('');
   const [freightScanValue, setFreightScanValue] = useState('');
+  const [freightWarning, setFreightWarning] = useState('');
   const [location, setLocation] = useState('');
   const [message, setMessage] = useState(null);
   const [notFoundSnackbarOpen, setNotFoundSnackbarOpen] = useState(false);
@@ -64,19 +65,24 @@ export default function LocationScanPage() {
 
     if (response?.notFound) {
       setSelectedReceipt(null);
+      setBarcodeValue('');
       setLocation('');
       setMessage(null);
       setNotFoundSnackbarOpen(true);
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 100);
       return;
     }
 
     if (!receipt || response?.error) {
+      setBarcodeValue('');
       setMessage({ severity: 'error', text: response?.message || `Warehouse receipt ${receiptNumber} was not found.` });
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 100);
       return;
     }
 
     setBarcodeValue('');
     setSelectedReceipt(receipt);
+    setFreightWarning('');
     setLocation(receipt.location || '');
     const requiredFreightBarcodes = getRequiredFreightBarcodes(receipt);
     const scannedFreightBarcode = String(response.scannedFreightBarcodeValue || '').toUpperCase();
@@ -125,27 +131,32 @@ export default function LocationScanPage() {
     return () => window.clearTimeout(focusTimer);
   }, [allFreightScanned, requiredFreightBarcodes.length, selectedReceipt]);
 
-  const handleFreightScan = useCallback((value) => {
+  const handleFreightScan = (value) => {
     const { receiptNumber, freightBarcodeValue } = parseScannedFreightBarcode(value);
     if (!freightBarcodeValue || !selectedReceipt) return;
 
     const selectedReceiptNumber = String(selectedReceipt.receiptNumber || '').trim();
     if (receiptNumber && receiptNumber !== selectedReceiptNumber) {
-      setMessage({ severity: 'error', text: `The scanned freight belongs to receipt ${receiptNumber}, not ${selectedReceiptNumber}.` });
+      setFreightWarning(`The scanned freight belongs to receipt ${receiptNumber}, not ${selectedReceiptNumber}.`);
+      setFreightScanValue('');
+      window.setTimeout(() => freightInputRef.current?.focus(), 100);
       return;
     }
 
     const availableFreightBarcodes = getRequiredFreightBarcodes(selectedReceipt);
     if (!availableFreightBarcodes.includes(freightBarcodeValue)) {
-      setMessage({ severity: 'error', text: `${freightBarcodeValue} is not available on this warehouse receipt.` });
+      setFreightWarning(`${freightBarcodeValue} is not available on this warehouse receipt.`);
+      setFreightScanValue('');
+      window.setTimeout(() => freightInputRef.current?.focus(), 100);
       return;
     }
 
+    setFreightWarning('');
     dispatch(addScannedFreightBarcode(freightBarcodeValue));
     setFreightScanValue('');
     setMessage({ severity: 'success', text: `${freightBarcodeValue} scanned successfully.` });
     window.setTimeout(() => freightInputRef.current?.focus(), 100);
-  }, [dispatch, selectedReceipt]);
+  };
 
   const handleUpdate = async () => {
     if (!allFreightScanned) {
@@ -273,21 +284,11 @@ export default function LocationScanPage() {
                 {[selectedReceipt.customerName, selectedReceipt.stationName].filter(Boolean).join(' | ') || '-'}
               </Typography>
             </Box>
-            {!allFreightScanned && (
-              <Alert severity="warning">
-                <Typography sx={{ fontSize: 12, fontWeight: 700 }}>
-                  Scan all freight items before updating the location.
-                </Typography>
-                <Typography sx={{ fontSize: 12 }}>
-                  Unscanned: {unscannedFreightBarcodes.join(', ')}
-                </Typography>
-                <Typography sx={{ fontSize: 12 }}>
-                  Scan the remaining items or reach out to the office to split the receipt.
-                </Typography>
-              </Alert>
-            )}
             {requiredFreightBarcodes.length > 0 && allFreightScanned && (
               <Alert severity="success">All freight items have been scanned.</Alert>
+            )}
+            {!allFreightScanned && freightWarning && (
+              <Alert severity="warning">{freightWarning}</Alert>
             )}
             {!allFreightScanned && (
               <TextField
@@ -300,6 +301,7 @@ export default function LocationScanPage() {
                 autoComplete="off"
                 onChange={(event) => {
                   const value = event.target.value;
+                  setFreightWarning('');
                   setFreightScanValue(value);
                   window.clearTimeout(scanTimerRef.current);
                   scanTimerRef.current = window.setTimeout(() => handleFreightScan(value), 500);
@@ -335,6 +337,7 @@ export default function LocationScanPage() {
                 onClick={() => {
                   setSelectedReceipt(null);
                   setFreightScanValue('');
+                  setFreightWarning('');
                   setLocation('');
                   setMessage(null);
                   dispatch(clearReceiptLookup());
@@ -353,6 +356,19 @@ export default function LocationScanPage() {
                 {saving ? <CircularProgress size={18} color="inherit" /> : 'Update Location'}
               </Button>
             </Stack>
+            {!allFreightScanned && (
+              <Alert severity="warning">
+                <Typography sx={{ fontSize: 12, fontWeight: 700 }}>
+                  Scan all freight items before updating the location.
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  Unscanned: {unscannedFreightBarcodes.join(', ')}
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  Scan the remaining items or reach out to the office to split the receipt.
+                </Typography>
+              </Alert>
+            )}
           </Stack>
         </Paper>
       )}
