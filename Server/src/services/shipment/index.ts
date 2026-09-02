@@ -617,6 +617,7 @@ export async function signOffShipment(conn: Connection, shipmentId: number, user
         const shipmentReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
         const partialScanned: number[] = [];
         const fullyUnscanned: number[] = [];
+        const fullyScanned: number[] = [];
 
         for (const receipt of shipmentReceipts) {
             const receiptId = Number((receipt as any).receiptId);
@@ -631,11 +632,34 @@ export async function signOffShipment(conn: Connection, shipmentId: number, user
             } else if (scannedCount === 0 && unscannedCount > 0) {
                 // fully unscanned
                 fullyUnscanned.push(receiptId);
+            } else if (scannedCount > 0 && unscannedCount === 0) {
+                fullyScanned.push(receiptId);
             }
         }
 
         if (partialScanned.length > 0) {
             throwValidationError(`Cannot sign off while some receipts are partially scanned. Partial receipts: ${partialScanned.join(", ")}`);
+        }
+
+        for (const receiptId of fullyScanned) {
+            await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { status: 'SHIPPED', updatedBy: userId });
+
+            try {
+                const wh = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+                if (wh) {
+                    emitAuditLog({
+                        receiptNumber: wh.receiptNumber,
+                        receiptId: Number(receiptId),
+                        proNumber: (wh as any)?.proNumber || undefined,
+                        userId,
+                        status: 'SHIPPED',
+                        description: `Receipt ${wh.receiptNumber} was moved to SHIPPED during sign-off because all freight was scanned. Shipment barcode: ${existingShipment.barcodeNumber}.`,
+                        level: 'INFO'
+                    });
+                }
+            } catch (err) {
+                console.warn(`Failed to emit audit log for shipped receipt ${receiptId}:`, err);
+            }
         }
 
 

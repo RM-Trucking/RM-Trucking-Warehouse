@@ -8,8 +8,8 @@ const MAX_CONCURRENT_DOWNLOADS = 10; // limit simultaneous image fetches
 
 // Filter patterns for relevant images
 const RELEVANT_IMAGE_PATTERNS = [
-    /x-\d+/i,  // Scale-1, Scale-2, etc.
-    /-marked/i     // Any image ending with -marked (Femto-0-marked, etc.)
+    /scale-\d+/i,  // Scale-1, Scale-2, Scale-3, etc.
+    /-marked/i      // Any image ending with -marked (Femto-0-marked, etc.)
 ];
 
 // Helper to check if image path is relevant

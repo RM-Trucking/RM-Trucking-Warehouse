@@ -1083,6 +1083,56 @@ export async function createWarehouseReceiptWithFreightService(
  * - Creates multiple new warehouse receipts with freight info
  * - Returns updated reference receipt and all newly created receipts
  */
+function normalizeReceiptAttachmentPath(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed || null;
+}
+
+function resolveReceiptAttachmentPath(value: unknown, fallbackBaseDir?: string): string | null {
+    const normalizedPath = normalizeReceiptAttachmentPath(value);
+    if (!normalizedPath) return null;
+
+    if (path.isAbsolute(normalizedPath)) {
+        return path.normalize(normalizedPath);
+    }
+
+    if (fallbackBaseDir) {
+        return path.resolve(fallbackBaseDir, normalizedPath);
+    }
+
+    return path.resolve(process.cwd(), normalizedPath);
+}
+
+function buildReceiptEmailAttachmentPath(receiptData: any, pdfDirectory?: string): string {
+    const normalizedPdfDirectory = pdfDirectory || ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
+    const freightImageBaseDir = process.env.FREIGHT_IMAGE_PATH || process.cwd();
+    const badFreightImageBaseDir = process.env.BAD_FREIGHT_IMAGE_PATH || process.cwd();
+
+    const attachmentPaths: string[] = [];
+
+    if (receiptData?.receiptNumber) {
+        attachmentPaths.push(path.join(normalizedPdfDirectory, `${receiptData.receiptNumber}.pdf`));
+    }
+
+    const freightImagePaths = Array.isArray(receiptData?.freightInformation)
+        ? receiptData.freightInformation.flatMap((freight: any) => {
+            if (!Array.isArray(freight?.images)) return [];
+            return freight.images
+                .map((image: any) => resolveReceiptAttachmentPath(image?.imagePath || image?.imageUrl || image?.path, freightImageBaseDir))
+                .filter((imagePath: string | null): imagePath is string => Boolean(imagePath));
+        })
+        : [];
+
+    const badFreightImagePaths = Array.isArray(receiptData?.badFreightConditionImages)
+        ? receiptData.badFreightConditionImages
+            .map((image: any) => resolveReceiptAttachmentPath(image?.imagePath || image?.imageUrl || image?.path, badFreightImageBaseDir))
+            .filter((imagePath: string | null): imagePath is string => Boolean(imagePath))
+        : [];
+
+    return [...new Set([...attachmentPaths, ...freightImagePaths, ...badFreightImagePaths])].join(";");
+}
+
 export async function batchProcessWarehouseReceiptsService(
     conn: Connection,
     receipts: any[],
@@ -1256,6 +1306,7 @@ export async function batchProcessWarehouseReceiptsService(
                 //While calling the procedure you should pass the path with the file name where you want to save the generated PDF. For example: /home/warehouse-app-docs/temp-receipt-output/receipt-123.pdf
                 //If it is the multiple file send you should separate the file path with the ";" For example: /home/warehouse-app-docs/temp-receipt-output/receipt-123.pdf;/home/warehouse-app-docs/temp-receipt-output/receipt-124.pdf
                 const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
+
                 await createWarehouseReceiptPDF(updatedReceiptData, false, tempReceiptOutPath);
 
                 if (split && parentReceiptId) {
@@ -1292,13 +1343,13 @@ export async function batchProcessWarehouseReceiptsService(
                     }
 
                     for (const emailRecipient of emails) {
-                        // emitEmail will queue email notification asynchronously
+                        const attachmentPath = buildReceiptEmailAttachmentPath(updatedReceiptData, tempReceiptOutPath);
                         emitEmail({
                             receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
                             to: emailRecipient,
                             status: updateData.status,
                             hasAttachment: true,
-                            attachmentPath: tempReceiptOutPath + `/${updatedReceiptData.receiptNumber}.pdf`
+                            attachmentPath
                         });
                     }
                 }
@@ -1434,13 +1485,13 @@ export async function batchProcessWarehouseReceiptsService(
                     }
 
                     for (const emailRecipient of emails) {
-                        // emitEmail will queue email notification asynchronously
+                        const attachmentPath = buildReceiptEmailAttachmentPath(createdReceiptData, tempReceiptOutPath);
                         emitEmail({
                             receiptNumber: dataWithUser.receiptNumber,
                             to: emailRecipient,
                             status: dataWithUser.status,
                             hasAttachment: true,
-                            attachmentPath: tempReceiptOutPath + `/${createdReceiptData.receiptNumber}.pdf`
+                            attachmentPath
                         });
                     }
                 }
