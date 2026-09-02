@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, IconButton, Paper, Snackbar, Stack, TextField, Typography,
 } from '@mui/material';
@@ -7,23 +7,52 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from '../../redux/store';
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { updateWarehouseReceiptLocation } from '../../redux/slices/warehouseReceipt';
-import { getLocationScanReceipt } from '../../redux/slices/locationScan';
+import {
+  addScannedFreightBarcode,
+  clearReceiptLookup,
+  getLocationScanReceipt,
+} from '../../redux/slices/locationScan';
+
+const getFreightInformation = (receipt) => {
+  const freightInformation = receipt?.freightInformation || receipt?.rawData?.freightInformation;
+  return Array.isArray(freightInformation) ? freightInformation : [];
+};
+
+const getRequiredFreightBarcodes = (receipt) => getFreightInformation(receipt)
+  .map((freight) => String(freight.freightBarcodeValue || '').trim().toUpperCase())
+  .filter(Boolean);
+
+const parseScannedFreightBarcode = (value) => {
+  const cleanValue = String(value || '').trim();
+  const [receiptNumber, ...freightParts] = cleanValue.split('-');
+  if (freightParts.length) {
+    return { receiptNumber: receiptNumber.trim(), freightBarcodeValue: freightParts.join('-').trim().toUpperCase() };
+  }
+  return { receiptNumber: '', freightBarcodeValue: cleanValue.toUpperCase() };
+};
 
 export default function LocationScanPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading: receiptLoading = false } = useSelector((state) => state.locationScandata || {});
+  const {
+    loading: receiptLoading = false,
+    scannedFreightBarcodes = [],
+  } = useSelector((state) => state.locationScandata || {});
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [barcodeValue, setBarcodeValue] = useState('');
+  const [freightScanValue, setFreightScanValue] = useState('');
+  const [freightWarning, setFreightWarning] = useState('');
   const [location, setLocation] = useState('');
   const [message, setMessage] = useState(null);
   const [notFoundSnackbarOpen, setNotFoundSnackbarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const scanTimerRef = useRef(null);
   const barcodeInputRef = useRef(null);
+  const freightInputRef = useRef(null);
+  const locationInputRef = useRef(null);
   const lookupInProgressRef = useRef(false);
 
-  const loadReceipt = useCallback(async (value) => {
+  const loadReceipt = async (value) => {
     const receiptNumber = String(value || '').trim();
     if (!receiptNumber || lookupInProgressRef.current) return;
 
@@ -36,22 +65,33 @@ export default function LocationScanPage() {
 
     if (response?.notFound) {
       setSelectedReceipt(null);
+      setBarcodeValue('');
       setLocation('');
       setMessage(null);
       setNotFoundSnackbarOpen(true);
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 100);
       return;
     }
 
     if (!receipt || response?.error) {
+      setBarcodeValue('');
       setMessage({ severity: 'error', text: response?.message || `Warehouse receipt ${receiptNumber} was not found.` });
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 100);
       return;
     }
 
     setBarcodeValue('');
     setSelectedReceipt(receipt);
+    setFreightWarning('');
     setLocation(receipt.location || '');
-    setMessage({ severity: 'success', text: `Warehouse receipt ${receipt.receiptNumber || receiptNumber} loaded.` });
-  }, [dispatch]);
+    const requiredFreightBarcodes = getRequiredFreightBarcodes(receipt);
+    const scannedFreightBarcode = String(response.scannedFreightBarcodeValue || '').toUpperCase();
+    if (scannedFreightBarcode && !requiredFreightBarcodes.includes(scannedFreightBarcode)) {
+      setMessage({ severity: 'error', text: `${scannedFreightBarcode} is not available on this warehouse receipt.` });
+    } else {
+      setMessage({ severity: 'success', text: `Warehouse receipt ${receipt.receiptNumber || receiptNumber} loaded.` });
+    }
+  };
 
   useEffect(() => {
     if (selectedReceipt || receiptLoading) return undefined;
@@ -61,7 +101,72 @@ export default function LocationScanPage() {
 
   useEffect(() => () => window.clearTimeout(scanTimerRef.current), []);
 
+  useEffect(() => {
+    if (!selectedReceipt) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = 'Your scanned freight and location changes will be lost.';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [selectedReceipt]);
+
+  const requiredFreightBarcodes = getRequiredFreightBarcodes(selectedReceipt);
+  const scannedFreightBarcodeSet = new Set(scannedFreightBarcodes.map((value) => String(value).toUpperCase()));
+  const unscannedFreightBarcodes = requiredFreightBarcodes.filter(
+    (freightBarcode) => !scannedFreightBarcodeSet.has(freightBarcode)
+  );
+  const allFreightScanned = unscannedFreightBarcodes.length === 0;
+
+  useEffect(() => {
+    if (!selectedReceipt || requiredFreightBarcodes.length === 0 || !allFreightScanned) return undefined;
+
+    const focusTimer = window.setTimeout(() => {
+      locationInputRef.current?.focus();
+      locationInputRef.current?.select();
+    }, 100);
+
+    return () => window.clearTimeout(focusTimer);
+  }, [allFreightScanned, requiredFreightBarcodes.length, selectedReceipt]);
+
+  const handleFreightScan = (value) => {
+    const { receiptNumber, freightBarcodeValue } = parseScannedFreightBarcode(value);
+    if (!freightBarcodeValue || !selectedReceipt) return;
+
+    const selectedReceiptNumber = String(selectedReceipt.receiptNumber || '').trim();
+    if (receiptNumber && receiptNumber !== selectedReceiptNumber) {
+      setFreightWarning(`The scanned freight belongs to receipt ${receiptNumber}, not ${selectedReceiptNumber}.`);
+      setFreightScanValue('');
+      window.setTimeout(() => freightInputRef.current?.focus(), 100);
+      return;
+    }
+
+    const availableFreightBarcodes = getRequiredFreightBarcodes(selectedReceipt);
+    if (!availableFreightBarcodes.includes(freightBarcodeValue)) {
+      setFreightWarning(`${freightBarcodeValue} is not available on this warehouse receipt.`);
+      setFreightScanValue('');
+      window.setTimeout(() => freightInputRef.current?.focus(), 100);
+      return;
+    }
+
+    setFreightWarning('');
+    dispatch(addScannedFreightBarcode(freightBarcodeValue));
+    setFreightScanValue('');
+    setMessage({ severity: 'success', text: `${freightBarcodeValue} scanned successfully.` });
+    window.setTimeout(() => freightInputRef.current?.focus(), 100);
+  };
+
   const handleUpdate = async () => {
+    if (!allFreightScanned) {
+      setMessage({
+        severity: 'warning',
+        text: `Scan all freight items before updating the location. Unscanned: ${unscannedFreightBarcodes.join(', ')}. Scan them or reach out to the office to split the receipt.`,
+      });
+      return;
+    }
+
     const cleanLocation = location.trim();
     if (!cleanLocation) {
       setMessage({ severity: 'error', text: 'Location is required.' });
@@ -82,6 +187,7 @@ export default function LocationScanPage() {
     }
 
     setSelectedReceipt(null);
+    dispatch(clearReceiptLookup());
     setLocation('');
     setMessage({ severity: 'success', text: 'Location updated successfully. Scan the next receipt.' });
   };
@@ -178,22 +284,63 @@ export default function LocationScanPage() {
                 {[selectedReceipt.customerName, selectedReceipt.stationName].filter(Boolean).join(' | ') || '-'}
               </Typography>
             </Box>
+            {requiredFreightBarcodes.length > 0 && allFreightScanned && (
+              <Alert severity="success">All freight items have been scanned.</Alert>
+            )}
+            {!allFreightScanned && freightWarning && (
+              <Alert severity="warning">{freightWarning}</Alert>
+            )}
+            {!allFreightScanned && (
+              <TextField
+                inputRef={freightInputRef}
+                label="Freight Barcode"
+                variant="standard"
+                value={freightScanValue}
+                autoFocus
+                fullWidth
+                autoComplete="off"
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFreightWarning('');
+                  setFreightScanValue(value);
+                  window.clearTimeout(scanTimerRef.current);
+                  scanTimerRef.current = window.setTimeout(() => handleFreightScan(value), 500);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== 'Tab') return;
+                  event.preventDefault();
+                  window.clearTimeout(scanTimerRef.current);
+                  handleFreightScan(event.currentTarget.value);
+                }}
+              />
+            )}
             <TextField
+              inputRef={locationInputRef}
               label="Location"
               value={location}
               onChange={(event) => setLocation(event.target.value)}
               size="small"
               required
-              autoFocus
               fullWidth
+              sx={allFreightScanned ? {
+                '& .MuiOutlinedInput-root.Mui-focused': {
+                  bgcolor: '#eaf3ff',
+                  boxShadow: '0 0 0 3px rgba(25, 118, 210, 0.18)',
+                  '& fieldset': { borderColor: '#1976d2', borderWidth: 2 },
+                },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#1976d2' },
+              } : undefined}
             />
             <Stack direction="row" spacing={1} justifyContent="flex-end">
               <Button
                 variant="outlined"
                 onClick={() => {
                   setSelectedReceipt(null);
+                  setFreightScanValue('');
+                  setFreightWarning('');
                   setLocation('');
                   setMessage(null);
+                  dispatch(clearReceiptLookup());
                 }}
                 disabled={saving}
                 sx={{ textTransform: 'none' }}
@@ -203,12 +350,25 @@ export default function LocationScanPage() {
               <Button
                 variant="contained"
                 onClick={handleUpdate}
-                disabled={saving}
+                disabled={saving || !allFreightScanned}
                 sx={{ bgcolor: '#A22', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
               >
                 {saving ? <CircularProgress size={18} color="inherit" /> : 'Update Location'}
               </Button>
             </Stack>
+            {!allFreightScanned && (
+              <Alert severity="warning">
+                <Typography sx={{ fontSize: 12, fontWeight: 700 }}>
+                  Scan all freight items before updating the location.
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  Unscanned: {unscannedFreightBarcodes.join(', ')}
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  Scan the remaining items or reach out to the office to split the receipt.
+                </Typography>
+              </Alert>
+            )}
           </Stack>
         </Paper>
       )}
