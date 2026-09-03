@@ -304,20 +304,30 @@ export function getShipmentData({
     pageNo = 1,
     pageSize = 10,
     searchTerm = '',
-    request = false,
-    scanned = false,
-    pickup = false,
-    shipped = false,
+    request = '',
+    scanned = '',
+    pickup = '',
+    shipped = '',
+    shipmentType = '',
+    customerId = '',
+    stationId = '',
+    consigneeId = '',
+    airBillNumber = '',
 } = {}) {
     return async () => {
         dispatch(slice.actions.startLoading());
         try {
             const params = { page: pageNo, pageSize };
             if (String(searchTerm).trim()) params.searchTerm = String(searchTerm).trim();
-            if (request) params.request = true;
-            if (scanned) params.scanned = true;
-            if (pickup) params.pickup = true;
-            if (shipped) params.shipped = true;
+            if (request !== '') params.request = request;
+            if (scanned !== '') params.scanned = scanned;
+            if (pickup !== '') params.pickup = pickup;
+            if (shipped !== '') params.shipped = shipped;
+            if (shipmentType) params.shipmentType = shipmentType;
+            if (customerId) params.customerId = customerId;
+            if (stationId) params.stationId = stationId;
+            if (consigneeId) params.consigneeId = consigneeId;
+            if (String(airBillNumber).trim()) params.airBillNumber = String(airBillNumber).trim();
             const response = await axios.get('shipment', { params });
             dispatch(slice.actions.getShipmentDataSuccess(response.data));
         } catch (error) {
