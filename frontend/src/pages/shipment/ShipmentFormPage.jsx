@@ -138,6 +138,11 @@ function ShipmentFormPageContent() {
     setShowOceanFCLForm(false);
   };
 
+  const handleOpenOceanFCLForm = () => {
+    setOpenConfirmDialog(false);
+    setShowOceanFCLForm(true);
+  };
+
   if (viewShipmentLoading) {
     return (
       <Box sx={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -240,9 +245,8 @@ function ShipmentFormPageContent() {
                 <Button
                   variant="contained"
                   size="small"
-                  aria-disabled="true"
-                  sx={{ ...btnStyle, opacity: 0.5, cursor: 'not-allowed' }}
-                  onClick={() => setComingSoonMessage('FCL Shipment Form will be available soon.')}
+                  sx={btnStyle}
+                  onClick={handleOpenOceanFCLForm}
                 >
                   FCL Shipment Form
                 </Button>
