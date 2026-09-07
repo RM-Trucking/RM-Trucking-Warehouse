@@ -19,7 +19,11 @@ import AirPickupEntryForm from './AirPickupEntryForm';
 
 // ----------------------------------------------------------------------
 
-ShipmentTabs.propTypes = {};
+ShipmentTabs.propTypes = {
+    onViewShipment: PropTypes.func.isRequired,
+    filters: PropTypes.object,
+    onShipmentTypeChange: PropTypes.func,
+};
 
 function ScanActionIcon({ width = 20 }) {
     return (
@@ -45,7 +49,7 @@ ScanActionIcon.propTypes = {
     width: PropTypes.number,
 };
 
-export default function ShipmentTabs({ onViewShipment }) {
+export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentTypeChange }) {
     const dispatch = useDispatch();
     const {
         shipmentData: apiShipmentData,
@@ -72,9 +76,8 @@ export default function ShipmentTabs({ onViewShipment }) {
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
     const [viewLoadingId, setViewLoadingId] = useState(null);
     
-    const shipmentTypeMap = { active: 'AIR', inactive: 'LCL', incomplete: 'FCL' };
+    const shipmentTypeMap = { active: 'AIR', inactive: 'OCEAN_LCL', incomplete: 'OCEAN_FCL' };
     const shipmentData = apiShipmentData
-        .filter((shipment) => shipment.shipmentType === shipmentTypeMap[currentTab])
         .map((shipment) => ({
             ...shipment,
             rmNumber: shipment.barcodeNumber,
@@ -127,8 +130,8 @@ export default function ShipmentTabs({ onViewShipment }) {
 
     const TABS = [
         { value: 'active', label: 'Air Form' },
-        { value: 'inactive', label: 'LCL Form', comingSoon: true },
-        { value: 'incomplete', label: 'FCL Form', comingSoon: true },
+        { value: 'inactive', label: 'LCL Form' },
+        { value: 'incomplete', label: 'FCL Form' },
     ];
 
     // Error boundary info
@@ -138,12 +141,8 @@ export default function ShipmentTabs({ onViewShipment }) {
     };
 
     const OnTabChange = (newValue) => {
-        const selectedTab = TABS.find((tab) => tab.value === newValue);
-        if (selectedTab?.comingSoon) {
-            setComingSoonMessage(`${selectedTab.label} will be available soon.`);
-            return;
-        }
         setCurrentTab(newValue);
+        onShipmentTypeChange?.(shipmentTypeMap[newValue]);
     };
 
     const handleAction = async (rowData) => {
@@ -183,10 +182,12 @@ const handleClosePickupForm = () => {
             pageNo: paginationModel.page + 1,
             pageSize: paginationModel.pageSize,
             searchTerm: shipmentSearchStrRef.current,
-            request: requestFilterEnabled,
-            scanned: scannedFilterEnabled,
-            pickup: pickupFilterEnabled,
-            shipped: shippedFilterEnabled,
+            ...filters,
+            request: requestFilterEnabled || filters.request,
+            scanned: scannedFilterEnabled || filters.scanned,
+            pickup: pickupFilterEnabled || filters.pickup,
+            shipped: shippedFilterEnabled || filters.shipped,
+            shipmentType: shipmentTypeMap[currentTab],
         }));
     };
 
@@ -221,15 +222,19 @@ const handleClosePickupForm = () => {
             pageNo: paginationModel.page + 1,
             pageSize: paginationModel.pageSize,
             searchTerm: shipmentSearchStrRef.current,
-            request: requestFilterEnabled,
-            scanned: scannedFilterEnabled,
-            pickup: pickupFilterEnabled,
-            shipped: shippedFilterEnabled,
+            ...filters,
+            request: requestFilterEnabled || filters.request,
+            scanned: scannedFilterEnabled || filters.scanned,
+            pickup: pickupFilterEnabled || filters.pickup,
+            shipped: shippedFilterEnabled || filters.shipped,
+            shipmentType: shipmentTypeMap[currentTab],
         }));
     }, [
         dispatch,
         paginationModel.page,
         paginationModel.pageSize,
+        filters,
+        currentTab,
         pickupFilterEnabled,
         requestFilterEnabled,
         scannedFilterEnabled,
@@ -273,7 +278,6 @@ const handleClosePickupForm = () => {
             setPaginationModel((current) => ({ ...current, page: 0 }));
         }
     };
-
     const renderStatus = (complete) => (
         <Iconify
             icon={complete ? 'eva:checkmark-circle-2-fill' : 'mdi:clock'}

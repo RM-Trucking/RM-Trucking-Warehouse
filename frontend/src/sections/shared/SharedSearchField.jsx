@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
 import { Box, Stack, InputAdornment, TextField, IconButton } from '@mui/material';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
 import { setCustomerSearchStr, setStationSearchStr, getCustomerData, getCustomerStationData } from '../../redux/slices/customer';
@@ -14,9 +15,13 @@ import { getShipmentData, setShipmentSearchStr } from '../../redux/slices/shipme
 
 SharedSearchField.propTypes = {
     page: PropTypes.string,
+    filters: PropTypes.object,
+    onFilterClick: PropTypes.func,
+    activeFilterCount: PropTypes.number,
+    shipmentType: PropTypes.string,
 };
 
-export default function SharedSearchField({ page }) {
+export default function SharedSearchField({ page, filters = {}, onFilterClick, activeFilterCount = 0, shipmentType = '' }) {
     const dispatch = useDispatch();
 
     // state declarations
@@ -100,7 +105,7 @@ export default function SharedSearchField({ page }) {
                 <Stack flexDirection={'row'} alignItems={'center'} justifyContent={'flex-end'} sx={{ padding: 2 }}>
                     <TextField
                         variant="outlined"
-                        placeholder={page === 'shipment' ? 'Search for RM number or Air Bill No' : 'Search...'}
+                        placeholder={page === 'shipment' ? 'Search for RM Number' : 'Search...'}
                         fullWidth
                         value={searchValue}
                         onChange={handleSearch}
@@ -121,7 +126,7 @@ export default function SharedSearchField({ page }) {
                                                 if (page === 'carrier') { dispatch(getCarrierData({ pageNo: 1, pageSize: carrierPagination.pageSize, searchStr: '', status: currentCarrierTab.charAt(0).toUpperCase() + currentCarrierTab.slice(1) })); }
                                                 if (page === 'shipment') {
                                                     dispatch(setShipmentSearchStr(''));
-                                                    dispatch(getShipmentData({ pageNo: 1, pageSize: shipmentPagination.pageSize, searchTerm: '' }));
+                                                    dispatch(getShipmentData({ pageNo: 1, pageSize: shipmentPagination.pageSize, searchTerm: '', ...filters, shipmentType }));
                                                 }
                                             }}
                                             sx={{ mr: 0.5 }}
@@ -137,7 +142,7 @@ export default function SharedSearchField({ page }) {
                                         if (page === 'carrier') { dispatch(getCarrierData({ pageNo: 1, pageSize: carrierPagination.pageSize, searchStr: searchValue, status: currentCarrierTab.charAt(0).toUpperCase() + currentCarrierTab.slice(1) })); }
                                         if (page === 'shipment') {
                                             dispatch(setShipmentSearchStr(searchValue.trim()));
-                                            dispatch(getShipmentData({ pageNo: 1, pageSize: shipmentPagination.pageSize, searchTerm: searchValue.trim() }));
+                                            dispatch(getShipmentData({ pageNo: 1, pageSize: shipmentPagination.pageSize, searchTerm: searchValue.trim(), ...filters, shipmentType }));
                                         }
                                     }}>
                                         <Iconify icon="material-symbols:search" sx={{ mr: 1 }} />
@@ -155,6 +160,24 @@ export default function SharedSearchField({ page }) {
                             width: "25%"
                         }}
                     />
+                    {page === 'shipment' && onFilterClick && (
+                        <IconButton
+                            size="small"
+                            aria-label="Open shipment filters"
+                            onClick={onFilterClick}
+                            sx={{
+                                ml: 0.5,
+                                color: activeFilterCount ? '#1b426f' : '#111',
+                                bgcolor: activeFilterCount ? 'rgba(27, 66, 111, 0.1)' : 'transparent',
+                                borderRadius: 0.8,
+                                '&:hover': {
+                                    bgcolor: activeFilterCount ? 'rgba(27, 66, 111, 0.16)' : 'rgba(0, 0, 0, 0.04)',
+                                },
+                            }}
+                        >
+                            <FilterListIcon sx={{ fontSize: 20 }} />
+                        </IconButton>
+                    )}
                 </Stack>
             </Box>
         </>
