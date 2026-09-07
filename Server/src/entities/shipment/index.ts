@@ -11,6 +11,8 @@ export interface WarehouseShipment {
     additionalRefNumber: string;
     pieces: number;
     weight: number;
+    earlyReturnDate: Date;
+    dropByDate: Date;
     instructions: string;
     createdBy: number;
     createdAt: Date;

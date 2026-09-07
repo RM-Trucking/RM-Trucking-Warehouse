@@ -24,24 +24,35 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
 
 export async function listShipments(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
-        const searchTerm = req.query.searchTerm as string | undefined;
+        const barcodeNumber = req.query.searchTerm as string | undefined;
         const page = parseInt(req.query.page as string, 10) || 1;
         const pageSize = parseInt(req.query.pageSize as string, 10) || 10;
         const scanned = req.query.scanned as string | undefined;
         const pickup = req.query.pickup as string | undefined;
         const shipped = req.query.shipped as string | undefined;
         const request = req.query.request as string | undefined;
+        const shipmentType = req.query.shipmentType as string | undefined;
+        const customerId = req.query.customerId as string | undefined;
+        const stationId = req.query.stationId as string | undefined;
+        const consigneeId = req.query.consigneeId as string | undefined;
+        const airBillNumber = req.query.airBillNumber as string | undefined;
+
         const filters = {
-            searchTerm,
+            barcodeNumber,
             page,
             pageSize,
             scanned: scanned === "true" ? true : scanned === "false" ? false : undefined,
             pickup: pickup === "true" ? true : pickup === "false" ? false : undefined,
             shipped: shipped === "true" ? true : shipped === "false" ? false : undefined,
             request: request === "true" ? true : request === "false" ? false : undefined,
+            shipmentType: shipmentType ? shipmentType.toUpperCase() : undefined,
+            customerId: customerId ? customerId : undefined,
+            stationId: stationId ? stationId : undefined,
+            consigneeId: consigneeId ? consigneeId : undefined,
+            airBillNumber: airBillNumber ? airBillNumber : undefined,
         }
 
-        const result = await shipmentService.listShipments(conn, { searchTerm, page, pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request });
+        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber });
         res.status(200).json({
             success: true,
             data: result.data,
