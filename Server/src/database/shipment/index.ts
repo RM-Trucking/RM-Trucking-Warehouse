@@ -26,9 +26,11 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "pickupEntry",
                 "pickupEntryNumber",
                 "entityId",
-                "noteThreadId"
+                "noteThreadId",
+                "earlyReturnDate",
+                "dropByDate"
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         )
     `;
 
@@ -52,7 +54,9 @@ export async function createShipment(conn: Connection, payload: any, userId: num
         "N",
         null,
         payload.entityId,
-        payload.noteThreadId
+        payload.noteThreadId,
+        payload.earlyReturnDate,
+        payload.dropByDate
     ];
 
     const result = await conn.query(query, params as any) as any[];
@@ -124,7 +128,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { searchTerm?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string }
 ): Promise<any[]> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -137,14 +141,15 @@ export async function listShipments(
     `;
 
     const params: any[] = [];
-    if (filters.searchTerm) {
-        const searchValue = `%${filters.searchTerm.toUpperCase()}%`;
-        query += ` AND (
-            UPPER("barcodeNumber") LIKE ? OR
-            UPPER(COALESCE("airBillNumber", '')) LIKE ? OR
-            CAST("shipmentId" AS VARCHAR(20)) LIKE ?
-        )`;
-        params.push(searchValue, searchValue, searchValue);
+    if (filters.barcodeNumber) {
+        const barcodeValue = `%${filters.barcodeNumber.toUpperCase()}%`;
+        query += ` AND UPPER("barcodeNumber") LIKE ?`;
+        params.push(barcodeValue);
+    }
+
+    if (filters.airBillNumber) {
+        query += ` AND UPPER(COALESCE("airBillNumber", '')) = ?`;
+        params.push(filters.airBillNumber.toUpperCase());
     }
 
     // request filter maps to completeStatus = 'REQUESTED' or 'SPLIT_APPROVED'
@@ -183,6 +188,24 @@ export async function listShipments(
         }
     }
 
+    if (filters.shipmentType) {
+        query += ` AND UPPER(COALESCE("shipmentType", '')) = ?`;
+        params.push(filters.shipmentType.toUpperCase());
+    }
+
+    if (filters.customerId) {
+        query += ` AND "customerId" = ?`;
+        params.push(filters.customerId);
+    }
+    if (filters.stationId) {
+        query += ` AND "stationId" = ?`;
+        params.push(filters.stationId);
+    }
+    if (filters.consigneeId) {
+        query += ` AND "consigneeId" = ?`;
+        params.push(filters.consigneeId);
+    }
+
     query += ` ORDER BY "shipmentId" DESC LIMIT ? OFFSET ?`;
     params.push(pageSize, offset);
 
@@ -191,19 +214,20 @@ export async function listShipments(
 
 export async function countShipments(
     conn: Connection,
-    filters: { searchTerm?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string }
 ): Promise<number> {
     let query = `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE 1 = 1`;
     const params: any[] = [];
 
-    if (filters.searchTerm) {
-        const searchValue = `%${filters.searchTerm.toUpperCase()}%`;
-        query += ` AND (
-            UPPER("barcodeNumber") LIKE ? OR
-            UPPER(COALESCE("airBillNumber", '')) LIKE ? OR
-            CAST("shipmentId" AS VARCHAR(20)) LIKE ?
-        )`;
-        params.push(searchValue, searchValue, searchValue);
+    if (filters.barcodeNumber) {
+        const barcodeValue = `%${filters.barcodeNumber.toUpperCase()}%`;
+        query += ` AND UPPER("barcodeNumber") LIKE ?`;
+        params.push(barcodeValue);
+    }
+
+    if (filters.airBillNumber) {
+        query += ` AND UPPER(COALESCE("airBillNumber", '')) = ?`;
+        params.push(filters.airBillNumber.toUpperCase());
     }
 
     if (typeof filters.request !== "undefined") {
@@ -236,6 +260,26 @@ export async function countShipments(
         } else {
             query += ` AND UPPER(COALESCE("isShipped", 'N')) <> 'Y'`;
         }
+    }
+
+    if (filters.shipmentType) {
+        query += ` AND UPPER(COALESCE("shipmentType", '')) = ?`;
+        params.push(filters.shipmentType.toUpperCase());
+    }
+
+    if (filters.customerId) {
+        query += ` AND "customerId" = ?`;
+        params.push(filters.customerId);
+    }
+
+    if (filters.stationId) {
+        query += ` AND "stationId" = ?`;
+        params.push(filters.stationId);
+    }
+
+    if (filters.consigneeId) {
+        query += ` AND "consigneeId" = ?`;
+        params.push(filters.consigneeId);
     }
 
     const result = await conn.query(query, params as any) as any[];

@@ -53,6 +53,32 @@ paths:
           schema:
             type: boolean
           description: Filter shipments with `completeStatus = 'REQUESTED'` when `true`.
+        - in: query
+          name: shipmentType
+          schema:
+            type: string
+            enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+          description: Filter shipments by type.
+        - in: query
+          name: customerId
+          schema:
+            type: integer
+          description: Filter shipments by customer ID.
+        - in: query
+          name: stationId
+          schema:
+            type: integer
+          description: Filter shipments by station ID.
+        - in: query
+          name: consigneeId
+          schema:
+            type: integer
+          description: Filter shipments by consignee ID.
+        - in: query
+          name: airBillNumber
+          schema:
+            type: string
+          description: Filter shipments by air bill number.
       responses:
         "200":
           description: Shipment list retrieved successfully
@@ -588,6 +614,12 @@ components:
           type: integer
         weight:
           type: number
+        earlyReturnDate:
+          type: string
+          format: date
+        dropByDate:
+          type: string
+          format: date
         instructions:
           type: string
         containers:

@@ -43,6 +43,8 @@ function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWareh
         consigneeId: Number((payload as any).consigneeId),
         pieces: Number((payload as any).pieces),
         weight: Number((payload as any).weight),
+        earlyReturnDate: (payload as any).earlyReturnDate ? normalizeDateOnly((payload as any).earlyReturnDate) : null,
+        dropByDate: (payload as any).dropByDate ? normalizeDateOnly((payload as any).dropByDate) : null,
         isCanceled: "N",
         isShipped: "N",
         isScanned: "N",
@@ -427,7 +429,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { searchTerm?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string , airBillNumber?: string }
 ): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number }> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
