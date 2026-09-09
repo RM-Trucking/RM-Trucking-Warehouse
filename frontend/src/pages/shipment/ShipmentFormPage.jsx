@@ -281,6 +281,13 @@ function ShipmentFormPageContent() {
     setAppliedShipmentFilters(emptyShipmentFilters);
   };
 
+  const handleCloseShipmentFilters = () => {
+    if (Object.values(shipmentFilters).every((value) => String(value).trim() === '')) {
+      handleClearShipmentFilters();
+    }
+    setFilterDialogOpen(false);
+  };
+
   if (viewShipmentLoading) {
     return (
       <Box sx={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -419,7 +426,7 @@ function ShipmentFormPageContent() {
       </ErrorBoundary>
       <Dialog
         open={filterDialogOpen}
-        onClose={() => setFilterDialogOpen(false)}
+        onClose={handleCloseShipmentFilters}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 1, width: 'min(100%, 800px)' } }}
@@ -431,7 +438,7 @@ function ShipmentFormPageContent() {
             </Typography>
             <IconButton
               size="small"
-              onClick={() => setFilterDialogOpen(false)}
+              onClick={handleCloseShipmentFilters}
               sx={{ position: 'absolute', top: 0, right: 0, color: '#A22' }}
             >
               <CloseIcon sx={{ fontSize: 18 }} />
