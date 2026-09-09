@@ -218,6 +218,11 @@ function ShipmentFormPageContent() {
     setShowOceanFCLForm(false);
   };
 
+  const handleOpenOceanFCLForm = () => {
+    setOpenConfirmDialog(false);
+    setShowOceanFCLForm(true);
+  };
+
   const handleShipmentFilterChange = (field, value) => {
     setShipmentFilters((current) => ({ ...current, [field]: value }));
   };
