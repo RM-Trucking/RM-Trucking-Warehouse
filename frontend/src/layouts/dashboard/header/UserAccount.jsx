@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Iconify from '../../../components/iconify';
-import { Stack, Typography, MenuItem } from "@mui/material";
-import { useDispatch, useSelector } from '../../../redux/store';
+import { Stack, IconButton, MenuItem } from "@mui/material";
 
 import MenuPopover from '../../../components/menu-popover';
 import { PATH_AUTH } from '../../../routes/paths';
@@ -11,12 +10,8 @@ import { useAuthContext } from '../../../auth/useAuthContext';
 
 export default function UserAccount() {
     const navigate = useNavigate();
-    const {
-        dashboardSearchStr
-    } = useSelector(({ dashboarddata }) => dashboarddata);
     const { logout } = useAuthContext();
         
-    const dispatch = useDispatch();
     const [openPopover, setOpenPopover] = useState(false);
     const [anchorEl, setAnchorEl] = useState(null);
 
@@ -38,19 +33,15 @@ export default function UserAccount() {
     }
     return (
         <Stack flexDirection={"row"} alignItems={"center"}>
-            <Iconify icon="mdi:bell-notification" sx={{ mr: 2 }} />
-            <Stack flexDirection={"row"} alignItems={"center"} sx={{ mr: 1.2 }}>
-                <Iconify icon="carbon:user-avatar-filled" sx={{ mr: 1.2, cursor: "pointer" }} />
-                <Stack flexDirection={"column"}>
-                    <Typography variant="subtitle2" noWrap sx={{ fontStyle: "Open Sans, sans-serif !important", fontWeight: "600", fontSize: "14px", lineHeight: "1" }}>
-                        {dashboardSearchStr?.displayName || "Valli Veluvarthi"}
-                    </Typography>
-                    <Typography variant="subtitle2" noWrap sx={{ fontStyle: "Open Sans, sans-serif !important", fontWeight: "600", fontSize: "12px", lineHeight: "1.2" }}>
-                        {dashboardSearchStr?.role || "Program Analyst"}
-                    </Typography>
-                </Stack>
-            </Stack>
-            <Iconify icon="qlementine-icons:menu-dots-16" sx={{ mr: 1.2, cursor: "pointer" }} onClick={handleUserMenu} />
+            <IconButton
+                aria-label="Account menu"
+                aria-haspopup="menu"
+                aria-expanded={openPopover ? 'true' : undefined}
+                onClick={handleUserMenu}
+                sx={{ color: 'inherit' }}
+            >
+                <Iconify icon="qlementine-icons:menu-dots-16" />
+            </IconButton>
 
             {/*  user menu */}
             <MenuPopover open={openPopover} anchorEl={anchorEl} onClose={handleClosePopover} sx={{ width: 150, p: 0 }} disableScrollLock>
