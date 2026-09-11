@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Iconify from '../../../components/iconify';
 import { Stack, IconButton, MenuItem } from "@mui/material";
+// Preserve the header's store initialization order while slices import the store.
+import '../../../redux/store';
 
 import MenuPopover from '../../../components/menu-popover';
 import { PATH_AUTH } from '../../../routes/paths';
