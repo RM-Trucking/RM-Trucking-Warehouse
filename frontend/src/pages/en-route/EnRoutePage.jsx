@@ -752,7 +752,6 @@ const handleViewModal = useCallback((rowData) => {
           rows={enrouteData}
           columns={columns}
           paginationModel={paginationModel}
-          disableRowSelectionOnClick
           disableColumnFilter
           onPaginationModelChange={handlePaginationModelChange}
           pageSizeOptions={[10, 20, 50, 100]}
