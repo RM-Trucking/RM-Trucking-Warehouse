@@ -1,6 +1,5 @@
 import { useForm } from "react-hook-form";
 import { alpha } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   TextField,
@@ -8,22 +7,21 @@ import {
   Typography,
   Paper
 } from "@mui/material";
-import { PATH_DASHBOARD } from '../../routes/paths';
 // auth
 import { useAuthContext } from '../../auth/useAuthContext';
 
  
 export default function AuthLoginForm() {
   const { login } = useAuthContext();
-  const navigate = useNavigate();
   const {
     register,
     handleSubmit,
     formState: { errors }
-  } = useForm();
+  } = useForm({
+    defaultValues: { email: '', password: '' },
+  });
  
   const submitForm = async (data) => {
-    console.log("Login Data:", data);
     try {
       if (login) {
         await login(data.email, data.password);
@@ -63,7 +61,7 @@ export default function AuthLoginForm() {
             variant="outlined"
             fullWidth
             margin="normal"
-            value={"ADMIN"}
+            autoComplete="username"
             {...register("email", { required: "Email is required" })}
             error={!!errors.email}
             helperText={errors.email?.message}
@@ -75,7 +73,7 @@ export default function AuthLoginForm() {
             type="password"
             variant="outlined"
             fullWidth
-            value = {"Admin@123"}
+            autoComplete="current-password"
             margin="normal"
             {...register("password", {
               required: "Password is required"
