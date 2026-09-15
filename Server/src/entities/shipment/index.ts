@@ -3,7 +3,7 @@ export interface WarehouseShipment {
     shipmentType: "AIR" | "OCEAN_FCL" | "OCEAN_LCL";
     barcodeNumber: string;
     customerId: number;
-    stationId: number;
+    stationId: number | null;
     consigneeId: number;
     airBillNumber: string;
     booking: string;
@@ -30,6 +30,11 @@ export interface WarehouseShipment {
     approvedAt: Date;
     entityId: number;
     noteThreadId: number;
+    stationScope: 'ALL' | 'SPECIFIC';
+    destination: string;
+    manifestType: 'DIRECT' | 'PRO_SEARCH' | 'DATE_RANGE';
+    startDate?: Date;
+    endDate?: Date;
 }
 
 export interface WarehouseShipmentContainers {

@@ -10,6 +10,8 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "barcodeNumber",
                 "customerId",
                 "stationId",
+                "stationScope",
+                "destination",
                 "consigneeId",
                 "airBillNumber",
                 "booking",
@@ -28,9 +30,12 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "entityId",
                 "noteThreadId",
                 "earlyReturnDate",
-                "dropByDate"
+                "dropByDate",
+                "manifestType",
+                "startDate",
+                "endDate"
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         )
     `;
 
@@ -39,6 +44,8 @@ export async function createShipment(conn: Connection, payload: any, userId: num
         payload.barcodeNumber,
         payload.customerId,
         payload.stationId,
+        payload.stationScope,
+        payload.destination,
         payload.consigneeId,
         payload.airBillNumber,
         payload.booking,
@@ -56,7 +63,10 @@ export async function createShipment(conn: Connection, payload: any, userId: num
         payload.entityId,
         payload.noteThreadId,
         payload.earlyReturnDate,
-        payload.dropByDate
+        payload.dropByDate,
+        payload.manifestType,
+        payload.startDate,
+        payload.endDate
     ];
 
     const result = await conn.query(query, params as any) as any[];

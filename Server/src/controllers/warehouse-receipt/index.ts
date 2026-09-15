@@ -195,6 +195,41 @@ export async function getReceiptsByCustomerStation(req: Request, res: Response, 
     }
 }
 
+export async function getWarehouseReceiptDestinations(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const customerId = Number(req.query.customerId);
+        const stationScope = String(req.query.stationScope || '').toUpperCase();
+        const stationId = req.query.stationId === undefined ? undefined : Number(req.query.stationId);
+        const search = req.query.search as string | undefined;
+
+        if (!Number.isInteger(customerId) || customerId <= 0) {
+            res.status(400).json({ success: false, message: "customerId must be a positive integer" });
+            return;
+        }
+        if (stationScope !== "ALL" && stationScope !== "SPECIFIC") {
+            res.status(400).json({ success: false, message: "stationScope must be ALL or SPECIFIC" });
+            return;
+        }
+        if (stationScope === "SPECIFIC" && (!Number.isInteger(stationId) || (stationId as number) <= 0)) {
+            res.status(400).json({ success: false, message: "stationId must be a positive integer for SPECIFIC station scope" });
+            return;
+        }
+
+        const data = await warehouseReceiptService.getWarehouseReceiptDestinationsService(
+            conn,
+            customerId,
+            stationScope,
+            stationId,
+            search,
+        );
+
+        res.status(200).json({ success: true, data });
+    } catch (error: any) {
+        logger.error("Error fetching warehouse receipt destinations", error);
+        res.status(500).json({ success: false, message: error.message || "Failed to fetch destinations" });
+    }
+}
+
 function tryParseJSON(value: any): any {
     if (typeof value !== "string") return value;
     try {

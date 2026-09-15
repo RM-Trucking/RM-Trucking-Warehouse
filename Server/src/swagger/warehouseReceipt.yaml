@@ -1319,6 +1319,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/destinations:
+    get:
+      tags:
+        - Receipts
+      summary: Get shipment destinations
+      description: Returns unique destinations from ON_HAND warehouse receipts for a customer. ALL includes every station; SPECIFIC requires stationId.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: customerId
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Customer ID.
+        - in: query
+          name: stationScope
+          required: true
+          schema:
+            type: string
+            enum: [ALL, SPECIFIC]
+          description: Destination scope.
+        - in: query
+          name: stationId
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Required when stationScope is SPECIFIC; omit for ALL.
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Optional case-insensitive destination search text.
+      responses:
+        "200":
+          description: Unique destinations retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: string
+                    example: ["New York", "Chicago"]
+        "400":
+          description: Invalid customer, station scope, or station ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt/pro-detail/{pro}:
     get:
       tags:

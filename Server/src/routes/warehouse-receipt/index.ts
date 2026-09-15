@@ -144,6 +144,16 @@ router.get("/customer-station", authenticateJWT, async (req: Request, res: Respo
     if (conn) conn.close();
 });
 
+// Get unique destinations for shipment creation
+router.get("/destinations", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.getWarehouseReceiptDestinations(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 // ===== SPECIFIC GET ENDPOINTS (WITH ID SUBPATHS) =====
 
 // Get receipt summary (status, totals, counts)

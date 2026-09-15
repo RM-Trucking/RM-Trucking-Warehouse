@@ -541,7 +541,27 @@ components:
           example: 10
         stationId:
           type: integer
+          nullable: true
           example: 20
+          description: Required when stationScope is SPECIFIC. Must be null when stationScope is ALL.
+        stationScope:
+          type: string
+          enum: [ALL, SPECIFIC]
+          example: SPECIFIC
+          description: Selects all customer stations or one specific station.
+        destination:
+          type: string
+          example: "New York"
+          description: Destination sourced from warehouse receipt data for the selected customer and station scope.
+        manifestType:
+          type: string
+          enum: [DIRECT, PRO_SEARCH, DATE_RANGE]
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
         consigneeId:
           type: integer
           example: 30
@@ -586,7 +606,8 @@ components:
         - shipmentType
         - barcodeNumber
         - customerId
-        - stationId
+        - stationScope
+        - destination
         - consigneeId
         - pieces
         - weight
@@ -598,8 +619,18 @@ components:
           type: string
         customerId:
           type: integer
+        stationScope:
+          type: string
+          enum: [ALL, SPECIFIC]
+          description: Use ALL to include destinations from every station for the customer.
         stationId:
           type: integer
+          nullable: true
+          description: Required for SPECIFIC station scope; send null for ALL.
+        destination:
+          type: string
+          minLength: 1
+          description: Must match a destination available in warehouse receipt data for the selected customer and station scope.
         consigneeId:
           type: integer
         airBillNumber:
@@ -618,6 +649,15 @@ components:
           type: string
           format: date
         dropByDate:
+          type: string
+          format: date
+        manifestType:
+          type: string
+          enum: [DIRECT, PRO_SEARCH, DATE_RANGE]
+        startDate:
+          type: string
+          format: date
+        endDate:
           type: string
           format: date
         instructions:
@@ -640,8 +680,18 @@ components:
           type: string
         customerId:
           type: integer
+        stationScope:
+          type: string
+          enum: [ALL, SPECIFIC]
+          description: Use ALL to include destinations from every station for the customer.
         stationId:
           type: integer
+          nullable: true
+          description: Required for SPECIFIC station scope; send null for ALL.
+        destination:
+          type: string
+          minLength: 1
+          description: Must match a destination available in warehouse receipt data for the selected customer and station scope.
         consigneeId:
           type: integer
         airBillNumber:
@@ -656,6 +706,21 @@ components:
           type: integer
         weight:
           type: number
+        earlyReturnDate:
+          type: string
+          format: date
+        dropByDate:
+          type: string
+          format: date
+        manifestType:
+          type: string
+          enum: [DIRECT, PRO_SEARCH, DATE_RANGE]
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
         instructions:
           type: string
         isCanceled:

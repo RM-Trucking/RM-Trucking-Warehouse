@@ -325,6 +325,49 @@ export async function getWarehouseReceiptForShipment(
     }));
 }
 
+export async function getWarehouseReceiptDestinations(
+    conn: Connection,
+    customerId: number,
+    stationScope: "ALL" | "SPECIFIC",
+    stationId?: number,
+    search?: string,
+): Promise<string[]> {
+    let query = `
+        SELECT DISTINCT TRIM("destination") AS "destination"
+        FROM ${SCHEMA}."Warehouse_Receipt"
+        WHERE "customerId" = ?
+          AND "status" = 'ON_HAND'
+          AND "destination" IS NOT NULL
+          AND TRIM("destination") <> ''
+    `;
+    const params: any[] = [customerId];
+
+    if (stationScope === "SPECIFIC") {
+        query += ` AND "stationId" = ?`;
+        params.push(stationId);
+    }
+
+    if (search?.trim()) {
+        query += ` AND UPPER(TRIM("destination")) LIKE UPPER(?)`;
+        params.push(`%${search.trim()}%`);
+    }
+
+    query += ` ORDER BY "destination"`;
+
+    const result = await conn.query(query, params) as any[];
+    const uniqueDestinations = new Map<string, string>();
+
+    for (const row of result) {
+        const destination = String(row.destination ?? '').trim();
+        const normalizedDestination = destination.toUpperCase();
+        if (destination && !uniqueDestinations.has(normalizedDestination)) {
+            uniqueDestinations.set(normalizedDestination, destination);
+        }
+    }
+
+    return Array.from(uniqueDestinations.values());
+}
+
 
 
 export async function getWarehouseReceiptsByVerification(

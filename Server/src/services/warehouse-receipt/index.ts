@@ -418,6 +418,22 @@ export async function getReceiptsByCustomerStationService(conn: Connection, cust
     return await warehouseReceiptDB.getWarehouseReceiptsByCustomerStation(conn, customerId, stationId);
 }
 
+export async function getWarehouseReceiptDestinationsService(
+    conn: Connection,
+    customerId: number,
+    stationScope: "ALL" | "SPECIFIC",
+    stationId?: number,
+    search?: string,
+) {
+    return await warehouseReceiptDB.getWarehouseReceiptDestinations(
+        conn,
+        customerId,
+        stationScope,
+        stationId,
+        search,
+    );
+}
+
 /**
  * UPDATE WAREHOUSE RECEIPT
  * - If status is updated, automatically create an audit log for the status change

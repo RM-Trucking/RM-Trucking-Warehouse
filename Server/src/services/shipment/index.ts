@@ -36,10 +36,11 @@ function normalizeDateOnly(value: unknown): string {
 }
 
 function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWarehouseShipment, userId: number) {
+    const isUpdate = "shipmentId" in payload;
     const normalized = {
         ...payload,
         customerId: Number((payload as any).customerId),
-        stationId: Number((payload as any).stationId),
+        stationId: (payload as any).stationId === null ? null : Number((payload as any).stationId),
         consigneeId: Number((payload as any).consigneeId),
         pieces: Number((payload as any).pieces),
         weight: Number((payload as any).weight),
@@ -55,6 +56,13 @@ function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWareh
         customerRefNumber: (payload as any).customerRefNumber ?? "",
         additionalRefNumber: (payload as any).additionalRefNumber ?? "",
         instructions: (payload as any).instructions ?? "",
+        stationScope: (payload as any).stationScope ?? (isUpdate ? undefined : "SPECIFIC"),
+        destination: (payload as any).destination !== undefined || (payload as any).destinantion !== undefined
+            ? String((payload as any).destination ?? (payload as any).destinantion ?? "").trim()
+            : (isUpdate ? undefined : ""),
+        manifestType: (payload as any).manifestType ?? (isUpdate ? undefined : null),
+        startDate: (payload as any).startDate ? normalizeDateOnly((payload as any).startDate) : (isUpdate ? undefined : null),
+        endDate: (payload as any).endDate ? normalizeDateOnly((payload as any).endDate) : (isUpdate ? undefined : null),
         pickupEntryNumber: null,
         createdBy: (payload as any).createdBy ?? userId,
         updatedBy: (payload as any).updatedBy ?? userId,
@@ -62,6 +70,10 @@ function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWareh
 
     delete (normalized as any).containers;
     delete (normalized as any).receipts;
+    delete (normalized as any).destinantion;
+    Object.keys(normalized).forEach((key) => {
+        if ((normalized as any)[key] === undefined) delete (normalized as any)[key];
+    });
     return normalized;
 }
 
@@ -71,6 +83,16 @@ export async function createShipmentWithRelations(
     userId: number
 ): Promise<WarehouseShipmentWithRelations> {
     const normalizedPayload = normalizeShipmentPayload(payload, userId);
+
+    if (normalizedPayload.stationScope !== "ALL" && normalizedPayload.stationScope !== "SPECIFIC") {
+        throwValidationError("stationScope must be ALL or SPECIFIC.");
+    }
+    if (normalizedPayload.stationScope === "SPECIFIC" && (!normalizedPayload.stationId || !Number.isInteger(normalizedPayload.stationId))) {
+        throwValidationError("stationId is required for SPECIFIC station scope.");
+    }
+    if (!normalizedPayload.destination) {
+        throwValidationError("destination is required.");
+    }
 
     if (payload.receipts !== undefined) {
         for (const receipt of payload.receipts) {
@@ -167,6 +189,19 @@ export async function updateShipmentWithRelations(
 
     if (!existingShipment) {
         throwValidationError(`Shipment with id ${shipmentId} was not found.`);
+    }
+
+    if (payload.stationScope && payload.stationScope !== "ALL" && payload.stationScope !== "SPECIFIC") {
+        throwValidationError("stationScope must be ALL or SPECIFIC.");
+    }
+    if (payload.stationScope === "SPECIFIC" && payload.stationId !== null && (!payload.stationId || !Number.isInteger(payload.stationId))) {
+        throwValidationError("stationId is required for SPECIFIC station scope.");
+    }
+    if (payload.stationScope === "ALL" && payload.stationId !== null) {
+        throwValidationError("stationId must be null for ALL station scope.");
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "destination") && !normalizedPayload.destination) {
+        throwValidationError("destination cannot be empty.");
     }
 
     if (typeof payload.barcodeNumber !== "undefined") {

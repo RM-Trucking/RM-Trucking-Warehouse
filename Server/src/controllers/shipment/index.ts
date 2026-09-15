@@ -8,8 +8,8 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
         const payload = req.body as CreateWarehouseShipment;
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
-        if (!payload.shipmentType || !payload.barcodeNumber || !payload.customerId || !payload.stationId || !payload.consigneeId || payload.pieces === undefined || payload.weight === undefined) {
-            res.status(400).json({ success: false, message: "shipmentType, barcodeNumber, customerId, stationId, consigneeId, pieces and weight are required" });
+        if (!payload.shipmentType || !payload.barcodeNumber || !payload.customerId || !payload.consigneeId || payload.pieces === undefined || payload.weight === undefined || !payload.stationScope || !payload.destination || (payload.stationScope === "SPECIFIC" && !payload.stationId)) {
+            res.status(400).json({ success: false, message: "shipmentType, barcodeNumber, customerId, stationScope, destination, consigneeId, pieces and weight are required; stationId is required for SPECIFIC station scope" });
             return;
         }
 
@@ -155,6 +155,17 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
 
         if (!shipmentId) {
             res.status(400).json({ success: false, message: "shipmentId is required" });
+            return;
+        }
+
+        if (payload.stationScope && payload.stationScope !== "ALL" && payload.stationScope !== "SPECIFIC") {
+            res.status(400).json({ success: false, message: "stationScope must be ALL or SPECIFIC" });
+            return;
+        }
+        if (payload.stationScope === "ALL") {
+            payload.stationId = null;
+        } else if (payload.stationScope === "SPECIFIC" && !payload.stationId) {
+            res.status(400).json({ success: false, message: "stationId is required for SPECIFIC station scope" });
             return;
         }
 
