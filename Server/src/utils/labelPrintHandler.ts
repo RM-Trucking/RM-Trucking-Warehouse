@@ -1,4 +1,4 @@
-export const dataToZPL = (data: { labelCount: number, receiptNumber: number, customerName: string, packageId: string, shipper: string, carrierName: string, proNumber: string, destination: string, pieces: number, freightBarcodeValue: string, type: string, length: number, width: number, weight: number, height: number }): string => {
+export const dataToZPL = (data: { labelCount: number, totalLabelCount?: number, labelSequence?: number, receiptNumber: number, customerName: string, packageId: string, shipper: string, carrierName: string, proNumber: string, destination: string, pieces: number, freightBarcodeValue: string, type: string, length: number, width: number, weight: number, height: number }): string => {
     const safeValue = (value: string | number | undefined | null, fallback: string = "") => {
         if (value === undefined || value === null) return fallback;
         return String(value);
@@ -9,6 +9,7 @@ export const dataToZPL = (data: { labelCount: number, receiptNumber: number, cus
     };
 
     let zpl = '';
+    console.log("dataToZPL data: ", data);
     for (let i = 0; i < data.labelCount; i++) {
         const barcodeValue = `${safeText(data.receiptNumber, "")}${safeText(data.freightBarcodeValue, "") ? `-${safeText(data.freightBarcodeValue, "")}` : ""}`;
         const receiptLastFour = safeText(data.receiptNumber, "").slice(-4);
@@ -24,7 +25,7 @@ export const dataToZPL = (data: { labelCount: number, receiptNumber: number, cus
         const length = safeText(data.length, '0');
         const width = safeText(data.width, '0');
         const height = safeText(data.height, '0');
-        const footerText = `${i + 1} OF ${data.labelCount}`;
+        const footerText = `${data.labelSequence || i + 1} OF ${data.totalLabelCount || data.labelCount}`;
 
         zpl += `
             ^XA
@@ -81,7 +82,7 @@ export const dataToZPL = (data: { labelCount: number, receiptNumber: number, cus
 
             ^FX --- SECTION 4: SPECIFICATIONS & INTEGRATED FOOTER --- ^FS
             ^FO85,30^A0R,24,24^FDWidth^FS
-            ^FO85,140^A0R,28,28^FD${width}^FS
+            ^FO85,140^A0R,28,28^FD${width} IN^FS
 
             ^FO45,30^A0R,24,24^FDWeight^FS
             ^FO45,140^A0R,28,28^FD${weight} LB^FS

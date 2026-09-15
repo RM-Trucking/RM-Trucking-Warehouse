@@ -1816,6 +1816,8 @@ export async function printWarehouseReceiptLabelService(
 
     const printDataList: Array<{
         labelCount: number;
+        totalLabelCount?: number;
+        labelSequence?: number;
         receiptNumber: number;
         customerName: string;
         packageId: string;
@@ -1857,14 +1859,21 @@ export async function printWarehouseReceiptLabelService(
             throw new Error(`Receipt with number ${normalizedReceiptNumber} not found`);
         }
 
+        console.log("Fetched receipt for printing:", receipt);
+
         const freightInformation = receipt.receiptId
             ? await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId))
             : [];
 
         if (freightInformation.length > 0) {
-            for (const freight of freightInformation) {
+            const receiptLabelCount = Number(receipt.labelCount);
+            const totalLabelCount = receiptLabelCount > 0 ? receiptLabelCount : freightInformation.length;
+
+            for (const [index, freight] of freightInformation.entries()) {
                 printDataList.push({
-                    labelCount: payload.labelCount && payload.labelCount > 0 ? payload.labelCount : 1,
+                    labelCount: 1,
+                    totalLabelCount,
+                    labelSequence: index + 1,
                     receiptNumber: Number(receipt.receiptNumber),
                     customerName: receipt.customerName || "",
                     packageId: receipt.packageId || "",
@@ -1882,6 +1891,9 @@ export async function printWarehouseReceiptLabelService(
                 });
             }
         } else {
+
+            console.log(receipt.labelCount && receipt.labelCount > 0 ? `Using receipt's labelCount: ${receipt.labelCount}` : "No labelCount provided, defaulting to 1");
+
             printDataList.push({
                 labelCount: receipt.labelCount && receipt.labelCount > 0 ? receipt.labelCount : 1,
                 receiptNumber: Number(receipt.receiptNumber),
@@ -1903,6 +1915,9 @@ export async function printWarehouseReceiptLabelService(
     }
 
     const zpl = printDataList.map((printData) => dataToZPL(printData)).join("");
+
+    console.log("ZPL to be sent to printer:", zpl);
+
     await sendZplToPrinter(zpl, printerIP, printerPort);
     return {
         success: true,
