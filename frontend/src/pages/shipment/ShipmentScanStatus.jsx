@@ -116,9 +116,9 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const scanGunResetTimerRef = useRef(null);
 
     const receipts = Array.isArray(currentShipment?.receipts) ? currentShipment.receipts : [];
-    const formName = currentShipment?.shipmentType === 'FCL'
+    const formName = ['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType)
         ? 'FCL Form'
-        : currentShipment?.shipmentType === 'LCL' ? 'LCL Form' : 'Air Form';
+        : ['OCEAN_LCL', 'LCL'].includes(currentShipment?.shipmentType) ? 'LCL Form' : 'Air Form';
     const destination = currentShipment?.destination || currentShipment?.destinationName || currentShipment?.stationName || '-';
     const proNumber = currentShipment?.proNumber || currentShipment?.barcodeNumber || currentShipment?.rmNumber || '-';
     const areAllReceiptsScanned = receipts.length > 0 && receipts.every(

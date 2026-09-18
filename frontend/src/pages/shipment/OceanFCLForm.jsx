@@ -14,11 +14,14 @@ import dayjs from 'dayjs';
 
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
+import axios from '../../utils/axios';
 import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/ShipmentFormLayout';
 
 import { useDispatch, useSelector } from '../../redux/store';
 import { searchWarehouseReceiptCustomers, searchWarehouseReceiptStations } from '../../redux/slices/warehouseReceipt';
-import { getExportAirlineOptions, getShipmentReceiptOptions } from '../../redux/slices/shipment';
+import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment } from '../../redux/slices/shipment';
+
+const ALL_STATIONS_OPTION = { stationScope: 'ALL', stationName: 'All' };
 
 const getCustomerOptionLabel = (option) => {
     if (!option) return '';
@@ -91,12 +94,12 @@ NewOceanFCLShipmentForm.propTypes = {
 export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const dispatch = useDispatch();
     const { customerOptions, customerLoading, stationOptions, stationLoading } = useSelector((state) => state.warehouseReceiptdata);
-    const { exportAirlineOptions, exportAirlineLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField } = useSelector((state) => state.shipmentdata);
+    const { exportAirlineOptions, exportAirlineLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField, createShipmentLoading } = useSelector((state) => state.shipmentdata);
 
     const defaultValues = {
-        rmProNo: rowData?.barcodeNumber || '',
+        rmProNo: String(rowData?.barcodeNumber || '').replace(/\s/g, ''),
         customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || String(rowData.customerId || '') } : null,
-        station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || String(rowData.stationId || '') } : null,
+        station: rowData?.stationId ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || String(rowData.stationId) } : rowData?.customerId ? ALL_STATIONS_OPTION : null,
         destination: rowData?.destination || '',
         consignee: rowData ? {
             airlineId: rowData.consigneeId || rowData.airlineId,
@@ -112,7 +115,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         additionalRefNumber: rowData?.additionalRefNumber || '',
         earlyReturnDate: rowData?.earlyReturnDate ? dayjs(rowData.earlyReturnDate) : null,
         dropByDate: rowData?.dropByDate ? dayjs(rowData.dropByDate) : null,
-        containerNo: rowData?.containerNo || '',
+        containerNo: rowData?.containers?.map((item) => item.container || item.containerNo).filter(Boolean).join(', ') || rowData?.containerNo || '',
         instructions: rowData?.instructions || '',
         loadManifestType: 'Direct Entry',
         warehouses: rowData?.receipts?.length
@@ -129,10 +132,14 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
     const { control, handleSubmit, watch, setValue, clearErrors } = useForm({ defaultValues });
 
-    const [barcodeValue, setBarcodeValue] = useState('');
+    const [barcodeValue, setBarcodeValue] = useState(viewMode ? defaultValues.rmProNo : '');
     const [openProModal, setOpenProModal] = useState(false);
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
-    const [stationSearchValue, setStationSearchValue] = useState(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
+    const [stationSearchValue, setStationSearchValue] = useState(getStationOptionLabel(defaultValues.station));
+    const [destinationOptions, setDestinationOptions] = useState([]);
+    const [destinationLoading, setDestinationLoading] = useState(false);
+    const [destinationError, setDestinationError] = useState('');
+    const [destinationRequestVersion, setDestinationRequestVersion] = useState(0);
 
     const [warehouseAlertOpen, setWarehouseAlertOpen] = useState(false);
     const [duplicateReceiptAlertOpen, setDuplicateReceiptAlertOpen] = useState(false);
@@ -142,11 +149,14 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     const [receiptSearchSubmitted, setReceiptSearchSubmitted] = useState({});
     const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
     const [rowSaveError, setRowSaveError] = useState('');
+    const [submitError, setSubmitError] = useState('');
+    const submitInFlightRef = useRef(false);
     const receiptSearchTimers = useRef({});
 
     const rmProValue = useWatch({ control, name: 'rmProNo' });
     const selectedCustomer = useWatch({ control, name: 'customer' });
     const selectedStation = useWatch({ control, name: 'station' });
+    const selectedDestination = useWatch({ control, name: 'destination' });
     const selectedStationId = selectedStation?.stationId || selectedStation?.id || '';
     const selectedCustomerId = selectedCustomer?.customerId || selectedCustomer?.id || '';
 
@@ -158,15 +168,43 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         return () => clearTimeout(timer);
     }, [dispatch, customerSearchValue]);
 
+    const stationSearchTerm = stationSearchValue === getStationOptionLabel(selectedStation) ? '' : stationSearchValue;
+    const stationScope = selectedStation?.stationScope === 'ALL' ? 'ALL' : selectedStationId ? 'SPECIFIC' : '';
+
     useEffect(() => {
         const timer = setTimeout(() => {
-            dispatch(searchWarehouseReceiptStations(selectedCustomerId, stationSearchValue));
+            dispatch(searchWarehouseReceiptStations(selectedCustomerId, stationSearchTerm));
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [dispatch, selectedCustomerId, stationSearchValue]);
+    }, [dispatch, selectedCustomerId, stationSearchTerm]);
 
-    const canSelectWarehouse = Boolean(selectedCustomerId && selectedStationId);
+    useEffect(() => {
+        const controller = new AbortController();
+        setDestinationOptions([]);
+        setDestinationError('');
+        setDestinationLoading(false);
+        if (!selectedCustomerId || !stationScope || viewMode) return;
+
+        setDestinationLoading(true);
+        const params = { customerId: selectedCustomerId, stationScope };
+        if (stationScope === 'SPECIFIC') params.stationId = selectedStationId;
+        axios.get('/warehouse-receipt/destinations', { params, signal: controller.signal })
+            .then(({ data }) => {
+                if (controller.signal.aborted) return;
+                if (!data?.success || !Array.isArray(data.data)) throw new Error('Invalid destination response');
+                setDestinationOptions(data.data.filter((destination) => typeof destination === 'string'));
+            })
+            .catch(() => {
+                if (!controller.signal.aborted) setDestinationError('Could not load destinations. Please select the station again to retry.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setDestinationLoading(false);
+            });
+        return () => controller.abort();
+    }, [selectedCustomerId, selectedStationId, stationScope, viewMode, destinationRequestVersion]);
+
+    const canSelectWarehouse = Boolean(selectedCustomerId && stationScope && selectedDestination);
 
     const handleWarehouseAlertClose = (event, reason) => {
         if (reason === 'clickaway') return;
@@ -175,12 +213,12 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
     useEffect(() => () => {
         Object.values(receiptSearchTimers.current).forEach(clearTimeout);
-    }, []);
+    }, [selectedCustomerId, stationScope, selectedStationId, selectedDestination]);
 
     const handleReceiptSearch = (fieldKey, value, reason) => {
         if (reason === 'reset') return;
         setReceiptSearchSubmitted((prev) => ({ ...prev, [fieldKey]: false }));
-        if (!selectedCustomerId || !selectedStationId) {
+        if (!canSelectWarehouse) {
             if (value) setWarehouseAlertOpen(true);
             return;
         }
@@ -190,7 +228,14 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 ...prev,
                 [fieldKey]: Boolean(String(value || '').trim()),
             }));
-            dispatch(getShipmentReceiptOptions(value, fieldKey));
+            dispatch(getShipmentReceiptOptions(value, fieldKey, {
+                shipmentType: 'OCEAN_FCL',
+                manifestType: 'DIRECT',
+                customerId: Number(selectedCustomerId),
+                destination: selectedDestination,
+                stationScope,
+                stationId: stationScope === 'ALL' ? null : Number(selectedStationId),
+            }));
         }, 500);
     };
 
@@ -333,7 +378,13 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         },
     ];
 
-    const onSubmit = (data) => {
+    const onSubmit = async (data) => {
+        if (viewMode || submitInFlightRef.current) return;
+        setSubmitError('');
+        if (data.loadManifestType !== 'Direct Entry') {
+            setSubmitError('Submission is currently available for Direct Entry only.');
+            return;
+        }
         if (data.loadManifestType === 'Direct Entry') {
             if (!data.warehouses.some((item) => item.warehouseNo?.receiptId)) {
                 setWarehouseReceiptError(true);
@@ -345,16 +396,58 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 return;
             }
         }
-        console.log('Form Submitted (Ocean FCL):', data);
+        const formatDate = (value) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '';
+        const payload = {
+            shipmentType: 'OCEAN_FCL',
+            barcodeNumber: data.rmProNo,
+            customerId: Number(data.customer?.customerId || data.customer?.id || 0),
+            stationScope: data.station?.stationScope === 'ALL' ? 'ALL' : 'SPECIFIC',
+            stationId: data.station?.stationScope === 'ALL' ? null : Number(data.station?.stationId || data.station?.id || 0),
+            destination: data.destination,
+            consigneeId: Number(data.consignee?.airlineId || data.consignee?.id || 0),
+            airBillNumber: '',
+            booking: data.booking,
+            customerRefNumber: data.customerRefNumber,
+            additionalRefNumber: data.additionalRefNumber,
+            pieces: totalPieces,
+            weight: totalWeight,
+            earlyReturnDate: formatDate(data.earlyReturnDate),
+            dropByDate: formatDate(data.dropByDate),
+            manifestType: 'DIRECT',
+            startDate: '',
+            endDate: '',
+            instructions: data.instructions,
+            containers: [{ container: String(data.containerNo || '').trim() }],
+            receipts: data.warehouses
+                .filter((item) => item.warehouseNo?.receiptId)
+                .map((item) => ({ receiptId: Number(item.warehouseNo.receiptId) })),
+        };
+
+        submitInFlightRef.current = true;
+        try {
+            const result = await dispatch(postShipment(payload));
+            if (result?.success) {
+                handleClose();
+            } else {
+                setSubmitError(result?.error || 'Failed to create shipment');
+            }
+        } catch (error) {
+            setSubmitError(error?.message || 'Failed to create shipment');
+        } finally {
+            submitInFlightRef.current = false;
+        }
     };
 
     return (
         <ShipmentFormLayout
             title={viewMode ? 'View Ocean FCL Shipment Form' : 'New Ocean FCL Shipment Form'}
             handleClose={handleClose}
-            onSubmit={handleSubmit(onSubmit)}
+            onSubmit={handleSubmit(onSubmit, () => setSubmitError('Please fill all mandatory fields before submitting'))}
+            submitLoading={createShipmentLoading}
+            submitLoadingLabel="Submitting..."
             showSubmit={!viewMode}
             readOnly={viewMode}
+            stickyHeader
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false}
@@ -364,9 +457,25 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                         <Controller
                             name="rmProNo"
                             control={control}
-                            render={({ field }) => (
+                            rules={{
+                                required: 'RM PRO Number is required',
+                                validate: (value) => !/\s/.test(value) || 'Spaces are not allowed in RM PRO Number',
+                            }}
+                            render={({ field, fieldState: { error } }) => (
                                 <Box sx={{ bgcolor: '#fff', borderRadius: 0.5 }}>
-                                    <StyledTextField {...field} variant="outlined" size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { height: '30px' } }} />
+                                    <StyledTextField
+                                        {...field}
+                                        onChange={(event) => field.onChange(event.target.value.replace(/\s/g, ''))}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ') event.preventDefault();
+                                        }}
+                                        variant="outlined"
+                                        size="small"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        sx={{ '& .MuiOutlinedInput-root': { height: '30px' } }}
+                                    />
                                 </Box>
                             )}
                         />
@@ -397,8 +506,10 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                 onChange={(event, newValue) => {
                                     field.onChange(newValue);
                                     setCustomerSearchValue(getCustomerOptionLabel(newValue));
-                                    setStationSearchValue('');
-                                    setValue('station', null, { shouldValidate: true });
+                                    setStationSearchValue(newValue ? 'All' : '');
+                                    setValue('station', newValue ? ALL_STATIONS_OPTION : null, { shouldDirty: true, shouldValidate: true });
+                                    setValue('destination', '', { shouldDirty: true });
+                                    clearErrors('destination');
                                 }}
                                 loadingText="Searching customers..."
                                 noOptionsText={customerSearchValue ? 'No customers found' : 'Type to search for customers'}
@@ -426,19 +537,25 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             <Autocomplete
                                 fullWidth
                                 readOnly={viewMode}
-                                options={stationOptions}
+                                options={[ALL_STATIONS_OPTION, ...stationOptions.filter((option) => getStationOptionLabel(option).toLowerCase() !== 'all')]}
+                                filterOptions={(options) => options}
                                 value={field.value}
                                 inputValue={stationSearchValue}
                                 disabled={!selectedCustomerId}
                                 loading={stationLoading}
                                 getOptionLabel={getStationOptionLabel}
                                 isOptionEqualToValue={(option, value) =>
-                                    String(option?.stationId || option?.id || '') === String(value?.stationId || value?.id || '')
+                                    (option?.stationScope === 'ALL' || value?.stationScope === 'ALL')
+                                        ? option?.stationScope === value?.stationScope
+                                        : String(option?.stationId || option?.id || '') === String(value?.stationId || value?.id || '')
                                 }
                                 onInputChange={(event, newInputValue, reason) => {
                                     if (reason !== 'reset') setStationSearchValue(newInputValue);
                                 }}
                                 onChange={(event, newValue) => {
+                                    setValue('destination', '', { shouldDirty: true });
+                                    clearErrors('destination');
+                                    setDestinationRequestVersion((version) => version + 1);
                                     setValue('station', newValue, {
                                         shouldDirty: true,
                                         shouldTouch: true,
@@ -470,9 +587,6 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                     />
                                 )}
                             />
-                        )} />
-                        <Controller name="destination" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
-                            <StyledTextField {...field} variant="standard" fullWidth label="Destination *" error={!!error} />
                         )} />
                         <Controller name="consignee" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
@@ -510,6 +624,46 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             />
                         )} />
                     </Stack>
+                </fieldset>
+
+                {/* --- Destination Details --- */}
+                <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px' }}>
+                    <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Destination Details</Typography></legend>
+                    <Controller name="destination" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
+                        <Autocomplete
+                            sx={{ width: { xs: '100%', sm: 'calc((100% - 48px) / 3)' } }}
+                            readOnly={viewMode}
+                            options={destinationOptions}
+                            loading={destinationLoading}
+                            disabled={!selectedCustomerId || !stationScope || destinationLoading}
+                            loadingText="Loading destinations..."
+                            noOptionsText={destinationError || 'No destinations found'}
+                            value={field.value || null}
+                            onChange={(event, newValue) => field.onChange(newValue || '')}
+                            onBlur={field.onBlur}
+                            renderInput={(params) => (
+                                <StyledTextField
+                                    {...params}
+                                    inputRef={field.ref}
+                                    name={field.name}
+                                    variant="standard"
+                                    label="Select Destination"
+                                    required
+                                    error={!!error || !!destinationError}
+                                    helperText={destinationError || error?.message}
+                                    InputProps={{
+                                        ...params.InputProps,
+                                        endAdornment: (
+                                            <>
+                                                {destinationLoading ? <CircularProgress color="inherit" size={18} /> : null}
+                                                {params.InputProps.endAdornment}
+                                            </>
+                                        ),
+                                    }}
+                                />
+                            )}
+                        />
+                    )} />
                 </fieldset>
 
                 {/* --- Booking Details --- */}
@@ -576,34 +730,35 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 {/* 1. Show Warehouse Table if 'Direct Entry' */}
                 {selectedManifestType === 'Direct Entry' && (
                     <Grid container spacing={4}>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
+                        <Grid size={{ xs: 12 }}>
+                            <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflowX: 'auto', '& > .MuiStack-root': { minWidth: 800 } }}>
                                 <Stack direction="row" sx={{ bgcolor: '#dbdbdb', p: 1 }}>
-                                    <Typography sx={{ width: '8%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
-                                    <Typography sx={{ width: '25%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
-                                    <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
-                                    <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
-                                    <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px' }}>Items</Typography>
-                                    <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Status</Typography>
-                                    <Typography sx={{ width: '15%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
+                                    <Typography sx={{ width: '6%', fontWeight: 600, fontSize: '13px', pl: 1 }}>Sno</Typography>
+                                    <Typography sx={{ width: '28%', fontWeight: 600, fontSize: '13px' }}>Warehouse #</Typography>
+                                    <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px' }}>Destination</Typography>
+                                    <Typography sx={{ width: '10%', fontWeight: 600, fontSize: '13px' }}>Pieces</Typography>
+                                    <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px' }}>Weight (lbs)</Typography>
+                                    <Typography sx={{ width: '8%', fontWeight: 600, fontSize: '13px' }}>Items</Typography>
+                                    <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Status</Typography>
+                                    <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
                                 </Stack>
                                 {warehouseFields.map((item, index) => (
                                     <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
-                                        <Box sx={{ width: '8%', pl: 1 }}>
+                                        <Box sx={{ width: '6%', pl: 1 }}>
                                             <Typography sx={{ fontSize: '13px', color: '#555' }}>
                                                 {String(index + 1).padStart(2, '0')}
                                             </Typography>
                                         </Box>
-                                        <Box sx={{ width: '25%', pr: 1 }}>
+                                        <Box sx={{ width: '28%', pr: 1 }}>
                                             <Controller name={`warehouses.${index}.warehouseNo`} control={control} render={({ field }) => (
                                                 <Autocomplete
                                                     fullWidth
                                                     size="small"
                                                     options={canSelectWarehouse ? shipmentReceiptOptionsByField[item.id] || [] : []}
                                                     value={field.value}
-                                                    inputValue={receiptInputValues[item.id] || ''}
-                                                    readOnly={!canSelectWarehouse}
-                                                    openOnFocus={canSelectWarehouse}
+                                                    inputValue={viewMode ? getShipmentReceiptOptionLabel(field.value) : receiptInputValues[item.id] || ''}
+                                                    readOnly={viewMode || !canSelectWarehouse}
+                                                    openOnFocus={!viewMode && canSelectWarehouse}
                                                     loading={Boolean(shipmentReceiptLoadingByField[item.id])}
                                                     getOptionLabel={getShipmentReceiptOptionLabel}
                                                     isOptionEqualToValue={(option, value) =>
@@ -669,7 +824,15 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                 />
                                             )} />
                                         </Box>
-                                        <Box sx={{ width: '12%', pr: 1 }}>
+                                        <Box sx={{ width: '12%', pr: 1, minWidth: 0 }}>
+                                            <Typography sx={{ fontSize: '13px', overflowWrap: 'anywhere' }}>
+                                                {(viewMode && rowData?.destination)
+                                                    || watchedWarehouses[index]?.warehouseNo?.destination
+                                                    || watchedWarehouses[index]?.warehouseNo?.finalDestination
+                                                    || ''}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ width: '10%', pr: 1 }}>
                                             <Controller name={`warehouses.${index}.pieces`} control={control} render={({ field }) => (
                                                 <StyledTextField
                                                     {...field}
@@ -681,7 +844,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                 />
                                             )} />
                                         </Box>
-                                        <Box sx={{ width: '15%', pr: 1 }}>
+                                        <Box sx={{ width: '12%', pr: 1 }}>
                                             <Controller name={`warehouses.${index}.weight`} control={control} render={({ field }) => (
                                                 <StyledTextField
                                                     {...field}
@@ -693,7 +856,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                 />
                                             )} />
                                         </Box>
-                                        <Box sx={{ width: '10%', pr: 1 }}>
+                                        <Box sx={{ width: '8%', pr: 1 }}>
                                             <Box
                                                 component="span"
                                                 sx={{ px: 0.5, py: 0.25, borderRadius: 0.5, fontWeight: 700, ...statusStyles[getReceiptStatus(watchedWarehouses[index]?.warehouseNo)] }}
@@ -702,7 +865,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                 {Number(watchedWarehouses[index]?.warehouseNo?.freightSummary?.total || watchedWarehouses[index]?.warehouseNo?.piecesInland || 0)}
                                             </Box>
                                         </Box>
-                                        <Box sx={{ width: '15%', pr: 1, textAlign: 'center' }}>
+                                        <Box sx={{ width: '12%', pr: 1, textAlign: 'center' }}>
                                             <Box
                                                 component="span"
                                                 sx={{ display: 'inline-block', minWidth: 72, px: 1, py: 0.25, borderRadius: 5, textAlign: 'center', fontSize: 11, ...statusStyles[getReceiptStatus(watchedWarehouses[index]?.warehouseNo)] }}
@@ -710,7 +873,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                 {getReceiptStatus(watchedWarehouses[index]?.warehouseNo)}
                                             </Box>
                                         </Box>
-                                        <Box sx={{ width: '15%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
+                                        <Box sx={{ width: '12%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
                                             {getReceiptStatus(watchedWarehouses[index]?.warehouseNo) === 'Available' && (
                                                 <>
                                                     <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
@@ -742,17 +905,18 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                 </Box>
 
                                 <Stack direction="row" alignItems="center" sx={{ p: 1, borderTop: '2px solid #e0e0e0', mt: 1 }}>
-                                    <Box sx={{ width: '8%' }} />
-                                    <Box sx={{ width: '25%' }} />
-                                    <Box sx={{ width: '12%' }}>
+                                    <Box sx={{ width: '6%' }} />
+                                    <Box sx={{ width: '28%' }} />
+                                    <Box sx={{ width: '12%' }} />
+                                    <Box sx={{ width: '10%' }}>
                                         <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalPieces}</Typography>
                                     </Box>
-                                    <Box sx={{ width: '15%' }}>
+                                    <Box sx={{ width: '12%' }}>
                                         <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{totalWeight}</Typography>
                                     </Box>
-                                    <Box sx={{ width: '15%' }} />
-                                    <Box sx={{ width: '15%' }} />
-                                    <Box sx={{ width: '10%' }} />
+                                    <Box sx={{ width: '12%' }} />
+                                    <Box sx={{ width: '12%' }} />
+                                    <Box sx={{ width: '8%' }} />
                                 </Stack>
                             </Box>
                         </Grid>
@@ -803,6 +967,18 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             </Stack>
 
             <Snackbar
+                open={Boolean(submitError)}
+                autoHideDuration={5000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setSubmitError('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="error" variant="filled" onClose={() => setSubmitError('')}>
+                    {submitError}
+                </Alert>
+            </Snackbar>
+            <Snackbar
                 open={Boolean(rowSaveError)}
                 autoHideDuration={3500}
                 onClose={(event, reason) => {
@@ -821,7 +997,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
             >
                 <Alert severity="warning" variant="filled" onClose={handleWarehouseAlertClose}>
-                    Please select Customer and Station before selecting a Warehouse receipt.
+                    Please select Customer, Station, and Destination before selecting a Warehouse receipt.
                 </Alert>
             </Snackbar>
             <Snackbar

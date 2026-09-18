@@ -217,7 +217,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                 ...prev,
                 [fieldKey]: Boolean(String(value || '').trim()),
             }));
-            dispatch(getShipmentReceiptOptions(value, fieldKey));
+            dispatch(getShipmentReceiptOptions(value, fieldKey, { shipmentType: 'AIR' }));
         }, 500);
     };
 
@@ -407,6 +407,13 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
         const payload = {
             shipmentType: 'AIR',
+            destination: null,
+            earlyReturnDate: '',
+            dropByDate: '',
+            manifestType: 'DIRECT',
+            stationScope: 'ALL',
+            startDate: '',
+            endDate: '',
             barcodeNumber: data.rmProNo,
             customerId: Number(data.customer?.customerId || data.customer?.id || 0),
             stationId: Number(data.station?.stationId || data.station?.id || 0),
@@ -461,7 +468,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             submitLoadingLabel={viewMode ? 'Saving...' : 'Submitting...'}
             showSubmit={!viewMode || isEditing}
             readOnly={viewMode && !isEditing}
-            stickyHeader={viewMode}
+            stickyHeader
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false} // Hides the barcode to match the Air mockup

@@ -389,7 +389,7 @@ export function getExportAirlineOptions() {
     };
 }
 
-export function getShipmentReceiptOptions(receiptNumber, fieldKey) {
+export function getShipmentReceiptOptions(receiptNumber, fieldKey, shipmentFilters = {}) {
     return async () => {
         const cleanReceiptNumber = String(receiptNumber || '').trim();
 
@@ -401,6 +401,7 @@ export function getShipmentReceiptOptions(receiptNumber, fieldKey) {
         dispatch(slice.actions.startShipmentReceiptLoading(fieldKey));
         try {
             const response = await axios.post('warehouse-receipt/for-shipment', {
+                ...shipmentFilters,
                 receiptNumber: Number(cleanReceiptNumber),
             });
             const options = Array.isArray(response.data?.data) ? response.data.data : [];

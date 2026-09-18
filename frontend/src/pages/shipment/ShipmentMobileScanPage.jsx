@@ -21,8 +21,8 @@ const actionButtonSx = {
 
 const formTabs = [
     { value: 'AIR', label: 'Air Form' },
-    { value: 'LCL', label: 'LCL Form' },
-    { value: 'FCL', label: 'FCL Form' },
+    { value: 'OCEAN_LCL', label: 'LCL Form' },
+    { value: 'OCEAN_FCL', label: 'FCL Form' },
 ];
 
 export default function ShipmentMobileScanPage() {

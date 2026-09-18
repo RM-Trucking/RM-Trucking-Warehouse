@@ -215,6 +215,7 @@ function ShipmentFormPageContent() {
   };
 
   const handleCloseOceanFCLForm = () => {
+    setSelectedShipmentType('OCEAN_FCL');
     setShowOceanFCLForm(false);
   };
 
@@ -312,7 +313,7 @@ function ShipmentFormPageContent() {
           <NewAirShipmentForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : viewShipment?.shipmentType === 'LCL' ? (
           <OceanLCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
-        ) : viewShipment?.shipmentType === 'FCL' ? (
+        ) : ['OCEAN_FCL', 'FCL'].includes(viewShipment?.shipmentType) ? (
           <OceanFCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : showAirShipmentForm ? (
           <NewAirShipmentForm handleClose={handleCloseAirShipmentForm} />
@@ -333,6 +334,7 @@ function ShipmentFormPageContent() {
                 shipmentType={selectedShipmentType}
               />
               <ShipmentTabs
+                initialShipmentType={selectedShipmentType}
                 onViewShipment={handleViewShipment}
                 filters={appliedShipmentFilters}
                 onShipmentTypeChange={setSelectedShipmentType}
