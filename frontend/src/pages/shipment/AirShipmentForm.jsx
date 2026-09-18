@@ -217,7 +217,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                 ...prev,
                 [fieldKey]: Boolean(String(value || '').trim()),
             }));
-            dispatch(getShipmentReceiptOptions(value, fieldKey));
+            dispatch(getShipmentReceiptOptions(value, fieldKey, { shipmentType: 'AIR' }));
         }, 500);
     };
 
