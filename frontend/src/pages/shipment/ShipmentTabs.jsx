@@ -16,6 +16,7 @@ import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
 import AirPickupEntryForm from './AirPickupEntryForm';
+import FCLPickupEntryForm from './FCLPickupEntryForm';
 
 // ----------------------------------------------------------------------
 
@@ -213,8 +214,11 @@ const handleClosePickupForm = () => {
         }
 
         setActiveForm({
-            type: 'airPickup',
+            type: ['OCEAN_FCL', 'FCL'].includes(rowData.shipmentType || result.data?.shipmentType)
+                ? 'fclPickup'
+                : 'airPickup',
             data: {
+                ...rowData,
                 ...result.data,
                 shipmentId: result.data?.shipmentId || shipmentId,
             },
@@ -576,6 +580,12 @@ const handleClosePickupForm = () => {
                 rowData={activeForm.data}
                 handleClose={handleClosePickupForm}
                 onCompleteSuccess={handleCompleteSuccess}
+            />
+        )}
+        {activeForm.type === 'fclPickup' && (
+            <FCLPickupEntryForm
+                rowData={activeForm.data}
+                handleClose={handleClosePickupForm}
             />
         )}
     </DialogContent>
