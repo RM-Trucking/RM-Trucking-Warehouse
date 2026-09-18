@@ -1369,17 +1369,34 @@ export async function getReceiptForShipment(req: Request, res: Response, conn: C
     try {
         const body = (req.body && typeof req.body === 'string') ? tryParseJSON(req.body) : req.body || {};
 
+        const shipmentType = String(body.shipmentType ?? req.query.shipmentType ?? '').trim().toUpperCase();
+        const rawManifestType = String(body.manifestType ?? body.loadManifestType ?? req.query.manifestType ?? '').trim().toUpperCase();
+        const manifestType = rawManifestType
+            .replace(/\s+/g, '_')
+            .replace(/-/g, '_')
+            .replace('DIRECT_ENTRY', 'DIRECT');
         const receiptNumber = body.receiptNumber ?? req.query.receiptNumber ?? null;
+        const customerId = body.customerId ?? req.query.customerId ?? null;
+        const destination = body.destination ?? req.query.destination ?? undefined;
+        const stationScope = String(body.stationScope ?? req.query.stationScope ?? 'ALL').trim().toUpperCase();
+        const stationId = body.stationId ?? req.query.stationId ?? undefined;
         const startDate = body.startDate ?? req.query.startDate ?? undefined;
         const endDate = body.endDate ?? req.query.endDate ?? undefined;
         const rawProNumbers = body.proNumbers ?? req.query.proNumbers ?? req.query.proNumber ?? undefined;
         const proNumbers = normalizeArrayField(rawProNumbers);
 
-        const filters: any = {};
-        if (receiptNumber !== undefined && receiptNumber !== null && receiptNumber !== '') filters.receiptNumber = Number(receiptNumber);
-        if (startDate) filters.startDate = String(startDate);
-        if (endDate) filters.endDate = String(endDate);
-        if (proNumbers && proNumbers.length > 0) filters.proNumbers = proNumbers.map((p: any) => String(p));
+        const filters: any = {
+            shipmentType,
+            manifestType,
+            customerId: customerId === null || customerId === '' ? undefined : Number(customerId),
+            destination: destination === undefined || destination === null ? undefined : String(destination).trim(),
+            stationScope,
+            stationId: stationId === undefined || stationId === null || stationId === '' ? undefined : Number(stationId),
+            receiptNumber: receiptNumber === undefined || receiptNumber === null || receiptNumber === '' ? undefined : Number(receiptNumber),
+            startDate: startDate ? String(startDate) : undefined,
+            endDate: endDate ? String(endDate) : undefined,
+            proNumbers: proNumbers.length > 0 ? proNumbers.map((p: any) => String(p)) : undefined,
+        };
 
         const data = await warehouseReceiptService.getWarehouseReceiptForShipmentService(conn, filters);
 
@@ -1391,7 +1408,8 @@ export async function getReceiptForShipment(req: Request, res: Response, conn: C
         res.status(200).json({ success: true, data });
     } catch (error: any) {
         console.error(error);
-        res.status(500).json({ success: false, message: error.message });
+        const statusCode = Number(error?.statusCode);
+        res.status(statusCode >= 400 && statusCode < 500 ? statusCode : 500).json({ success: false, message: error.message });
     }
 }
 

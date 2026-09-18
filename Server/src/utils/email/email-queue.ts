@@ -22,7 +22,7 @@ function createEmailQueue(concurrency: number = DEFAULT_CONCURRENCY) {
     let failureCount = 0;
 
     const queue = async.queue(
-        async (task: QueueTask, done: (err?: Error | null) => void) => {
+        async (task: QueueTask) => {
             try {
                 // Validate task
                 if (!validateEmailTask(task)) {
@@ -36,18 +36,16 @@ function createEmailQueue(concurrency: number = DEFAULT_CONCURRENCY) {
 
                 successCount++;
                 console.log(
-                    `✅ Email sent successfully. Pending: ${queue.length()}, Success: ${successCount}, Failed: ${failureCount}`
+                    `✅ Email procedure completed. Pending: ${queue.length()}, Success: ${successCount}, Failed: ${failureCount}`
                 );
-                // done();
             } catch (error) {
-                // console.log(error);
                 failureCount++;
                 const errorMsg =
                     error instanceof Error ? error.message : String(error);
                 console.error(
                     `❌ Email failed: ${formatEmailLog(task)} | Error: ${errorMsg}`
                 );
-                // done(error instanceof Error ? error : new Error(String(error)));
+                throw error instanceof Error ? error : new Error(String(error));
             }
         },
         concurrency

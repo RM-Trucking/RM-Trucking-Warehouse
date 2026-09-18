@@ -1532,13 +1532,18 @@ paths:
     post:
       tags:
         - Receipts
-      summary: Fetch a warehouse receipt for shipment creation using flexible filters
+      summary: Retrieve warehouse receipts for shipment creation
       description: |
-        Retrieve a single warehouse receipt to use as the basis for creating a shipment. All request parameters are optional and may be combined.
-        Supported filters:
-        - `receiptNumber` (integer)
-        - `startDate` / `endDate` (ISO date strings)
-        - `proNumbers` (array of PRO numbers)
+        Retrieves available (`ON_HAND`) warehouse receipts according to shipment and manifest type.
+
+        Direct Entry for `AIR` and `OCEAN_LCL` requires `receiptNumber`.
+
+        `OCEAN_FCL` requires `customerId` and `destination`. Results are restricted to the selected customer and station scope:
+        - `DIRECT`: matches the selected customer and destination.
+        - `PRO_SEARCH`: matches the selected customer and destination, and also includes receipts with no destination assigned. `proNumbers` may further restrict the results.
+        - `DATE_RANGE`: matches the selected customer and destination between `startDate` and `endDate`.
+
+        Set `stationScope` to `SPECIFIC` to restrict results to `stationId`; the default is `ALL`.
       security:
         - bearerAuth: []
       requestBody:
@@ -1548,9 +1553,12 @@ paths:
             schema:
               $ref: "#/components/schemas/ShipmentReceiptRequest"
             example:
-              receiptNumber: 100000031
-              startDate: "2026-04-01T00:00:00Z"
-              endDate: "2026-04-30T23:59:59Z"
+              shipmentType: "OCEAN_FCL"
+              manifestType: "PRO_SEARCH"
+              customerId: 42
+              destination: "TORONTO"
+              stationScope: "SPECIFIC"
+              stationId: 7
               proNumbers: ["PRO12345", "PRO67890"]
       responses:
         "200":
@@ -1564,7 +1572,9 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    $ref: "#/components/schemas/ShipmentReceiptResponse"
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShipmentReceiptResponse"
         "404":
           description: No matching receipt found
           content:
@@ -2479,10 +2489,41 @@ components:
     ShipmentReceiptRequest:
       type: object
       properties:
+        shipmentType:
+          type: string
+          enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+          description: AIR and OCEAN_LCL use Direct Entry by receipt number. OCEAN_FCL uses manifestType rules.
+          example: OCEAN_FCL
+        manifestType:
+          type: string
+          enum: [DIRECT, PRO_SEARCH, DATE_RANGE]
+          description: Required for OCEAN_FCL. The API also accepts Direct Entry, Pro Search, and Date Range labels.
+          example: PRO_SEARCH
         receiptNumber:
           type: integer
           nullable: true
           example: 100000031
+        customerId:
+          type: integer
+          nullable: true
+          description: Required for OCEAN_FCL; results are restricted to this customer.
+          example: 42
+        destination:
+          type: string
+          nullable: true
+          description: Required for OCEAN_FCL. Pro Search additionally includes receipts with a blank or null destination.
+          example: "TORONTO"
+        stationScope:
+          type: string
+          enum: [ALL, SPECIFIC]
+          default: ALL
+          description: Customer access scope. Use SPECIFIC with stationId.
+          example: SPECIFIC
+        stationId:
+          type: integer
+          nullable: true
+          description: Required when stationScope is SPECIFIC.
+          example: 7
         startDate:
           type: string
           format: date-time

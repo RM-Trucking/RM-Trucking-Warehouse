@@ -32,6 +32,11 @@ const statusEmitter = new StatusEventEmitter();
  * Called once during app initialization
  */
 export function setupStatusEventHandlers(): void {
+    if (statusEmitter.listenerCount('email') > 0) {
+        console.log('✅ Status event handlers already registered');
+        return;
+    }
+
     // Email event listener
     statusEmitter.on('email', (emailTask: EmailTask) => {
         try {

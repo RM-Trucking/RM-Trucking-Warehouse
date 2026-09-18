@@ -8,8 +8,9 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
         const payload = req.body as CreateWarehouseShipment;
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
-        if (!payload.shipmentType || !payload.barcodeNumber || !payload.customerId || !payload.consigneeId || payload.pieces === undefined || payload.weight === undefined || !payload.stationScope || !payload.destination || (payload.stationScope === "SPECIFIC" && !payload.stationId)) {
-            res.status(400).json({ success: false, message: "shipmentType, barcodeNumber, customerId, stationScope, destination, consigneeId, pieces and weight are required; stationId is required for SPECIFIC station scope" });
+        const destinationRequired = payload.shipmentType === "OCEAN_FCL";
+        if (!payload.shipmentType || !payload.barcodeNumber || !payload.customerId || !payload.consigneeId || payload.pieces === undefined || payload.weight === undefined || !payload.stationScope || (destinationRequired && !payload.destination) || (payload.stationScope === "SPECIFIC" && !payload.stationId)) {
+            res.status(400).json({ success: false, message: "shipmentType, barcodeNumber, customerId, stationScope, consigneeId, pieces and weight are required; destination is required for OCEAN_FCL; stationId is required for SPECIFIC station scope" });
             return;
         }
 
@@ -166,6 +167,10 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
             payload.stationId = null;
         } else if (payload.stationScope === "SPECIFIC" && !payload.stationId) {
             res.status(400).json({ success: false, message: "stationId is required for SPECIFIC station scope" });
+            return;
+        }
+        if (payload.shipmentType === "OCEAN_FCL" && !String(payload.destination || "").trim()) {
+            res.status(400).json({ success: false, message: "destination is required for OCEAN_FCL shipments" });
             return;
         }
 

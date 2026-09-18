@@ -90,8 +90,8 @@ export async function createShipmentWithRelations(
     if (normalizedPayload.stationScope === "SPECIFIC" && (!normalizedPayload.stationId || !Number.isInteger(normalizedPayload.stationId))) {
         throwValidationError("stationId is required for SPECIFIC station scope.");
     }
-    if (!normalizedPayload.destination) {
-        throwValidationError("destination is required.");
+    if (normalizedPayload.shipmentType === "OCEAN_FCL" && !normalizedPayload.destination) {
+        throwValidationError("destination is required for OCEAN_FCL shipments.");
     }
 
     if (payload.receipts !== undefined) {
@@ -119,6 +119,41 @@ export async function createShipmentWithRelations(
 
     try {
         await conn.beginTransaction();
+
+        if (normalizedPayload.shipmentType === "OCEAN_FCL" && payload.receipts !== undefined) {
+            const shipmentDestination = String(normalizedPayload.destination ?? "").trim();
+
+            for (const receipt of payload.receipts) {
+                const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
+                if (!warehouseReceipt) {
+                    throwValidationError(`Warehouse receipt with id ${receipt.receiptId} was not found.`);
+                }
+
+                const receiptDestination = String(warehouseReceipt.destination ?? "").trim();
+                if (receiptDestination && receiptDestination.toUpperCase() !== shipmentDestination.toUpperCase()) {
+                    throwValidationError(
+                        `Warehouse receipt ${warehouseReceipt.receiptNumber ?? receipt.receiptId} destination "${receiptDestination}" does not match shipment destination "${shipmentDestination}".`
+                    );
+                }
+
+                if (!receiptDestination) {
+                    await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, {
+                        destination: shipmentDestination,
+                        updatedBy: userId,
+                    });
+
+                    emitAuditLog({
+                        receiptNumber: warehouseReceipt.receiptNumber,
+                        receiptId: Number(receipt.receiptId),
+                        proNumber: warehouseReceipt.proNumber || undefined,
+                        userId,
+                        status: "PREPARED",
+                        description: `Receipt ${warehouseReceipt.receiptNumber} destination was automatically updated during OCEAN_FCL shipment creation. Old value: empty. New value: ${shipmentDestination}. Shipment destination: ${shipmentDestination}.`,
+                        level: "INFO",
+                    });
+                }
+            }
+        }
 
         const entityId = await entityDB.createWarehouseEntity(conn, 'SHIPMENT', normalizedPayload.barcodeNumber);
         const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
@@ -191,6 +226,16 @@ export async function updateShipmentWithRelations(
         throwValidationError(`Shipment with id ${shipmentId} was not found.`);
     }
 
+    const effectiveShipmentType = payload.shipmentType ?? existingShipment.shipmentType;
+    if (effectiveShipmentType === "OCEAN_FCL") {
+        const effectiveDestination = Object.prototype.hasOwnProperty.call(payload, "destination")
+            ? normalizedPayload.destination
+            : String(existingShipment.destination ?? "").trim();
+        if (!effectiveDestination) {
+            throwValidationError("destination is required for OCEAN_FCL shipments.");
+        }
+    }
+
     if (payload.stationScope && payload.stationScope !== "ALL" && payload.stationScope !== "SPECIFIC") {
         throwValidationError("stationScope must be ALL or SPECIFIC.");
     }
@@ -200,10 +245,6 @@ export async function updateShipmentWithRelations(
     if (payload.stationScope === "ALL" && payload.stationId !== null) {
         throwValidationError("stationId must be null for ALL station scope.");
     }
-    if (Object.prototype.hasOwnProperty.call(payload, "destination") && !normalizedPayload.destination) {
-        throwValidationError("destination cannot be empty.");
-    }
-
     if (typeof payload.barcodeNumber !== "undefined") {
         const incomingBarcode = normalizeBarcodeNumber(payload.barcodeNumber);
         const currentBarcode = normalizeBarcodeNumber(existingShipment?.barcodeNumber);
@@ -464,7 +505,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string , airBillNumber?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string }
 ): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number }> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;

@@ -269,14 +269,22 @@ export async function getWarehouseReceiptByReceiptNumber(
 
 export async function getWarehouseReceiptForShipment(
     conn: Connection,
-    receiptNumber?: number,
-    startDate?: string,
-    endDate?: string,
-    proNumber?: string[],
+    filters: {
+        shipmentType: string;
+        manifestType: string;
+        receiptNumber?: number;
+        customerId?: number;
+        destination?: string;
+        stationScope: "ALL" | "SPECIFIC";
+        stationId?: number;
+        startDate?: string;
+        endDate?: string;
+        proNumbers?: string[];
+    },
 ): Promise<{ receiptId: number; receiptNumber: number; proNumber: string; carrierName: string; customerName: string; stationName: string; verificationId: number; customerId: number; stationId: number; carrierId: number; piecesInland: number; reWeight: number }[] | null> {
 
     let query = `
-        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight"
+        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight", "wh"."destination"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
@@ -286,25 +294,44 @@ export async function getWarehouseReceiptForShipment(
 
     let params: any[] = [];
 
-    if (receiptNumber) {
-        query += ` AND "wh"."receiptNumber" LIKE ?`;
-        params.push(`%${receiptNumber}%`);
+    if (filters.receiptNumber !== undefined) {
+        query += ` AND CAST("wh"."receiptNumber" AS VARCHAR(50)) LIKE ?`;
+        params.push(`%${filters.receiptNumber}%`);
     }
 
-    if (startDate) {
+    if (filters.startDate) {
         query += ` AND "wh"."createdAt" >= CAST(? AS TIMESTAMP)`;
-        params.push(startDate);
+        params.push(filters.startDate);
     }
 
-    if (endDate) {
+    if (filters.endDate) {
         query += ` AND "wh"."createdAt" <= CAST(? AS TIMESTAMP)`;
-        params.push(endDate);
+        params.push(filters.endDate);
     }
 
-    if (proNumber && proNumber.length > 0) {
-        const placeholders = proNumber.map(() => '?').join(', ');
+    if (filters.proNumbers && filters.proNumbers.length > 0) {
+        const placeholders = filters.proNumbers.map(() => '?').join(', ');
         query += ` AND "wh"."proNumber" IN (${placeholders})`;
-        params.push(...proNumber);
+        params.push(...filters.proNumbers);
+    }
+
+    if (filters.shipmentType === "OCEAN_FCL") {
+        query += ` AND "wh"."customerId" = ?`;
+        params.push(filters.customerId);
+
+        if (filters.stationScope === "SPECIFIC") {
+            query += ` AND "wh"."stationId" = ?`;
+            params.push(filters.stationId);
+        }
+
+        // Direct and PRO searches include receipts whose destination is not assigned yet.
+        if (filters.manifestType === "DIRECT" || filters.manifestType === "PRO_SEARCH") {
+            query += ` AND (UPPER(TRIM(COALESCE("wh"."destination", ''))) = UPPER(TRIM(CAST(? AS VARCHAR(255)))) OR "wh"."destination" IS NULL OR TRIM("wh"."destination") = '')`;
+            params.push(filters.destination);
+        } else {
+            query += ` AND UPPER(TRIM("wh"."destination")) = UPPER(TRIM(CAST(? AS VARCHAR(255))))`;
+            params.push(filters.destination);
+        }
     }
 
     console.log("Executing getWarehouseReceiptForShipment query:", query, "with params:", params);

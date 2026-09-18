@@ -1358,6 +1358,10 @@ export async function batchProcessWarehouseReceiptsService(
                         emails = [...emails, ...receipt.tempEmails];
                     }
 
+                    emails = [...new Set(emails.map((email) => email.trim()).filter(Boolean))];
+
+                    console.log("Sending emails for updated receipt with ID:", receiptId, "to recipients:", emails);
+
                     for (const emailRecipient of emails) {
                         const attachmentPath = buildReceiptEmailAttachmentPath(updatedReceiptData, tempReceiptOutPath);
                         emitEmail({
@@ -1499,6 +1503,9 @@ export async function batchProcessWarehouseReceiptsService(
                     if (receipt.tempEmails && Array.isArray(receipt.tempEmails)) {
                         emails = [...emails, ...receipt.tempEmails];
                     }
+                    emails = [...new Set(emails.map((email) => email.trim()).filter(Boolean))];
+
+                    console.log("Sending emails for created receipt with ID:", receiptId, "to recipients:", emails);
 
                     for (const emailRecipient of emails) {
                         const attachmentPath = buildReceiptEmailAttachmentPath(createdReceiptData, tempReceiptOutPath);
@@ -2278,14 +2285,54 @@ export async function sendWarehouseReceiptToCustomEmailService(
  */
 export async function getWarehouseReceiptForShipmentService(
     conn: Connection,
-    filters: { receiptNumber?: number; startDate?: string; endDate?: string; proNumbers?: string[] }
+    filters: {
+        shipmentType?: string;
+        manifestType?: string;
+        receiptNumber?: number;
+        customerId?: number;
+        destination?: string;
+        stationScope?: "ALL" | "SPECIFIC";
+        stationId?: number;
+        startDate?: string;
+        endDate?: string;
+        proNumbers?: string[];
+    }
 ) {
-    const receiptNumber = filters.receiptNumber;
-    const startDate = filters.startDate;
-    const endDate = filters.endDate;
-    const proNumbers = Array.isArray(filters.proNumbers) ? filters.proNumbers : (filters.proNumbers ? [String(filters.proNumbers)] : undefined);
+    const error = (message: string) => {
+        const validationError = new Error(message) as Error & { statusCode?: number };
+        validationError.statusCode = 400;
+        return validationError;
+    };
+    const shipmentType = String(filters.shipmentType || "").toUpperCase();
+    const manifestType = String(filters.manifestType || "DIRECT").toUpperCase();
+    const directShipment = shipmentType === "AIR" || shipmentType === "OCEAN_LCL";
+    const fclShipment = shipmentType === "OCEAN_FCL";
 
-    const result = await warehouseReceiptDB.getWarehouseReceiptForShipment(conn, receiptNumber, startDate, endDate, proNumbers as any);
+    if (!directShipment && !fclShipment) throw error("shipmentType must be AIR, OCEAN_FCL, or OCEAN_LCL");
+    if (directShipment && (!Number.isInteger(filters.receiptNumber) || (filters.receiptNumber as number) <= 0)) {
+        throw error("receiptNumber is required for AIR and OCEAN_LCL shipments");
+    }
+    if (fclShipment && (!Number.isInteger(filters.customerId) || (filters.customerId as number) <= 0)) throw error("customerId is required for OCEAN_FCL shipments");
+    if (fclShipment && !["DIRECT", "PRO_SEARCH", "DATE_RANGE"].includes(manifestType)) {
+        throw error("manifestType must be DIRECT, PRO_SEARCH, or DATE_RANGE for OCEAN_FCL shipments");
+    }
+    if (fclShipment && !filters.destination?.trim()) throw error("destination is required for OCEAN_FCL shipments");
+    if (filters.stationScope !== "ALL" && filters.stationScope !== "SPECIFIC") {
+        throw error("stationScope must be ALL or SPECIFIC");
+    }
+    if (filters.stationScope === "SPECIFIC" && !Number.isInteger(filters.stationId)) {
+        throw error("stationId is required when stationScope is SPECIFIC");
+    }
+    if (fclShipment && manifestType === "DATE_RANGE" && (!filters.startDate || !filters.endDate)) {
+        throw error("startDate and endDate are required for DATE_RANGE manifest searches");
+    }
+
+    const result = await warehouseReceiptDB.getWarehouseReceiptForShipment(conn, {
+        ...filters,
+        shipmentType,
+        manifestType,
+        stationScope: filters.stationScope || "ALL",
+    });
     if (!result) return null;
 
     return Promise.all(result.map(async (receipt) => {

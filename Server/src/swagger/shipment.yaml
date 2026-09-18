@@ -607,7 +607,6 @@ components:
         - barcodeNumber
         - customerId
         - stationScope
-        - destination
         - consigneeId
         - pieces
         - weight
@@ -630,7 +629,7 @@ components:
         destination:
           type: string
           minLength: 1
-          description: Must match a destination available in warehouse receipt data for the selected customer and station scope.
+          description: Optional for AIR and OCEAN_LCL; required for OCEAN_FCL. Must match a destination available in warehouse receipt data for the selected customer and station scope.
         consigneeId:
           type: integer
         airBillNumber:
@@ -691,7 +690,7 @@ components:
         destination:
           type: string
           minLength: 1
-          description: Must match a destination available in warehouse receipt data for the selected customer and station scope.
+          description: Optional for AIR and OCEAN_LCL; required when the effective shipment type is OCEAN_FCL. Must match a destination available in warehouse receipt data for the selected customer and station scope.
         consigneeId:
           type: integer
         airBillNumber:
