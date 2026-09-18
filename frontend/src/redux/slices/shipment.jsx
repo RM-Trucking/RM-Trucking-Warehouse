@@ -287,7 +287,7 @@ const slice = createSlice({
             state.pagination = {
                 page: action.payload?.pagination?.page || state.pagination?.page,
                 pageSize: action.payload?.pagination?.pageSize || state.pagination?.pageSize,
-                totalRecords: action.payload?.pagination?.total || state.pagination?.totalRecords || state.shipmentData.length,
+                totalRecords: action.payload?.pagination?.total ?? state.pagination?.totalRecords ?? state.shipmentData.length,
             };
         },
     },
@@ -300,6 +300,8 @@ export default slice.reducer;
 
 // ----------------------------------------------------------------------
 // shipment api calls
+let latestShipmentListRequestId = 0;
+
 export function getShipmentData({
     pageNo = 1,
     pageSize = 10,
@@ -315,6 +317,7 @@ export function getShipmentData({
     airBillNumber = '',
 } = {}) {
     return async () => {
+        const requestId = ++latestShipmentListRequestId;
         dispatch(slice.actions.startLoading());
         try {
             const params = { page: pageNo, pageSize };
@@ -329,8 +332,10 @@ export function getShipmentData({
             if (consigneeId) params.consigneeId = consigneeId;
             if (String(airBillNumber).trim()) params.airBillNumber = String(airBillNumber).trim();
             const response = await axios.get('shipment', { params });
+            if (requestId !== latestShipmentListRequestId) return;
             dispatch(slice.actions.getShipmentDataSuccess(response.data));
         } catch (error) {
+            if (requestId !== latestShipmentListRequestId) return;
             dispatch(slice.actions.hasError(error));
         }
     };
@@ -389,7 +394,7 @@ export function getExportAirlineOptions() {
     };
 }
 
-export function getShipmentReceiptOptions(receiptNumber, fieldKey) {
+export function getShipmentReceiptOptions(receiptNumber, fieldKey, shipmentFilters = {}) {
     return async () => {
         const cleanReceiptNumber = String(receiptNumber || '').trim();
 
@@ -401,6 +406,7 @@ export function getShipmentReceiptOptions(receiptNumber, fieldKey) {
         dispatch(slice.actions.startShipmentReceiptLoading(fieldKey));
         try {
             const response = await axios.post('warehouse-receipt/for-shipment', {
+                ...shipmentFilters,
                 receiptNumber: Number(cleanReceiptNumber),
             });
             const options = Array.isArray(response.data?.data) ? response.data.data : [];
