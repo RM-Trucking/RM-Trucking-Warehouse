@@ -215,7 +215,13 @@ function ShipmentFormPageContent() {
   };
 
   const handleCloseOceanFCLForm = () => {
+    setSelectedShipmentType('OCEAN_FCL');
     setShowOceanFCLForm(false);
+  };
+
+  const handleOpenOceanFCLForm = () => {
+    setOpenConfirmDialog(false);
+    setShowOceanFCLForm(true);
   };
 
   const handleShipmentFilterChange = (field, value) => {
@@ -314,7 +320,7 @@ function ShipmentFormPageContent() {
           <NewAirShipmentForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : viewShipment?.shipmentType === 'LCL' ? (
           <OceanLCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
-        ) : viewShipment?.shipmentType === 'FCL' ? (
+        ) : ['OCEAN_FCL', 'FCL'].includes(viewShipment?.shipmentType) ? (
           <OceanFCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : showAirShipmentForm ? (
           <NewAirShipmentForm handleClose={handleCloseAirShipmentForm} />
@@ -335,6 +341,7 @@ function ShipmentFormPageContent() {
                 shipmentType={selectedShipmentType}
               />
               <ShipmentTabs
+                initialShipmentType={selectedShipmentType}
                 onViewShipment={handleViewShipment}
                 filters={appliedShipmentFilters}
                 onShipmentTypeChange={setSelectedShipmentType}
@@ -400,9 +407,8 @@ function ShipmentFormPageContent() {
                 <Button
                   variant="contained"
                   size="small"
-                  aria-disabled="true"
-                  sx={{ ...btnStyle, opacity: 0.5, cursor: 'not-allowed' }}
-                  onClick={() => setComingSoonMessage('FCL Shipment Form will be available soon.')}
+                  sx={btnStyle}
+                  onClick={handleOpenOceanFCLForm}
                 >
                   FCL Shipment Form
                 </Button>

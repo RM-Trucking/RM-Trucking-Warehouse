@@ -16,6 +16,7 @@ import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
 import AirPickupEntryForm from './AirPickupEntryForm';
+import FCLPickupEntryForm from './FCLPickupEntryForm';
 
 // ----------------------------------------------------------------------
 
@@ -23,6 +24,7 @@ ShipmentTabs.propTypes = {
     onViewShipment: PropTypes.func.isRequired,
     filters: PropTypes.object,
     onShipmentTypeChange: PropTypes.func,
+    initialShipmentType: PropTypes.oneOf(['AIR', 'OCEAN_LCL', 'OCEAN_FCL']),
 };
 
 function ScanActionIcon({ width = 20 }) {
@@ -49,7 +51,7 @@ ScanActionIcon.propTypes = {
     width: PropTypes.number,
 };
 
-export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentTypeChange }) {
+export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentTypeChange, initialShipmentType = 'AIR' }) {
     const dispatch = useDispatch();
     const {
         shipmentData: apiShipmentData,
@@ -58,7 +60,9 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
         shipmentSearchStr,
     } = useSelector((state) => state.shipmentdata);
     
-    const [currentTab, setCurrentTab] = useState('active');
+    const [currentTab, setCurrentTab] = useState(() => (
+        { AIR: 'active', OCEAN_LCL: 'inactive', OCEAN_FCL: 'incomplete' }[initialShipmentType] || 'active'
+    ));
     const [airStatusFilters, setAirStatusFilters] = useState([]);
     const requestFilterEnabled = airStatusFilters.includes('request');
     const scannedFilterEnabled = airStatusFilters.includes('scan');
@@ -82,7 +86,9 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
             ...shipment,
             rmNumber: shipment.barcodeNumber,
             customer: shipment.customerName || shipment.customerId,
-            station: shipment.stationName || shipment.stationId,
+            station: currentTab === 'incomplete' && shipment.stationName == null
+                ? 'All'
+                : shipment.stationName || shipment.stationId,
             billNumber: shipment.airBillNumber || shipment.booking || '',
             pickupNumber: shipment.pickupEntryNumber || '',
             scanStatus: shipment.isScanned === 'Y',
@@ -208,8 +214,11 @@ const handleClosePickupForm = () => {
         }
 
         setActiveForm({
-            type: 'airPickup',
+            type: ['OCEAN_FCL', 'FCL'].includes(rowData.shipmentType || result.data?.shipmentType)
+                ? 'fclPickup'
+                : 'airPickup',
             data: {
+                ...rowData,
                 ...result.data,
                 shipmentId: result.data?.shipmentId || shipmentId,
             },
@@ -413,9 +422,21 @@ const handleClosePickupForm = () => {
             },
         };
 
-    const columns = currentTab === 'active'
-        ? [...baseColumns, ...airStatusColumns, pickupNumberColumn, actionColumn]
-        : [...baseColumns, actionColumn];
+    const airColumns = [...baseColumns, ...airStatusColumns, pickupNumberColumn, actionColumn];
+    const destinationColumn = {
+        field: 'destination',
+        headerName: 'Destination',
+        flex: 1,
+        minWidth: 150,
+        headerAlign: 'left',
+    };
+    const columns = currentTab === 'incomplete'
+        ? airColumns
+            .filter((column) => column.field !== 'billNumber')
+            .flatMap((column) => column.field === 'station' ? [column, destinationColumn] : [column])
+        : currentTab === 'active'
+            ? airColumns
+            : [...baseColumns, actionColumn];
 
     return (
         <>
@@ -468,7 +489,7 @@ const handleClosePickupForm = () => {
                 </Box>
                 <Divider sx={{ borderColor: 'rgba(143, 143, 143, 1)', mb: 2 }} />
 
-                {currentTab === 'active' && (
+                {(currentTab === 'active' || currentTab === 'incomplete') && (
                     <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
                         {statusFilterOptions.map((status) => (
                             <FormControlLabel
@@ -488,7 +509,7 @@ const handleClosePickupForm = () => {
                     </Box>
                 )}
 
-                <Box sx={{ width: "100%", flex: 1, mt: currentTab === 'active' ? 0 : 2 }}>
+                <Box sx={{ width: "100%", flex: 1, mt: currentTab === 'inactive' ? 2 : 0 }}>
                     <DataGrid
                         rows={shipmentData}
                         columns={columns}
@@ -561,6 +582,12 @@ const handleClosePickupForm = () => {
                 onCompleteSuccess={handleCompleteSuccess}
             />
         )}
+        {activeForm.type === 'fclPickup' && (
+            <FCLPickupEntryForm
+                rowData={activeForm.data}
+                handleClose={handleClosePickupForm}
+            />
+        )}
     </DialogContent>
 </Dialog>
 <div style={{ display: 'none' }}>
@@ -611,6 +638,3 @@ const handleClosePickupForm = () => {
     );
 }
 
-ShipmentTabs.propTypes = {
-    onViewShipment: PropTypes.func.isRequired,
-};
