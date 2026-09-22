@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { 
     Typography, Stack, Grid, IconButton, Box, MenuItem, 
-    Chip, Dialog, DialogTitle, DialogContent, 
+    TextField, InputAdornment, Dialog, DialogTitle, DialogContent,
     Checkbox, Autocomplete, CircularProgress, Alert, Snackbar, DialogActions, Button
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -15,6 +15,7 @@ import dayjs from 'dayjs';
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 import axios from '../../utils/axios';
+import { PATH_DASHBOARD } from '../../routes/paths';
 import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/ShipmentFormLayout';
 
 import { useDispatch, useSelector } from '../../redux/store';
@@ -22,6 +23,12 @@ import { searchWarehouseReceiptCustomers, searchWarehouseReceiptStations } from 
 import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment } from '../../redux/slices/shipment';
 
 const ALL_STATIONS_OPTION = { stationScope: 'ALL', stationName: 'All' };
+
+const getHazmatLabel = (receipt) => {
+    const value = receipt.hazMat ?? receipt.hazmat ?? receipt.isHazmat;
+    if (value == null || value === '') return '-';
+    return ['yes', 'y', 'true', '1'].includes(String(value).toLowerCase()) ? 'Yes' : 'No';
+};
 
 const getCustomerOptionLabel = (option) => {
     if (!option) return '';
@@ -75,16 +82,6 @@ const statusStyles = {
     Available: { bgcolor: '#f1f1f1', color: '#333' },
 };
 
-// Mock Data for the Pro Number Modal
-const MOCK_PRO_LIST = [
-    { id: 1, proNumber: '30021816', status: 'On-Hand', customer: 'VENTANA SERRA LLC | | FL', station: 'Station 1' },
-    { id: 2, proNumber: '30021817', status: 'On-Hand', customer: 'VENTANA SERRA LLC | | FL', station: 'Station 2' },
-    { id: 3, proNumber: '30021818', status: 'On-Hand', customer: 'VENTANA SERRA LLC | | FL', station: 'Station 3' },
-    { id: 4, proNumber: '30021819', status: 'On-Hand', customer: 'VENTANA SERRA LLC | | FL', station: 'Station 4' },
-    { id: 5, proNumber: '30021820', status: 'On-Hand', customer: 'VENTANA SERRA LLC | | FL', station: 'Station 5' },
-    { id: 6, proNumber: '30021821', status: 'On-Hand', customer: 'VENTANA SERRA LLC | | FL', station: 'Station 6' },
-];
-
 NewOceanFCLShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
     rowData: PropTypes.object,
@@ -125,7 +122,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 weight: item.weight ?? item.reWeight ?? '',
             }))
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
-        proNumbers: ['736738768', '736738768'],
+        proNumbers: [],
         fromDate: dayjs('2026-02-26'), // Added for Date Selection
         toDate: dayjs('2026-03-26'),   // Added for Date Selection
     };
@@ -134,6 +131,20 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? defaultValues.rmProNo : '');
     const [openProModal, setOpenProModal] = useState(false);
+    const [proOptions, setProOptions] = useState([]);
+    const [proLoading, setProLoading] = useState(false);
+    const [proError, setProError] = useState('');
+    const [proSearch, setProSearch] = useState('');
+    const [proFilter, setProFilter] = useState('');
+    const [selectedProNumbers, setSelectedProNumbers] = useState([]);
+    const [proDetailsOpen, setProDetailsOpen] = useState(false);
+    const [proReceiptsConfirmed, setProReceiptsConfirmed] = useState(false);
+    const pendingProRowsRef = useRef(false);
+    const [detailReceiptIds, setDetailReceiptIds] = useState([]);
+    const [detailProNumbers, setDetailProNumbers] = useState([]);
+    const [destinationFilters, setDestinationFilters] = useState([]);
+    const [warehouseFilter, setWarehouseFilter] = useState('');
+    const [hazmatFilter, setHazmatFilter] = useState('');
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
     const [stationSearchValue, setStationSearchValue] = useState(getStationOptionLabel(defaultValues.station));
     const [destinationOptions, setDestinationOptions] = useState([]);
@@ -296,12 +307,66 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     };
 
     const selectedManifestType = watch('loadManifestType');
-    const selectedProNumbers = watch('proNumbers') || [];
 
-    const { fields: warehouseFields, append: appendWarehouse, remove: removeWarehouse } = useFieldArray({
+    useEffect(() => {
+        setProReceiptsConfirmed(false);
+        if (viewMode || selectedManifestType !== 'Pro Entry Search') return;
+        const controller = new AbortController();
+        setProOptions([]);
+        setProError('');
+        setProLoading(false);
+        setValue('proNumbers', []);
+        setSelectedProNumbers([]);
+        setProDetailsOpen(false);
+        setDetailReceiptIds([]);
+        setDetailProNumbers([]);
+        setProSearch('');
+        setProFilter('');
+        if (!selectedCustomerId || !stationScope || !selectedDestination) return;
+
+        setProLoading(true);
+        axios.post('warehouse-receipt/for-shipment', {
+            shipmentType: 'OCEAN_FCL',
+            manifestType: 'PRO_SEARCH',
+            customerId: Number(selectedCustomerId),
+            destination: selectedDestination,
+            stationScope,
+            stationId: stationScope === 'ALL' ? null : Number(selectedStationId),
+        }, { signal: controller.signal })
+            .then(({ data }) => {
+                if (controller.signal.aborted) return;
+                if (data?.success === false || !Array.isArray(data?.data)) {
+                    throw new Error(data?.message || 'Invalid PRO search response');
+                }
+                setProOptions(data.data.map((item, index) => ({
+                    ...item,
+                    id: item.receiptId || item.id || index,
+                    proNumber: String(item.proNumber || ''),
+                    customer: item.customerName || item.customer || '',
+                    station: item.stationName || item.station || '',
+                })));
+            })
+            .catch((error) => {
+                if (!controller.signal.aborted) setProError(error?.message || 'Could not load PRO numbers.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setProLoading(false);
+            });
+        return () => controller.abort();
+    }, [viewMode, selectedManifestType, selectedCustomerId, selectedDestination, stationScope, selectedStationId, setValue]);
+
+    const { fields: warehouseFields, append: appendWarehouse, remove: removeWarehouse, replace: replaceWarehouses } = useFieldArray({
         control,
         name: "warehouses"
     });
+
+    useEffect(() => {
+        if (!pendingProRowsRef.current) return;
+        const unsavedReceiptIds = pendingProRowsRef.current.unsavedReceiptIds;
+        pendingProRowsRef.current = false;
+        setSavedWarehouseRows(new Set(warehouseFields.filter((item) => !unsavedReceiptIds.includes(String(item.warehouseNo?.receiptId))).map((item) => item.id)));
+        setReceiptInputValues(Object.fromEntries(warehouseFields.map((item) => [item.id, getShipmentReceiptOptionLabel(item.warehouseNo)])));
+    }, [warehouseFields]);
 
     const watchedWarehouses = useWatch({ control, name: 'warehouses' });
     const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
@@ -324,68 +389,148 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     };
 
     const handleToggleProNumber = (proNumber) => {
-        if (selectedProNumbers.includes(proNumber)) {
-            setValue('proNumbers', selectedProNumbers.filter((p) => p !== proNumber));
-        } else {
-            setValue('proNumbers', [...selectedProNumbers, proNumber]);
-        }
+        setSelectedProNumbers((previous) => previous.includes(proNumber)
+            ? previous.filter((number) => number !== proNumber)
+            : [...previous, proNumber]);
     };
+
+    const uniqueProOptions = [...new Map(proOptions.map((item) => [item.proNumber, item])).values()];
+    const detailOptions = proOptions.filter((item) => detailProNumbers.includes(item.proNumber));
+    const visibleProOptions = (proDetailsOpen ? detailOptions : uniqueProOptions).filter((item) =>
+        (!proFilter || item.proNumber === proFilter) &&
+        (!proDetailsOpen || (
+            (!destinationFilters.length || destinationFilters.includes(item.destination || '')) &&
+            (!warehouseFilter || String(item.receiptNumber) === warehouseFilter) &&
+            (!hazmatFilter || getHazmatLabel(item) === hazmatFilter)
+        )) &&
+        [item.proNumber, item.customer, item.station, item.receiptNumber, item.destination].some((value) =>
+            String(value || '').toLowerCase().includes(proSearch.trim().toLowerCase()))
+    );
+
+    const openProDetails = () => {
+        const numbers = [...selectedProNumbers];
+        setDetailProNumbers(numbers);
+        const existingRows = proReceiptsConfirmed ? watchedWarehouses : [];
+        const existingProNumbers = new Set(existingRows.map((item) => item.warehouseNo?.proNumber));
+        const existingReceiptIds = new Set(existingRows.map((item) => String(item.warehouseNo?.receiptId)));
+        setDetailReceiptIds(proOptions.filter((item) => numbers.includes(item.proNumber) &&
+            (!existingProNumbers.has(item.proNumber) || existingReceiptIds.has(String(item.receiptId))))
+            .map((item) => item.id));
+        setProFilter('');
+        setProSearch('');
+        setDestinationFilters([]);
+        setWarehouseFilter('');
+        setHazmatFilter('');
+        setProDetailsOpen(true);
+    };
+
+    const renderSelectAllHeader = () => {
+        const selectedIds = proDetailsOpen ? detailReceiptIds : selectedProNumbers;
+        const setSelectedIds = proDetailsOpen ? setDetailReceiptIds : setSelectedProNumbers;
+        const visibleIds = new Set(visibleProOptions.map((item) => proDetailsOpen ? item.id : item.proNumber));
+        const selectedCount = selectedIds.filter((id) => visibleIds.has(id)).length;
+        return (
+            <Checkbox size="small" sx={{ p: 0.5 }}
+                disabled={proDetailsOpen || !visibleIds.size}
+                checked={visibleIds.size > 0 && selectedCount === visibleIds.size}
+                indeterminate={selectedCount > 0 && selectedCount < visibleIds.size}
+                onChange={(event) => {
+                    const { checked } = event.target;
+                    setSelectedIds((previous) => checked
+                        ? [...new Set([...previous, ...visibleIds])]
+                        : previous.filter((id) => !visibleIds.has(id)));
+                }}
+                slotProps={{ input: { 'aria-label': proDetailsOpen ? 'Select all filtered receipts' : 'Select all filtered PRO numbers' } }} />
+        );
+    };
+
+    const detailColumns = [
+        {
+            field: 'selection', headerName: '', width: 44, sortable: false, filterable: false,
+            renderHeader: renderSelectAllHeader,
+            renderCell: ({ row }) => <Checkbox size="small" sx={{ p: 0.5 }} disabled
+                checked={detailReceiptIds.includes(row.id)}
+                slotProps={{ input: { 'aria-label': `Select receipt ${row.receiptNumber}` } }} />,
+        },
+        { field: 'proNumber', headerName: 'Pro Number', flex: 1, minWidth: 120 },
+        { field: 'receiptNumber', headerName: 'Warehouse ID', flex: 1.1, minWidth: 130 },
+        { field: 'station', headerName: 'Station', flex: 1.5, minWidth: 160 },
+        { field: 'destination', headerName: 'Destination', flex: 1.1, minWidth: 130,
+            renderCell: ({ value }) => value || '-' },
+        { field: 'hazMat', headerName: 'Haz Mat', flex: 0.7, minWidth: 90,
+            valueGetter: (value, row) => getHazmatLabel(row) },
+        { field: 'action', headerName: 'Action', flex: 0.6, minWidth: 70, sortable: false, filterable: false,
+            renderCell: ({ row }) => <IconButton size="small" aria-label={`View receipt ${row.receiptNumber} in a new tab`}
+                component="a" href={`${PATH_DASHBOARD.warehouseReceiptForm}?receiptId=${encodeURIComponent(row.receiptId)}`}
+                target="_blank" rel="noopener noreferrer"><Iconify icon="carbon:view" width={16} /></IconButton> },
+    ];
 
     const proColumns = [
         {
+            field: 'selection', headerName: '', width: 44, sortable: false, filterable: false,
+            renderHeader: renderSelectAllHeader,
+            renderCell: ({ row }) => (
+                <Checkbox size="small" checked={selectedProNumbers.includes(row.proNumber)}
+                    onChange={() => handleToggleProNumber(row.proNumber)}
+                    slotProps={{ input: { 'aria-label': `Select PRO number ${row.proNumber}` } }}
+                    sx={{ p: 0.5 }} />
+            ),
+        },
+        {
             field: 'proNumber',
             headerName: 'Pro Number',
-            flex: 1,
-            minWidth: 160,
-            renderCell: (params) => (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Checkbox
-                        size="small"
-                        checked={selectedProNumbers.includes(params.row.proNumber)}
-                        onChange={() => handleToggleProNumber(params.row.proNumber)}
-                    />
-                    {params.row.proNumber}
-                </Box>
-            ),
-        },
-        {
-            field: 'status',
-            headerName: 'Status',
             width: 120,
             renderCell: (params) => (
-                <Chip
-                    label={params.value}
-                    size="small"
-                    sx={{ bgcolor: '#66bb6a', color: '#fff', borderRadius: '8px', fontWeight: 600, height: '24px' }}
-                />
+                <Button onClick={() => handleToggleProNumber(params.row.proNumber)}
+                    sx={{ p: 0, minWidth: 0, color: '#a22', textDecoration: 'underline', fontWeight: 700, fontSize: 12, textTransform: 'none' }}>
+                    {params.row.proNumber}
+                </Button>
             ),
         },
-        { field: 'customer', headerName: 'Customer', flex: 1.2, minWidth: 220 },
-        { field: 'station', headerName: 'Station', width: 120 },
-        {
-            field: 'action',
-            headerName: 'Action',
-            width: 90,
-            sortable: false,
-            filterable: false,
-            align: 'center',
-            headerAlign: 'center',
-            renderCell: () => (
-                <IconButton size="small" sx={{ color: '#000' }}>
-                    <Iconify icon="carbon:view" width={20} />
-                </IconButton>
-            ),
-        },
+        { field: 'customer', headerName: 'Customer', width: 240 },
+        { field: 'station', headerName: 'Station', width: 180 },
     ];
+
+    const confirmProReceipts = () => {
+        const selectedReceipts = detailOptions.filter((item) => detailReceiptIds.includes(item.id));
+        Object.values(receiptSearchTimers.current).forEach(clearTimeout);
+        const existingRows = proReceiptsConfirmed ? watchedWarehouses : [];
+        const existingRowsByReceiptId = new Map(existingRows.map((item) => [String(item.warehouseNo?.receiptId), item]));
+        const selectedRows = selectedReceipts.map((receipt) => existingRowsByReceiptId.get(String(receipt.receiptId)) || ({
+            warehouseNo: receipt,
+            pieces: receipt.piecesInland ?? '',
+            weight: receipt.reWeight ?? '',
+        }));
+        pendingProRowsRef.current = {
+            unsavedReceiptIds: proReceiptsConfirmed ? warehouseFields
+                .filter((item) => !savedWarehouseRows.has(item.id))
+                .map((item) => String(item.warehouseNo?.receiptId)) : [],
+        };
+        replaceWarehouses(selectedRows);
+        setValue('proNumbers', [...new Set(selectedRows.map((item) => item.warehouseNo?.proNumber).filter(Boolean))]);
+        setWarehouseReceiptError(false);
+        setRowSaveError('');
+        setSubmitError('');
+        setProReceiptsConfirmed(true);
+        setOpenProModal(false);
+        setProDetailsOpen(false);
+    };
 
     const onSubmit = async (data) => {
         if (viewMode || submitInFlightRef.current) return;
         setSubmitError('');
-        if (data.loadManifestType !== 'Direct Entry') {
+        const isProSearch = data.loadManifestType === 'Pro Entry Search';
+        if (isProSearch && !proReceiptsConfirmed) {
+            setProDetailsOpen(false);
+            setProFilter('');
+            setOpenProModal(true);
+            return;
+        }
+        if (data.loadManifestType !== 'Direct Entry' && !isProSearch) {
             setSubmitError('Submission is currently available for Direct Entry only.');
             return;
         }
-        if (data.loadManifestType === 'Direct Entry') {
+        if (data.loadManifestType === 'Direct Entry' || isProSearch) {
             if (!data.warehouses.some((item) => item.warehouseNo?.receiptId)) {
                 setWarehouseReceiptError(true);
                 setRowSaveError('At least one Warehouse receipt is required.');
@@ -413,7 +558,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             weight: totalWeight,
             earlyReturnDate: formatDate(data.earlyReturnDate),
             dropByDate: formatDate(data.dropByDate),
-            manifestType: 'DIRECT',
+            manifestType: isProSearch ? 'PRO_SEARCH' : 'DIRECT',
             startDate: '',
             endDate: '',
             instructions: data.instructions,
@@ -443,6 +588,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             title={viewMode ? 'View Ocean FCL Shipment Form' : 'New Ocean FCL Shipment Form'}
             handleClose={handleClose}
             onSubmit={handleSubmit(onSubmit, () => setSubmitError('Please fill all mandatory fields before submitting'))}
+            submitLabel={selectedManifestType === 'Pro Entry Search' && !proReceiptsConfirmed ? 'Next' : 'Submit'}
             submitLoading={createShipmentLoading}
             submitLoadingLabel="Submitting..."
             showSubmit={!viewMode}
@@ -728,7 +874,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 {/* --- Bottom Dynamic Section based on Manifest Type --- */}
 
                 {/* 1. Show Warehouse Table if 'Direct Entry' */}
-                {selectedManifestType === 'Direct Entry' && (
+                {(selectedManifestType === 'Direct Entry' || (selectedManifestType === 'Pro Entry Search' && proReceiptsConfirmed)) && (
                     <Grid container spacing={4}>
                         <Grid size={{ xs: 12 }}>
                             <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflowX: 'auto', '& > .MuiStack-root': { minWidth: 800 } }}>
@@ -896,8 +1042,22 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                 <Box sx={{ p: 1, textAlign: 'right' }}>
                                     <IconButton
                                         size="small"
-                                        disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
-                                        onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
+                                        disabled={selectedManifestType !== 'Pro Entry Search' && warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
+                                        onClick={() => {
+                                            if (selectedManifestType === 'Pro Entry Search') {
+                                                const existingReceiptIds = new Set(watchedWarehouses.map((item) => String(item.warehouseNo?.receiptId)));
+                                                const selectedIds = proOptions.filter((item) => existingReceiptIds.has(String(item.receiptId))).map((item) => item.id);
+                                                setSelectedProNumbers([...new Set(watchedWarehouses.map((item) => item.warehouseNo?.proNumber).filter(Boolean))]);
+                                                setDetailReceiptIds(selectedIds);
+                                                setDetailProNumbers([]);
+                                                setProDetailsOpen(false);
+                                                setProFilter('');
+                                                setProSearch('');
+                                                setOpenProModal(true);
+                                            } else {
+                                                appendWarehouse({ warehouseNo: null, pieces: '', weight: '' });
+                                            }
+                                        }}
                                         sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
                                     >
                                         <Iconify icon="akar-icons:plus" width={16} />
@@ -921,30 +1081,6 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             </Box>
                         </Grid>
                     </Grid>
-                )}
-
-                {/* 2. Show PRO No Section if 'Pro Entry Search' */}
-                {selectedManifestType === 'Pro Entry Search' && (
-                    <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px', maxWidth: '600px' }}>
-                        <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>PRO No</Typography></legend>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
-                            {selectedProNumbers.map((proNum, index) => (
-                                <Chip
-                                    key={`${proNum}-${index}`}
-                                    label={proNum}
-                                    onDelete={() => handleToggleProNumber(proNum)}
-                                    sx={{ bgcolor: '#e0f0fa', color: '#000', borderRadius: '16px', fontWeight: 500 }}
-                                />
-                            ))}
-                            <IconButton 
-                                size="small" 
-                                onClick={() => setOpenProModal(true)}
-                                sx={{ bgcolor: '#b82d2d', color: '#fff', borderRadius: '4px', p: '4px', '&:hover': { bgcolor: '#8b1c1c' } }}
-                            >
-                                <Iconify icon="akar-icons:plus" width={16} />
-                            </IconButton>
-                        </Box>
-                    </fieldset>
                 )}
 
                 {/* 3. Show Date Selection Section if 'FromToDateSelection' */}
@@ -1038,29 +1174,104 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             </Dialog>
 
             {/* --- Dialog / Modal for Pro Entry Search --- */}
-            <Dialog open={openProModal} onClose={() => setOpenProModal(false)} maxWidth="md" fullWidth>
-                <DialogTitle sx={{ pb: 1, pt: 3 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 600 }}>Pro Number List</Typography>
-                    <Box sx={{ width: '100%', height: '1px', bgcolor: '#e0e0e0', mt: 2 }} />
+            <Dialog open={openProModal} onClose={() => { if (!createShipmentLoading) setOpenProModal(false); }} maxWidth="lg" fullWidth
+                PaperProps={{ sx: { borderRadius: 1, height: '85vh' } }}>
+                <DialogTitle sx={{ px: 2.5, pt: 2, pb: 1, position: 'relative' }}>
+                    <IconButton
+                        aria-label="Close Pro Number List"
+                        size="small"
+                        disabled={createShipmentLoading}
+                        onClick={() => setOpenProModal(false)}
+                        sx={{ position: 'absolute', right: 12, top: 10 }}
+                    >
+                        <Iconify icon="eva:close-fill" width={20} />
+                    </IconButton>
+                    <Typography component="span" sx={{ display: 'block', pr: 4, fontSize: 13, fontWeight: 500 }}>
+                        Pro Number List - {[getCustomerOptionLabel(selectedCustomer), selectedDestination].filter(Boolean).join(' - ')}
+                    </Typography>
+                    <Box sx={{ height: '1px', bgcolor: '#999', mt: 0.5 }} />
                 </DialogTitle>
-                <DialogContent sx={{ p: 3, pt: 0 }}>
-                    <Box sx={{ border: '1px solid #f0f0f0', borderRadius: 1, overflow: 'hidden' }}>
+                <DialogContent sx={{ px: 2.5, py: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-end" spacing={2} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                        <TextField select variant="standard" label="PRO No" value={proFilter}
+                            onChange={(event) => setProFilter(event.target.value)}
+                            slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }} sx={{ width: 125 }}>
+                            <MenuItem value="">All</MenuItem>
+                            {[...new Set((proDetailsOpen ? detailOptions : proOptions).map((item) => item.proNumber))].filter(Boolean).map((proNumber) => (
+                                <MenuItem key={proNumber} value={proNumber}>{proNumber}</MenuItem>
+                            ))}
+                        </TextField>
+                        {proDetailsOpen && <>
+                            <TextField select variant="standard" label="Destination" value={destinationFilters}
+                                onChange={(event) => setDestinationFilters(event.target.value.includes('__all') ? [] : event.target.value)}
+                                slotProps={{ inputLabel: { shrink: true }, select: { multiple: true, displayEmpty: true,
+                                    renderValue: (values) => values.length ? values.map((value) => value || 'Blank').join(', ') : 'All' } }} sx={{ width: 130 }}>
+                                <MenuItem value="__all"><Checkbox size="small" checked={!destinationFilters.length} />All</MenuItem>
+                                {[...new Set(detailOptions.map((item) => item.destination || ''))].map((value) => (
+                                    <MenuItem key={value} value={value}><Checkbox size="small" checked={destinationFilters.includes(value)} />{value || 'Blank'}</MenuItem>
+                                ))}
+                            </TextField>
+                            <TextField select variant="standard" label="Warehouse ID" value={warehouseFilter}
+                                onChange={(event) => setWarehouseFilter(event.target.value)}
+                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 125 }}>
+                                <MenuItem value="">All</MenuItem>
+                                {[...new Set(detailOptions.map((item) => String(item.receiptNumber)))].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+                            </TextField>
+                            <TextField select variant="standard" label="Haz Mat" value={hazmatFilter}
+                                onChange={(event) => setHazmatFilter(event.target.value)}
+                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 125 }}>
+                                <MenuItem value="">All</MenuItem>
+                                <MenuItem value="Yes">Hazmat Only</MenuItem>
+                                <MenuItem value="No">No Hazmat</MenuItem>
+                            </TextField>
+                        </>}
+                        <TextField size="small" placeholder="Search..." value={proSearch}
+                            onChange={(event) => setProSearch(event.target.value)}
+                            slotProps={{
+                                htmlInput: { 'aria-label': 'Search PRO numbers, customers, or stations' },
+                                input: { endAdornment: <InputAdornment position="end"><Iconify icon="eva:search-outline" width={16} /></InputAdornment> },
+                            }}
+                            sx={{ width: { xs: '100%', sm: 300 }, '& .MuiInputBase-input': { py: 0.5, fontSize: 12 } }} />
+                    </Stack>
+                    {proError && <Alert severity="error" sx={{ mb: 2 }}>{proError}</Alert>}
+                    {proDetailsOpen && submitError && <Alert severity="error" sx={{ mb: 2 }}>{submitError}</Alert>}
+                    <Box sx={{ border: '1px solid #ddd', borderRadius: 0.5, overflow: 'hidden', flex: 1, minHeight: 180 }}>
                         <DataGrid
-                            rows={MOCK_PRO_LIST}
-                            columns={proColumns}
+                            key={proDetailsOpen ? 'pro-details' : 'pro-list'}
+                            rows={visibleProOptions}
+                            loading={proLoading}
+                            columns={proDetailsOpen ? detailColumns : proColumns}
                             getRowId={(row) => row.id}
-                            autoHeight
+                            rowHeight={28}
+                            columnHeaderHeight={32}
                             disableColumnMenu
                             disableRowSelectionOnClick
-                            hideFooter
+                            pagination
+                            initialState={{ pagination: { paginationModel: { pageSize: 20, page: 0 } } }}
+                            pageSizeOptions={[20, 50, 100]}
                             sx={{
                                 border: 'none',
-                                '& .MuiDataGrid-columnHeaders': { backgroundColor: '#f4f6f8' },
+                                fontSize: 12,
+                                '& .MuiDataGrid-columnHeader': { backgroundColor: '#f5f5f5' },
+                                '& .MuiDataGrid-cell': { borderBottom: 'none', display: 'flex', alignItems: 'center' },
                             }}
                         />
                     </Box>
                 </DialogContent>
+                <DialogActions sx={{ px: 2.5, pb: 2, pt: 1 }}>
+                    {proDetailsOpen && <Button variant="outlined" size="small" disabled={createShipmentLoading}
+                        onClick={() => { setProDetailsOpen(false); setProFilter(''); setProSearch(''); }}
+                        sx={{ color: '#333', borderColor: '#999', fontSize: 11, textTransform: 'none', py: 0.25 }}>Back</Button>}
+                    <Button variant="contained" size="small"
+                        onClick={proDetailsOpen ? confirmProReceipts : openProDetails}
+                        disabled={proLoading || createShipmentLoading || (!proReceiptsConfirmed && !(proDetailsOpen ? detailReceiptIds.length : selectedProNumbers.length))}
+                        sx={{ bgcolor: '#a22', minWidth: 60, fontSize: 11, textTransform: 'none', py: 0.25, '&:hover': { bgcolor: '#8b1c1c' } }}>
+                        {proDetailsOpen ? (createShipmentLoading ? 'Confirming...' : 'Confirm') : 'Next'}
+                    </Button>
+                </DialogActions>
             </Dialog>
+
+
 
         </ShipmentFormLayout>
     );

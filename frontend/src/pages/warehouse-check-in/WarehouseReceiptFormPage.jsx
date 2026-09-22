@@ -1172,6 +1172,40 @@ const getReceiptNumbersFromResponse = (response) => {
 };
 
 export default function WarehouseReceiptFormPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const receiptId = new URLSearchParams(location.search).get('receiptId');
+  const [receiptLinkError, setReceiptLinkError] = useState(null);
+  const needsReceipt = Boolean(receiptId && String(location.state?.viewReceiptSummary?.receiptId || '') !== receiptId);
+
+  useEffect(() => {
+    if (!needsReceipt) return;
+    const controller = new AbortController();
+    axios.get('/warehouse-receipt', {
+      params: { page: 1, pageSize: 10, receiptId },
+      signal: controller.signal,
+    }).then(({ data }) => {
+      if (controller.signal.aborted) return;
+      const receipt = Array.isArray(data?.data)
+        ? data.data.find((item) => String(item.receiptId) === receiptId) : null;
+      if (!receipt) throw new Error(`Warehouse Receipt ${receiptId} was not found`);
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: buildWarehouseReceiptViewState(buildWarehouseReceiptGridRow(receipt)),
+      });
+    }).catch((error) => {
+      if (!controller.signal.aborted) setReceiptLinkError({ receiptId, message: error?.message || 'Unable to load warehouse receipt' });
+    });
+    return () => controller.abort();
+  }, [needsReceipt, receiptId, location.pathname, location.search, navigate]);
+
+  if (needsReceipt) return <Box sx={{ p: 3 }}>{receiptLinkError?.receiptId === receiptId
+    ? <Alert severity="error">{receiptLinkError.message}</Alert>
+    : <CircularProgress aria-label="Loading warehouse receipt" />}</Box>;
+  return <WarehouseReceiptFormContent key={receiptId || 'form'} />;
+}
+
+function WarehouseReceiptFormContent() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { state } = useLocation();
@@ -5274,7 +5308,9 @@ export default function WarehouseReceiptFormPage() {
             >
               <Stack>
                 <ReceiptInfoRow label="Receipt No" value={activeForm.receiptNumber} />
-                <ReceiptInfoRow label="Date" value={formatDate()} />
+                <ReceiptInfoRow label="Date" value={isWarehouseReceiptView || isWarehouseReceiptEdit
+                  ? formatWarehouseReceiptDate(getRowValue(activeForm.row, ['createdAt', 'receiptDate', 'createdDate'], '')) || '-'
+                  : formatDate()} />
                 <ReceiptInfoRow
                   label="Received By"
                   value={activeForm.receivedBy}

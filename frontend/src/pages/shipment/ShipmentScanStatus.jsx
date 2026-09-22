@@ -515,14 +515,27 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     const handleReceiptSearch = (fieldKey, value, reason) => {
-        if (reason === 'reset') return;
         if (receiptSearchTimersRef.current[fieldKey]) clearTimeout(receiptSearchTimersRef.current[fieldKey]);
+        if (reason !== 'input' && reason !== 'clear') return;
         receiptSearchTimersRef.current[fieldKey] = setTimeout(() => {
-            dispatch(getShipmentReceiptOptions(value, fieldKey));
+            const shipmentFilters = { shipmentType: currentShipment?.shipmentType };
+            if (['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType)) {
+                const stationScope = currentShipment.stationScope || (currentShipment.stationId ? 'SPECIFIC' : 'ALL');
+                Object.assign(shipmentFilters, {
+                    shipmentType: 'OCEAN_FCL',
+                    manifestType: 'DIRECT',
+                    customerId: Number(currentShipment.customerId),
+                    destination: currentShipment.destination,
+                    stationScope,
+                    stationId: stationScope === 'ALL' ? null : Number(currentShipment.stationId),
+                });
+            }
+            dispatch(getShipmentReceiptOptions(value, fieldKey, shipmentFilters));
         }, 500);
     };
 
     const handleAddReceiptSelection = async (temporaryId, receipt) => {
+        clearTimeout(receiptSearchTimersRef.current[temporaryId]);
         if (!receipt?.receiptId || addShipmentReceiptLoading) return;
         const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
         if (!shipmentId) {
