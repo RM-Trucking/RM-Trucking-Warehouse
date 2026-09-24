@@ -35,6 +35,112 @@ function normalizeDateOnly(value: unknown): string {
     return dateOnly;
 }
 
+function getDateOnly(value: unknown): string | null {
+    if (!value) return null;
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return null;
+        return value.toISOString().slice(0, 10);
+    }
+
+    const dateMatch = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!dateMatch) return null;
+
+    const year = Number(dateMatch[1]);
+    const month = Number(dateMatch[2]);
+    const day = Number(dateMatch[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+        date.getUTCFullYear() !== year ||
+        date.getUTCMonth() !== month - 1 ||
+        date.getUTCDate() !== day
+    ) {
+        return null;
+    }
+
+    return `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+}
+
+function validateCreatedAtDateRange(shipment: any, warehouseReceipt: any): void {
+    const fromDate = getDateOnly(shipment.startDate);
+    const toDate = getDateOnly(shipment.endDate);
+
+    if (!fromDate || !toDate) {
+        throwValidationError("DATE_RANGE shipments require valid startDate and endDate values.");
+    }
+
+    if (fromDate > toDate) {
+        throwValidationError("Shipment startDate cannot be later than endDate.");
+    }
+
+    const receiptDate = getDateOnly(warehouseReceipt.createdAt);
+    if (!receiptDate || receiptDate < fromDate || receiptDate > toDate) {
+        throwValidationError(
+            `Warehouse receipt ${warehouseReceipt.receiptNumber ?? warehouseReceipt.receiptId} was created outside the shipment date range.`
+        );
+    }
+}
+
+function validateReceiptForShipment(shipment: any, warehouseReceipt: any): void {
+    if (String(shipment.shipmentType).toUpperCase() !== "OCEAN_FCL") return;
+
+    if (String(warehouseReceipt.status).toUpperCase() !== "ON_HAND") {
+        throwValidationError(
+            `Warehouse receipt ${warehouseReceipt.receiptNumber ?? warehouseReceipt.receiptId} has status "${warehouseReceipt.status}". Only ON_HAND receipts can be added to a shipment.`
+        );
+    }
+
+    if (Number(warehouseReceipt.customerId) !== Number(shipment.customerId)) {
+        throwValidationError(`Warehouse receipt ${warehouseReceipt.receiptNumber ?? warehouseReceipt.receiptId} does not belong to the shipment customer.`);
+    }
+
+    if (String(shipment.stationScope).toUpperCase() === "SPECIFIC" && Number(warehouseReceipt.stationId) !== Number(shipment.stationId)) {
+        throwValidationError(`Warehouse receipt ${warehouseReceipt.receiptNumber ?? warehouseReceipt.receiptId} does not belong to the shipment station.`);
+    }
+
+    const manifestType = String(shipment.manifestType ?? "").trim().toUpperCase();
+    if (manifestType === "DIRECT" || manifestType === "PRO_SEARCH" || manifestType === "PROSEARCH") {
+        const shipmentDestination = String(shipment.destination ?? "").trim();
+        const receiptDestination = String(warehouseReceipt.destination ?? "").trim();
+        if (receiptDestination && receiptDestination.toUpperCase() !== shipmentDestination.toUpperCase()) {
+            throwValidationError(
+                `Warehouse receipt ${warehouseReceipt.receiptNumber ?? warehouseReceipt.receiptId} destination "${receiptDestination}" does not match shipment destination "${shipmentDestination}".`
+            );
+        }
+    }
+
+    if (manifestType === "DATE_RANGE") {
+        validateCreatedAtDateRange(shipment, warehouseReceipt);
+    }
+}
+
+async function syncReceiptDestinationForShipment(
+    conn: Connection,
+    shipment: any,
+    warehouseReceipt: any,
+    userId: number,
+): Promise<void> {
+    if (String(shipment.shipmentType).toUpperCase() !== "OCEAN_FCL") return;
+
+    const previousDestination = String(warehouseReceipt.destination ?? "").trim();
+    const updatedDestination = String(shipment.destination ?? "").trim();
+    if (previousDestination.toUpperCase() === updatedDestination.toUpperCase()) return;
+
+    await warehouseReceiptDB.updateWarehouseReceipt(conn, Number(warehouseReceipt.receiptId), {
+        destination: updatedDestination,
+        updatedBy: userId,
+    });
+
+    emitAuditLog({
+        receiptNumber: warehouseReceipt.receiptNumber,
+        receiptId: Number(warehouseReceipt.receiptId),
+        proNumber: warehouseReceipt.proNumber || undefined,
+        userId,
+        status: "PREPARED",
+        description: `Receipt destination updated through shipment assignment. Receipt ID: ${warehouseReceipt.receiptId}. Previous Destination: ${previousDestination || "empty"}. Updated Destination: ${updatedDestination}. Shipment ID: ${shipment.shipmentId ?? "pending creation"}. Updated By: ${userId}. Updated Date/Time: current event time.`,
+        level: "INFO",
+    });
+}
+
 function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWarehouseShipment, userId: number) {
     const isUpdate = "shipmentId" in payload;
     const normalized = {
@@ -107,6 +213,8 @@ export async function createShipmentWithRelations(
                     `Warehouse receipt ${warehouseReceipt.receiptNumber ?? receipt.receiptId} has status "${warehouseReceipt.status}". Only ON_HAND receipts can be added to a new shipment.`
                 );
             }
+
+            validateReceiptForShipment(normalizedPayload, warehouseReceipt);
         }
     }
 
@@ -120,41 +228,6 @@ export async function createShipmentWithRelations(
     try {
         await conn.beginTransaction();
 
-        if (normalizedPayload.shipmentType === "OCEAN_FCL" && payload.receipts !== undefined) {
-            const shipmentDestination = String(normalizedPayload.destination ?? "").trim();
-
-            for (const receipt of payload.receipts) {
-                const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
-                if (!warehouseReceipt) {
-                    throwValidationError(`Warehouse receipt with id ${receipt.receiptId} was not found.`);
-                }
-
-                const receiptDestination = String(warehouseReceipt.destination ?? "").trim();
-                if (receiptDestination && receiptDestination.toUpperCase() !== shipmentDestination.toUpperCase()) {
-                    throwValidationError(
-                        `Warehouse receipt ${warehouseReceipt.receiptNumber ?? receipt.receiptId} destination "${receiptDestination}" does not match shipment destination "${shipmentDestination}".`
-                    );
-                }
-
-                if (!receiptDestination) {
-                    await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, {
-                        destination: shipmentDestination,
-                        updatedBy: userId,
-                    });
-
-                    emitAuditLog({
-                        receiptNumber: warehouseReceipt.receiptNumber,
-                        receiptId: Number(receipt.receiptId),
-                        proNumber: warehouseReceipt.proNumber || undefined,
-                        userId,
-                        status: "PREPARED",
-                        description: `Receipt ${warehouseReceipt.receiptNumber} destination was automatically updated during OCEAN_FCL shipment creation. Old value: empty. New value: ${shipmentDestination}. Shipment destination: ${shipmentDestination}.`,
-                        level: "INFO",
-                    });
-                }
-            }
-        }
-
         const entityId = await entityDB.createWarehouseEntity(conn, 'SHIPMENT', normalizedPayload.barcodeNumber);
         const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
 
@@ -162,6 +235,20 @@ export async function createShipmentWithRelations(
         normalizedPayload.noteThreadId = noteThreadId;
 
         const shipmentId = await shipmentDB.createShipment(conn, normalizedPayload as any, userId);
+
+        if (normalizedPayload.shipmentType === "OCEAN_FCL" && payload.receipts !== undefined) {
+            for (const receipt of payload.receipts) {
+                const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
+                if (!warehouseReceipt) {
+                    throwValidationError(`Warehouse receipt with id ${receipt.receiptId} was not found.`);
+                }
+
+                await syncReceiptDestinationForShipment(conn, {
+                    ...normalizedPayload,
+                    shipmentId,
+                }, warehouseReceipt, userId);
+            }
+        }
 
         if (payload.containers !== undefined) {
             console.log(`Creating shipment with ${payload.containers.length} containers`);
@@ -310,12 +397,15 @@ export async function updateShipmentWithRelations(
 }
 
 export async function addReceiptToShipment(conn: Connection, shipmentId: number, receiptId: number, userId: number): Promise<WarehouseShipmentWithRelations> {
-    if (!(await shipmentDB.getShipmentById(conn, shipmentId))) {
+    const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
+    if (!shipment) {
         throwValidationError(`Shipment with id ${shipmentId} was not found.`);
     }
-    if (!(await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId))) {
+    const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    if (!warehouseReceipt) {
         throwValidationError(`Warehouse receipt with id ${receiptId} was not found.`);
     }
+    validateReceiptForShipment(shipment, warehouseReceipt);
 
     const existingReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
     if (existingReceipts.some(receipt => receipt.receiptId === receiptId)) {
@@ -324,6 +414,7 @@ export async function addReceiptToShipment(conn: Connection, shipmentId: number,
 
     try {
         await conn.beginTransaction();
+        await syncReceiptDestinationForShipment(conn, shipment, warehouseReceipt, userId);
         await shipmentDB.addReceiptToShipment(conn, shipmentId, receiptId);
         await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { status: "PREPARED", updatedBy: userId });
 
@@ -346,9 +437,9 @@ export async function addReceiptToShipment(conn: Connection, shipmentId: number,
         );
 
         await conn.commit();
-        const shipment = await getShipmentById(conn, shipmentId);
-        if (!shipment) throw new Error("Shipment could not be loaded after adding the warehouse receipt");
-        return shipment;
+        const updatedShipment = await getShipmentById(conn, shipmentId);
+        if (!updatedShipment) throw new Error("Shipment could not be loaded after adding the warehouse receipt");
+        return updatedShipment;
     } catch (error) {
         await conn.rollback();
         throw error;
@@ -531,7 +622,7 @@ function hasAllFreightScanned(freightInfos: Array<{ isScanned?: unknown }>): boo
     return freightInfos.every((freightInfo) => String(freightInfo.isScanned).toUpperCase() === "Y");
 }
 
-export async function scanFreight(conn: Connection, shipmentId: number, barcodeValue: string) {
+export async function scanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId = 0) {
     const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
         .split("-")
         .map(part => part.trim())
@@ -553,41 +644,100 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
             throwValidationError(`Receipt with number ${receiptNumber} was not found.`);
         }
 
+        const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
+        if (!shipment) {
+            throwValidationError(`Shipment with id ${shipmentId} was not found.`);
+        }
+
         const shipmentReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
         const isReceiptLinkedToShipment = shipmentReceipts.some((shipmentReceipt: any) => Number(shipmentReceipt.receiptId) === Number(receipt.receiptId));
-        if (!isReceiptLinkedToShipment) {
+
+        const isOceanFcl = String(shipment.shipmentType).toUpperCase() === "OCEAN_FCL";
+        const manifestType = String(shipment.manifestType ?? "").trim().toUpperCase();
+        const isDateRangeManifest = isOceanFcl && manifestType === "DATE_RANGE";
+        let receiptLinkedThroughScan = false;
+
+        if (!isReceiptLinkedToShipment && !isDateRangeManifest) {
             throwValidationError(`Receipt ${receiptNumber} is not associated with shipment ${shipmentId}.`);
         }
 
-        const freightInfos = await warehouseReceiptDB.getFreightInfosForScanByReceipt(conn, receipt.receiptId);
-        const matchedFreight = freightInfos.find((freightInfo: any) => {
-            const existingBarcode = normalizeBarcodeNumber(freightInfo.freightBarcodeValue);
-            const incomingBarcode = normalizeBarcodeNumber(freightBarcodeValue);
-            return existingBarcode && incomingBarcode && existingBarcode.toUpperCase() === incomingBarcode.toUpperCase();
-        });
+        if (isOceanFcl) {
+            if (Number(receipt.customerId) !== Number(shipment.customerId)) {
+                throwValidationError(`Receipt ${receiptNumber} does not belong to the shipment customer.`);
+            }
+
+            const shipmentDestination = String(shipment.destination ?? "").trim();
+            const receiptDestination = String(receipt.destination ?? "").trim();
+            if (receiptDestination && receiptDestination.toUpperCase() !== shipmentDestination.toUpperCase()) {
+                throwValidationError(`Receipt ${receiptNumber} destination "${receiptDestination}" does not match shipment destination "${shipmentDestination}".`);
+            }
+
+            if (isDateRangeManifest) {
+                validateCreatedAtDateRange(shipment, receipt);
+            }
+
+            if (!receiptDestination) {
+                await syncReceiptDestinationForShipment(conn, shipment, receipt, userId);
+            }
+
+            if (!isReceiptLinkedToShipment) {
+                await shipmentDB.addReceiptToShipment(conn, shipmentId, Number(receipt.receiptId));
+                await warehouseReceiptDB.updateWarehouseReceipt(conn, Number(receipt.receiptId), {
+                    status: "PREPARED",
+                    updatedBy: userId,
+                });
+                emitAuditLog({
+                    receiptNumber: receipt.receiptNumber,
+                    receiptId: Number(receipt.receiptId),
+                    proNumber: receipt.proNumber || undefined,
+                    userId,
+                    status: "PREPARED",
+                    description: `Receipt ${receipt.receiptNumber} was linked to shipment ${shipment.barcodeNumber} through the freight scan process.`,
+                    level: "INFO",
+                });
+                shipmentReceipts.push({ receiptId: Number(receipt.receiptId) });
+                receiptLinkedThroughScan = true;
+            }
+        }
+
+        const matchedFreight = await warehouseReceiptDB.getFreightInfoForScanByBarcode(
+            conn,
+            receipt.receiptId,
+            freightBarcodeValue
+        );
 
         if (!matchedFreight) {
             throwValidationError(`Freight barcode "${freightBarcodeValue}" was not found for receipt ${receiptNumber}.`);
         }
 
-        if (String(matchedFreight.isScanned).toUpperCase() === "Y") {
+        if (matchedFreight.freightId === null) {
+            throwValidationError(`Freight barcode "${freightBarcodeValue}" was not found for receipt ${receiptNumber}.`);
+        }
+
+        const markedAsScanned = await warehouseReceiptDB.markFreightAsScanned(conn, matchedFreight.freightId);
+        if (!markedAsScanned) {
             throwValidationError("Item already scanned");
         }
 
-        await warehouseReceiptDB.updateFreightInfo(conn, Number(matchedFreight.freightId), { isScanned: "Y" });
+        if (isOceanFcl && !receiptLinkedThroughScan) {
+            emitAuditLog({
+                receiptNumber: receipt.receiptNumber,
+                receiptId: Number(receipt.receiptId),
+                proNumber: receipt.proNumber || undefined,
+                userId,
+                status: "SCANNED",
+                description: `Freight ${freightBarcodeValue} was scanned for receipt ${receipt.receiptNumber} on shipment ${shipment.barcodeNumber}.`,
+                level: "INFO",
+            });
+        }
 
-        const receiptFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
-        const currentReceiptFullyScanned = hasAllFreightScanned(receiptFreightInfos);
+        const currentReceiptFullyScanned = !(await warehouseReceiptDB.hasUnscannedFreightByReceipt(conn, receipt.receiptId));
 
         if (currentReceiptFullyScanned) {
             await warehouseReceiptDB.updateWarehouseReceipt(conn, Number(receipt.receiptId), { status: "SCANNED" });
         }
 
-        const allShipmentsReceiptsScanned = (await Promise.all(shipmentReceipts.map(async (shipmentReceipt: any) => {
-            const receiptId = Number(shipmentReceipt.receiptId);
-            const shipmentReceiptFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receiptId);
-            return hasAllFreightScanned(shipmentReceiptFreightInfos);
-        }))).every(Boolean);
+        const allShipmentsReceiptsScanned = !(await shipmentDB.hasUnscannedFreightByShipment(conn, shipmentId));
 
         if (allShipmentsReceiptsScanned) {
             await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "Y" }, 0);

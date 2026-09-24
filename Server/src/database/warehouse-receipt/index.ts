@@ -281,10 +281,10 @@ export async function getWarehouseReceiptForShipment(
         endDate?: string;
         proNumbers?: string[];
     },
-): Promise<{ receiptId: number; receiptNumber: number; proNumber: string; carrierName: string; customerName: string; stationName: string; verificationId: number; customerId: number; stationId: number; carrierId: number; piecesInland: number; reWeight: number }[] | null> {
+): Promise<{ receiptId: number; receiptNumber: number; proNumber: string; carrierName: string; customerName: string; stationName: string; verificationId: number; customerId: number; stationId: number; carrierId: number; piecesInland: number; reWeight: number; createdAt: Date }[] | null> {
 
     let query = `
-        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight", "wh"."destination"
+        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight", "wh"."destination", "wh"."hazMat", "wh"."createdAt"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
@@ -300,12 +300,12 @@ export async function getWarehouseReceiptForShipment(
     }
 
     if (filters.startDate) {
-        query += ` AND "wh"."createdAt" >= CAST(? AS TIMESTAMP)`;
+        query += ` AND DATE("wh"."createdAt") >= CAST(? AS DATE)`;
         params.push(filters.startDate);
     }
 
     if (filters.endDate) {
-        query += ` AND "wh"."createdAt" <= CAST(? AS TIMESTAMP)`;
+        query += ` AND DATE("wh"."createdAt") <= CAST(? AS DATE)`;
         params.push(filters.endDate);
     }
 
@@ -319,18 +319,16 @@ export async function getWarehouseReceiptForShipment(
         query += ` AND "wh"."customerId" = ?`;
         params.push(filters.customerId);
 
+        query += ` AND (
+            UPPER(TRIM(COALESCE("wh"."destination", ''))) = UPPER(TRIM(CAST(? AS VARCHAR(255))))
+            OR "wh"."destination" IS NULL
+            OR TRIM("wh"."destination") = ''
+        )`;
+        params.push(filters.destination);
+
         if (filters.stationScope === "SPECIFIC") {
             query += ` AND "wh"."stationId" = ?`;
             params.push(filters.stationId);
-        }
-
-        // Direct and PRO searches include receipts whose destination is not assigned yet.
-        if (filters.manifestType === "DIRECT" || filters.manifestType === "PRO_SEARCH") {
-            query += ` AND (UPPER(TRIM(COALESCE("wh"."destination", ''))) = UPPER(TRIM(CAST(? AS VARCHAR(255)))) OR "wh"."destination" IS NULL OR TRIM("wh"."destination") = '')`;
-            params.push(filters.destination);
-        } else {
-            query += ` AND UPPER(TRIM("wh"."destination")) = UPPER(TRIM(CAST(? AS VARCHAR(255))))`;
-            params.push(filters.destination);
         }
     }
 
@@ -343,12 +341,12 @@ export async function getWarehouseReceiptForShipment(
         return null;
     }
 
-
     return result.map((row: any) => ({
         ...row,
         receiptNumber: row.receiptNumber != null ? parseInt(row.receiptNumber) : null,
         receiptId: row.receiptId != null ? parseInt(row.receiptId) : null,
         verificationId: row.verificationId != null ? parseInt(row.verificationId) : null,
+        createdAt: row.createdAt != null ? toUtcDate(row.createdAt) : null,
     }));
 }
 
@@ -1113,19 +1111,55 @@ export async function getFreightInfosForScanByReceipt(
     }));
 }
 
+export async function getFreightInfoForScanByBarcode(
+    conn: Connection,
+    receiptId: number | bigint,
+    freightBarcodeValue: string
+): Promise<{ freightId: number | null; freightBarcodeValue: string | null; isScanned: string | null } | null> {
+    const query = `
+        SELECT "freightId", "freightBarcodeValue", "isScanned"
+        FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info"
+        WHERE "receiptId" = ?
+                    AND UPPER(TRIM("freightBarcodeValue")) = UPPER(TRIM(CAST(? AS VARCHAR(255))))
+                FETCH FIRST 1 ROWS ONLY
+    `;
+    const result = await conn.query(query, [Number(receiptId), freightBarcodeValue]) as any[];
+    const row = result[0];
+
+    if (!row) return null;
+
+    return {
+        freightId: row.freightId != null ? parseInt(row.freightId) : null,
+        freightBarcodeValue: row.freightBarcodeValue ?? null,
+        isScanned: row.isScanned ?? null,
+    };
+}
+
+export async function hasUnscannedFreightByReceipt(conn: Connection, receiptId: number | bigint): Promise<boolean> {
+    const query = `
+        SELECT 1 AS "hasUnscanned"
+        FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info"
+        WHERE "receiptId" = ?
+          AND COALESCE("isScanned", 'N') <> 'Y'
+        FETCH FIRST 1 ROW ONLY
+    `;
+    const result = await conn.query(query, [Number(receiptId)]) as any[];
+    return result.length > 0;
+}
+
 export async function markFreightAsScanned(conn: Connection, freightId: number | bigint): Promise<boolean> {
     const query = `
-        SELECT 1 AS "updated"
-        FROM FINAL TABLE (
-            UPDATE ${SCHEMA}."Warehouse_Receipt_Freight_Info"
-            SET "isScanned" = 'Y'
-            WHERE "freightId" = ?
-              AND COALESCE("isScanned", 'N') <> 'Y'
-        )
+        UPDATE ${SCHEMA}."Warehouse_Receipt_Freight_Info"
+        SET "isScanned" = 'Y'
+        WHERE "freightId" = ?
+          AND COALESCE("isScanned", 'N') <> 'Y'
     `;
 
-    const result = await conn.query(query, [Number(freightId)]) as any[];
-    return Array.isArray(result) && result.length > 0;
+    const result = await conn.query(query, [Number(freightId)]) as any;
+    const affectedRows = Number(
+        result?.count ?? result?.rowCount ?? result?.rowsAffected ?? 0
+    );
+    return affectedRows > 0;
 }
 
 export async function updateFreightInfo(conn: Connection, freightId: number | bigint, updates: any): Promise<void> {
@@ -1325,6 +1359,7 @@ export async function getAllWarehouseReceiptByReceiptNumber(
         noteThreadId: row.noteThreadId != null ? parseInt(row.noteThreadId) : null,
         entityId: row.entityId != null ? parseInt(row.entityId) : null,
         toEmails: row.toEmails ? JSON.parse(row.toEmails) : null,
+        createdAt: row.createdAt ? toUtcDate(row.createdAt) : null,
     };
 }
 
@@ -1356,6 +1391,7 @@ export async function getWarehouseReceiptByCarrierAndPro(
         ...result[0],
         receiptId: result[0].receiptId != null ? parseInt(result[0].receiptId) : null,
         receiptNumber: result[0].receiptNumber != null ? parseInt(result[0].receiptNumber) : null,
+        createdAt: result[0].createdAt ? toUtcDate(result[0].createdAt) : null,
     } : null;
 }
 

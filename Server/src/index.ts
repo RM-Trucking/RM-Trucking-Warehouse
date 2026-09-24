@@ -9,7 +9,7 @@ import { existsSync, mkdirSync } from 'fs';
 import routes from './routes';
 import cors from 'cors';
 import { initializeDB2Pool, closeDB2Pool, getSchema } from './config/db2';
-import { setupStatusEventHandlers, setupAuditLogEventHandlers } from './utils/email';
+import { setupStatusEventHandlers, setupAuditLogEventHandlers, emitEmail } from './utils/email';
 
 
 // ============================================================================
@@ -336,6 +336,14 @@ async function startServer(): Promise<void> {
     server = app.listen(PORT, () => {
         console.log(`Server started on http://localhost:${PORT} | Env: ${NODE_ENV} | DB: ${serverConfig.database.environment} | Started: ${new Date().toISOString()}`);
         console.log(`Port - ${process.env.PORT} | Database Lib - ${SCHEMA}`)
+
+        // emitEmail({
+        //     to: 'prakash.sa@rmtrucking.com',
+        //     receiptNumber: 1654,
+        //     status: 'INITIATED',
+        //     subject: 'Server Started',
+        //     body: `Server started on port ${PORT} | Env: ${NODE_ENV} | DB: ${serverConfig.database.environment} | Timestamp: ${new Date().toISOString()}`,
+        // } as any); // Initialize email queue
     });
 
     server.on('error', (err: NodeJS.ErrnoException) => {

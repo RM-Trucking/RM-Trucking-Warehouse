@@ -236,7 +236,8 @@ export async function scanFreight(req: Request, res: Response, conn: Connection)
             return;
         }
 
-        const updatedShipment = await shipmentService.scanFreight(conn, shipmentId, barcodeValue);
+        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const updatedShipment = await shipmentService.scanFreight(conn, shipmentId, barcodeValue, userId);
         res.status(200).json({ success: true, message: "Freight scanned successfully", data: updatedShipment });
 
     } catch (error: any) {

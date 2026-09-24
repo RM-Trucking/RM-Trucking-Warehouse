@@ -2320,7 +2320,7 @@ export async function getWarehouseReceiptForShipmentService(
     if (filters.stationScope !== "ALL" && filters.stationScope !== "SPECIFIC") {
         throw error("stationScope must be ALL or SPECIFIC");
     }
-    if (filters.stationScope === "SPECIFIC" && !Number.isInteger(filters.stationId)) {
+    if (filters.stationScope === "SPECIFIC" && (!Number.isInteger(filters.stationId) || (filters.stationId as number) <= 0)) {
         throw error("stationId is required when stationScope is SPECIFIC");
     }
     if (fclShipment && manifestType === "DATE_RANGE" && (!filters.startDate || !filters.endDate)) {

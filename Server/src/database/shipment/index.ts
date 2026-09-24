@@ -363,6 +363,20 @@ export async function getReceiptsByShipmentId(conn: Connection, shipmentId: numb
     }));
 }
 
+export async function hasUnscannedFreightByShipment(conn: Connection, shipmentId: number): Promise<boolean> {
+    const query = `
+        SELECT 1 AS "hasUnscanned"
+        FROM ${SCHEMA}."Warehouse_Shipment_Receipts" AS wsr
+        INNER JOIN ${SCHEMA}."Warehouse_Receipt_Freight_Info" AS wrfi
+            ON wsr."receiptId" = wrfi."receiptId"
+        WHERE wsr."shipmentId" = ?
+          AND COALESCE(wrfi."isScanned", 'N') <> 'Y'
+        FETCH FIRST 1 ROW ONLY
+    `;
+    const result = await conn.query(query, [shipmentId]) as any[];
+    return result.length > 0;
+}
+
 
 export async function checkShipmentUniqueFields(
     conn: Connection,
