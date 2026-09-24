@@ -114,7 +114,11 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         dropByDate: rowData?.dropByDate ? dayjs(rowData.dropByDate) : null,
         containerNo: rowData?.containers?.map((item) => item.container || item.containerNo).filter(Boolean).join(', ') || rowData?.containerNo || '',
         instructions: rowData?.instructions || '',
-        loadManifestType: 'Direct Entry',
+        loadManifestType: {
+            DIRECT: 'Direct Entry',
+            PRO_SEARCH: 'Pro Entry Search',
+            DATE_RANGE: 'FromToDateSelection',
+        }[rowData?.manifestType] || 'Direct Entry',
         warehouses: rowData?.receipts?.length
             ? rowData.receipts.map((item) => ({
                 warehouseNo: { ...item, receiptNumber: item.receiptNumber || item.receiptId || '' },
@@ -123,14 +127,16 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             }))
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
         proNumbers: [],
-        fromDate: dayjs('2026-02-26'), // Added for Date Selection
-        toDate: dayjs('2026-03-26'),   // Added for Date Selection
+        fromDate: rowData?.startDate ? dayjs(rowData.startDate) : null,
+        toDate: rowData?.endDate ? dayjs(rowData.endDate) : null,
     };
 
-    const { control, handleSubmit, watch, setValue, clearErrors } = useForm({ defaultValues });
+    const { control, handleSubmit, watch, setValue, clearErrors, setError, getValues, reset } = useForm({ defaultValues });
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? defaultValues.rmProNo : '');
     const [openProModal, setOpenProModal] = useState(false);
+    const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
+    const [submitConfirmationOpen, setSubmitConfirmationOpen] = useState(false);
     const [proOptions, setProOptions] = useState([]);
     const [proLoading, setProLoading] = useState(false);
     const [proError, setProError] = useState('');
@@ -369,6 +375,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     }, [warehouseFields]);
 
     const watchedWarehouses = useWatch({ control, name: 'warehouses' });
+    const shipmentFiltersLocked = viewMode || watchedWarehouses.some((item) => Boolean(item.warehouseNo?.receiptId));
     const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
     const totalWeight = watchedWarehouses.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
 
@@ -395,7 +402,10 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     };
 
     const uniqueProOptions = [...new Map(proOptions.map((item) => [item.proNumber, item])).values()];
-    const detailOptions = proOptions.filter((item) => detailProNumbers.includes(item.proNumber));
+    const detailOptions = proOptions
+        .filter((item) => detailProNumbers.includes(item.proNumber))
+        .sort((first, second) => Number(Boolean(String(first.destination ?? '').trim()))
+            - Number(Boolean(String(second.destination ?? '').trim())));
     const visibleProOptions = (proDetailsOpen ? detailOptions : uniqueProOptions).filter((item) =>
         (!proFilter || item.proNumber === proFilter) &&
         (!proDetailsOpen || (
@@ -461,7 +471,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             valueGetter: (value, row) => getHazmatLabel(row) },
         { field: 'action', headerName: 'Action', flex: 0.6, minWidth: 70, sortable: false, filterable: false,
             renderCell: ({ row }) => <IconButton size="small" aria-label={`View receipt ${row.receiptNumber} in a new tab`}
-                component="a" href={`${PATH_DASHBOARD.warehouseReceiptForm}?receiptId=${encodeURIComponent(row.receiptId)}`}
+                component="a" href={`${PATH_DASHBOARD.warehouseReceiptForm}?receiptNumber=${encodeURIComponent(row.receiptNumber)}`}
                 target="_blank" rel="noopener noreferrer"><Iconify icon="carbon:view" width={16} /></IconButton> },
     ];
 
@@ -516,18 +526,78 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         setProDetailsOpen(false);
     };
 
-    const onSubmit = async (data) => {
+    const handleReset = () => {
         if (viewMode || submitInFlightRef.current) return;
+        setResetConfirmationOpen(false);
+        Object.values(receiptSearchTimers.current).forEach(clearTimeout);
+        receiptSearchTimers.current = {};
+        pendingProRowsRef.current = false;
+        reset(defaultValues);
+        setBarcodeValue('');
+        setCustomerSearchValue('');
+        setStationSearchValue('');
+        setDestinationOptions([]);
+        setDestinationError('');
+        setOpenProModal(false);
+        setProOptions([]);
+        setProLoading(false);
+        setProError('');
+        setProSearch('');
+        setProFilter('');
+        setSelectedProNumbers([]);
+        setProDetailsOpen(false);
+        setProReceiptsConfirmed(false);
+        setDetailReceiptIds([]);
+        setDetailProNumbers([]);
+        setDestinationFilters([]);
+        setWarehouseFilter('');
+        setHazmatFilter('');
+        setWarehouseAlertOpen(false);
+        setDuplicateReceiptAlertOpen(false);
+        setPendingReceiptSelection(null);
+        setWarehouseReceiptError(false);
+        setReceiptInputValues({});
+        setReceiptSearchSubmitted({});
+        setSavedWarehouseRows(new Set());
+        setRowSaveError('');
+        setSubmitError('');
+    };
+
+    const validateDateRange = (data) => {
+        if (data.loadManifestType !== 'FromToDateSelection') return true;
+        let valid = true;
+        [['fromDate', 'From Date'], ['toDate', 'To Date']].forEach(([name, label]) => {
+            if (!data[name] || !dayjs(data[name]).isValid()) {
+                setError(name, { type: 'validate', message: `${label} is required and must be a valid date` });
+                valid = false;
+            }
+        });
+        if (valid && dayjs(data.fromDate).isAfter(dayjs(data.toDate), 'day')) {
+            setError('toDate', { type: 'validate', message: 'To Date must be on or after From Date' });
+            valid = false;
+        }
+        return valid;
+    };
+
+    const handleFormSubmit = (event) => {
+        if (!validateDateRange(getValues())) return;
+        handleSubmit(onSubmit, () => setSubmitError('Please fill all mandatory fields before submitting'))(event);
+    };
+
+    const onSubmit = async (data, confirmed = false) => {
+        if (viewMode || submitInFlightRef.current) return;
+        if (!validateDateRange(data)) return;
         setSubmitError('');
         const isProSearch = data.loadManifestType === 'Pro Entry Search';
+        const isDateRange = data.loadManifestType === 'FromToDateSelection';
         if (isProSearch && !proReceiptsConfirmed) {
             setProDetailsOpen(false);
             setProFilter('');
             setOpenProModal(true);
             return;
         }
-        if (data.loadManifestType !== 'Direct Entry' && !isProSearch) {
-            setSubmitError('Submission is currently available for Direct Entry only.');
+        if (data.loadManifestType !== 'Direct Entry' && !isProSearch && !isDateRange) {
+            setSubmitError('Please select a valid manifest type.');
             return;
         }
         if (data.loadManifestType === 'Direct Entry' || isProSearch) {
@@ -540,6 +610,10 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 setRowSaveError('Save all Warehouse rows before submitting.');
                 return;
             }
+        }
+        if (confirmed !== true) {
+            setSubmitConfirmationOpen(true);
+            return;
         }
         const formatDate = (value) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '';
         const payload = {
@@ -558,9 +632,9 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             weight: totalWeight,
             earlyReturnDate: formatDate(data.earlyReturnDate),
             dropByDate: formatDate(data.dropByDate),
-            manifestType: isProSearch ? 'PRO_SEARCH' : 'DIRECT',
-            startDate: '',
-            endDate: '',
+            manifestType: isDateRange ? 'DATE_RANGE' : isProSearch ? 'PRO_SEARCH' : 'DIRECT',
+            startDate: isDateRange ? formatDate(data.fromDate) : '',
+            endDate: isDateRange ? formatDate(data.toDate) : '',
             instructions: data.instructions,
             containers: [{ container: String(data.containerNo || '').trim() }],
             receipts: data.warehouses
@@ -587,7 +661,8 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         <ShipmentFormLayout
             title={viewMode ? 'View Ocean FCL Shipment Form' : 'New Ocean FCL Shipment Form'}
             handleClose={handleClose}
-            onSubmit={handleSubmit(onSubmit, () => setSubmitError('Please fill all mandatory fields before submitting'))}
+            onReset={!viewMode ? () => setResetConfirmationOpen(true) : undefined}
+            onSubmit={handleFormSubmit}
             submitLabel={selectedManifestType === 'Pro Entry Search' && !proReceiptsConfirmed ? 'Next' : 'Submit'}
             submitLoading={createShipmentLoading}
             submitLoadingLabel="Submitting..."
@@ -637,7 +712,8 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                         <Controller name="customer" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
                                 fullWidth
-                                readOnly={viewMode}
+                                readOnly={shipmentFiltersLocked}
+                                disabled={shipmentFiltersLocked}
                                 options={customerOptions}
                                 value={field.value}
                                 inputValue={customerSearchValue}
@@ -682,12 +758,12 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                         <Controller name="station" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
                                 fullWidth
-                                readOnly={viewMode}
+                                readOnly={shipmentFiltersLocked}
                                 options={[ALL_STATIONS_OPTION, ...stationOptions.filter((option) => getStationOptionLabel(option).toLowerCase() !== 'all')]}
                                 filterOptions={(options) => options}
                                 value={field.value}
                                 inputValue={stationSearchValue}
-                                disabled={!selectedCustomerId}
+                                disabled={shipmentFiltersLocked || !selectedCustomerId}
                                 loading={stationLoading}
                                 getOptionLabel={getStationOptionLabel}
                                 isOptionEqualToValue={(option, value) =>
@@ -778,10 +854,10 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                     <Controller name="destination" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                         <Autocomplete
                             sx={{ width: { xs: '100%', sm: 'calc((100% - 48px) / 3)' } }}
-                            readOnly={viewMode}
+                            readOnly={shipmentFiltersLocked}
                             options={destinationOptions}
                             loading={destinationLoading}
-                            disabled={!selectedCustomerId || !stationScope || destinationLoading}
+                            disabled={shipmentFiltersLocked || !selectedCustomerId || !stationScope || destinationLoading}
                             loadingText="Loading destinations..."
                             noOptionsText={destinationError || 'No destinations found'}
                             value={field.value || null}
@@ -862,7 +938,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
                     <Box sx={{ width: '30%' }}>
                         <Controller name="loadManifestType" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
-                            <StyledTextField select {...field} variant="standard" fullWidth label="Select Load Manifest Type *" error={!!error} sx={{ mt: 1.5 }}>
+                            <StyledTextField select {...field} disabled={shipmentFiltersLocked} variant="standard" fullWidth label="Select Load Manifest Type *" error={!!error} sx={{ mt: 1.5 }}>
                                 <MenuItem value="Direct Entry">Direct Entry</MenuItem>
                                 <MenuItem value="Pro Entry Search">Pro Entry Search</MenuItem>
                                 <MenuItem value="FromToDateSelection">From & To Date Selection</MenuItem>
@@ -873,8 +949,33 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
                 {/* --- Bottom Dynamic Section based on Manifest Type --- */}
 
+                {/* 3. Show Date Selection Section if 'FromToDateSelection' */}
+                {selectedManifestType === 'FromToDateSelection' && (
+                    <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px', maxWidth: '600px' }}>
+                        <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Date Selection</Typography></legend>
+                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
+                                <Controller name="fromDate" control={control}
+                                    rules={{ validate: (value) => getValues('loadManifestType') !== 'FromToDateSelection' || (Boolean(value) && dayjs(value).isValid()) || 'From Date is required' }}
+                                    render={({ field: { onChange, value, onBlur, ref }, fieldState: { error } }) => (
+                                    <DatePicker label="From Date" format="MM/DD/YYYY" value={value} onChange={onChange} inputRef={ref}
+                                        slotProps={{ textField: { variant: "standard", fullWidth: true, required: true, error: !!error, helperText: error?.message, onBlur, InputLabelProps: { shrink: true } } }} />
+                                )} />
+                                <Controller name="toDate" control={control}
+                                    rules={{ validate: (value) => getValues('loadManifestType') !== 'FromToDateSelection' || (Boolean(value) && dayjs(value).isValid()) || 'To Date is required' }}
+                                    render={({ field: { onChange, value, onBlur, ref }, fieldState: { error } }) => (
+                                    <DatePicker label="To Date" format="MM/DD/YYYY" value={value} onChange={onChange} inputRef={ref}
+                                        slotProps={{ textField: { variant: "standard", fullWidth: true, required: true, error: !!error, helperText: error?.message, onBlur, InputLabelProps: { shrink: true } } }} />
+                                )} />
+                            </Stack>
+                        </LocalizationProvider>
+                    </fieldset>
+                )}
+
                 {/* 1. Show Warehouse Table if 'Direct Entry' */}
-                {(selectedManifestType === 'Direct Entry' || (selectedManifestType === 'Pro Entry Search' && proReceiptsConfirmed)) && (
+                {(selectedManifestType === 'Direct Entry'
+                    || (selectedManifestType === 'Pro Entry Search' && (viewMode || proReceiptsConfirmed))
+                    || (viewMode && selectedManifestType === 'FromToDateSelection')) && (
                     <Grid container spacing={4}>
                         <Grid size={{ xs: 12 }}>
                             <Box sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflowX: 'auto', '& > .MuiStack-root': { minWidth: 800 } }}>
@@ -1083,22 +1184,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                     </Grid>
                 )}
 
-                {/* 3. Show Date Selection Section if 'FromToDateSelection' */}
-                {selectedManifestType === 'FromToDateSelection' && (
-                    <fieldset style={{ borderColor: '#b0b0b0', borderRadius: '8px', padding: '16px', maxWidth: '600px' }}>
-                        <legend><Typography variant="subtitle2" sx={{ fontWeight: '600', px: 1 }}>Date Selection</Typography></legend>
-                        <LocalizationProvider dateAdapter={AdapterDayjs}>
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                                <Controller name="fromDate" control={control} render={({ field: { onChange, value } }) => (
-                                    <DatePicker label="From Date" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />
-                                )} />
-                                <Controller name="toDate" control={control} render={({ field: { onChange, value } }) => (
-                                    <DatePicker label="To Date" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, InputLabelProps: { shrink: true } } }} />
-                                )} />
-                            </Stack>
-                        </LocalizationProvider>
-                    </fieldset>
-                )}
+
 
             </Stack>
 
@@ -1173,6 +1259,36 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 </DialogActions>
             </Dialog>
 
+            <Dialog open={submitConfirmationOpen} onClose={() => setSubmitConfirmationOpen(false)} maxWidth="xs" fullWidth
+                aria-labelledby="submit-fcl-title" aria-describedby="submit-fcl-description">
+                <DialogTitle id="submit-fcl-title">Submit shipment?</DialogTitle>
+                <DialogContent>
+                    <Typography id="submit-fcl-description">Are you sure you want to submit this Ocean FCL shipment?</Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setSubmitConfirmationOpen(false)} color="inherit">Cancel</Button>
+                    <Button variant="contained" disabled={createShipmentLoading}
+                        onClick={() => {
+                            setSubmitConfirmationOpen(false);
+                            handleSubmit((data) => onSubmit(data, true), () => setSubmitError('Please fill all mandatory fields before submitting'))();
+                        }}
+                        sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' } }}>Submit</Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={resetConfirmationOpen} onClose={() => setResetConfirmationOpen(false)} maxWidth="xs" fullWidth
+                aria-labelledby="reset-fcl-title" aria-describedby="reset-fcl-description">
+                <DialogTitle id="reset-fcl-title">Reset shipment form?</DialogTitle>
+                <DialogContent>
+                    <Typography id="reset-fcl-description">All entered values and selected warehouse receipts will be cleared.</Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setResetConfirmationOpen(false)} color="inherit">Cancel</Button>
+                    <Button onClick={handleReset} variant="contained" disabled={createShipmentLoading}
+                        sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' } }}>Reset</Button>
+                </DialogActions>
+            </Dialog>
+
             {/* --- Dialog / Modal for Pro Entry Search --- */}
             <Dialog open={openProModal} onClose={() => { if (!createShipmentLoading) setOpenProModal(false); }} maxWidth="lg" fullWidth
                 PaperProps={{ sx: { borderRadius: 1, height: '85vh' } }}>
@@ -1241,6 +1357,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             rows={visibleProOptions}
                             loading={proLoading}
                             columns={proDetailsOpen ? detailColumns : proColumns}
+                            disableColumnSorting={proDetailsOpen}
                             getRowId={(row) => row.id}
                             rowHeight={28}
                             columnHeaderHeight={32}
