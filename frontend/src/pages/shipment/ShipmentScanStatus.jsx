@@ -116,7 +116,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const scanGunResetTimerRef = useRef(null);
 
     const receipts = Array.isArray(currentShipment?.receipts) ? currentShipment.receipts : [];
-    const formName = ['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType)
+    const isFclShipment = ['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType);
+    const formName = isFclShipment
         ? 'FCL Form'
         : ['OCEAN_LCL', 'LCL'].includes(currentShipment?.shipmentType) ? 'LCL Form' : 'Air Form';
     const destination = currentShipment?.destination || currentShipment?.destinationName || currentShipment?.stationName || '-';
@@ -733,6 +734,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 {!mobile && <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>}
                                 <TableCell sx={{ fontWeight: 700 }}>{mobile ? 'Warehouse #' : 'Warehouse Receipt #'}</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                                {isFclShipment && <TableCell sx={{ fontWeight: 700 }}>Destination</TableCell>}
                                 <TableCell sx={{ fontWeight: 700 }}>Items</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
@@ -791,6 +793,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                             ) : receipt.receiptNumber || '-'}
                                         </TableCell>
                                         <TableCell>{receipt.location || receipt.locationCode || currentShipment?.location || '-'}</TableCell>
+                                        {isFclShipment && <TableCell>{receipt.destination || receipt.finalDestination || '-'}</TableCell>}
                                         <TableCell>
                                             <Box
                                                 component="span"
@@ -864,7 +867,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             })}
                             {!receipts.length && (
                                 <TableRow>
-                                    <TableCell colSpan={mobile ? 6 : 7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                    <TableCell colSpan={(mobile ? 6 : 7) + (isFclShipment ? 1 : 0)} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                         No warehouse receipts available.
                                     </TableCell>
                                 </TableRow>

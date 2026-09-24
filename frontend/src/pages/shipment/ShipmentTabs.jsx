@@ -198,6 +198,7 @@ const handleClosePickupForm = () => {
     };
 
     const handleFileDocumentBox = async (rowData) => {
+        if (currentTab === 'incomplete' || ['OCEAN_FCL', 'FCL'].includes(rowData?.shipmentType)) return;
         const shipmentId = rowData?.shipmentId || rowData?.id;
         if (!shipmentId) {
             setPickupError('Shipment ID is unavailable.');
@@ -395,7 +396,8 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
-                            disabled={params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y' && pickupLoadingId !== null)}
+                            disabled={params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y'
+                                && (currentTab === 'incomplete' || ['OCEAN_FCL', 'FCL'].includes(params.row.shipmentType) || pickupLoadingId !== null))}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (params.row.pickupEntry === 'Y') return;

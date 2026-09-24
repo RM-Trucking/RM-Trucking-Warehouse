@@ -4,7 +4,8 @@ import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { 
     Typography, Stack, Grid, IconButton, Box, MenuItem, 
     TextField, InputAdornment, Dialog, DialogTitle, DialogContent,
-    Checkbox, Autocomplete, CircularProgress, Alert, Snackbar, DialogActions, Button
+    Checkbox, Autocomplete, CircularProgress, Alert, Snackbar, DialogActions, Button,
+    Table, TableBody, TableCell, TableHead, TableRow
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -19,8 +20,8 @@ import { PATH_DASHBOARD } from '../../routes/paths';
 import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/ShipmentFormLayout';
 
 import { useDispatch, useSelector } from '../../redux/store';
-import { searchWarehouseReceiptCustomers, searchWarehouseReceiptStations } from '../../redux/slices/warehouseReceipt';
-import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment } from '../../redux/slices/shipment';
+import { searchWarehouseReceiptCustomers, searchWarehouseReceiptStations, getWarehouseReceiptNotes, postWarehouseReceiptNote } from '../../redux/slices/warehouseReceipt';
+import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment, updateShipment } from '../../redux/slices/shipment';
 
 const ALL_STATIONS_OPTION = { stationScope: 'ALL', stationName: 'All' };
 
@@ -82,6 +83,16 @@ const statusStyles = {
     Available: { bgcolor: '#f1f1f1', color: '#333' },
 };
 
+const formatNoteTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-US', {
+        month: 'numeric', day: 'numeric', year: '2-digit',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+};
+
 NewOceanFCLShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
     rowData: PropTypes.object,
@@ -91,6 +102,7 @@ NewOceanFCLShipmentForm.propTypes = {
 export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const dispatch = useDispatch();
     const { customerOptions, customerLoading, stationOptions, stationLoading } = useSelector((state) => state.warehouseReceiptdata);
+    const { receiptNotes, receiptNotesLoading, receiptNotesSaving, receiptNotesError } = useSelector((state) => state.warehouseReceiptdata);
     const { exportAirlineOptions, exportAirlineLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField, createShipmentLoading } = useSelector((state) => state.shipmentdata);
 
     const defaultValues = {
@@ -132,6 +144,14 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     };
 
     const { control, handleSubmit, watch, setValue, clearErrors, setError, getValues, reset } = useForm({ defaultValues });
+    const [isEditing, setIsEditing] = useState(!viewMode);
+    const readOnly = viewMode && !isEditing;
+    const savedFormValuesRef = useRef(defaultValues);
+    const [cancelEditDialogOpen, setCancelEditDialogOpen] = useState(false);
+    const [closeFormAfterDiscard, setCloseFormAfterDiscard] = useState(false);
+    const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+    const [noteText, setNoteText] = useState('');
+    const [notesMessage, setNotesMessage] = useState('');
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? defaultValues.rmProNo : '');
     const [openProModal, setOpenProModal] = useState(false);
@@ -315,8 +335,8 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     const selectedManifestType = watch('loadManifestType');
 
     useEffect(() => {
-        setProReceiptsConfirmed(false);
-        if (viewMode || selectedManifestType !== 'Pro Entry Search') return;
+        setProReceiptsConfirmed(viewMode);
+        if (readOnly || selectedManifestType !== 'Pro Entry Search') return;
         const controller = new AbortController();
         setProOptions([]);
         setProError('');
@@ -359,7 +379,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 if (!controller.signal.aborted) setProLoading(false);
             });
         return () => controller.abort();
-    }, [viewMode, selectedManifestType, selectedCustomerId, selectedDestination, stationScope, selectedStationId, setValue]);
+    }, [readOnly, viewMode, selectedManifestType, selectedCustomerId, selectedDestination, stationScope, selectedStationId, setValue]);
 
     const { fields: warehouseFields, append: appendWarehouse, remove: removeWarehouse, replace: replaceWarehouses } = useFieldArray({
         control,
@@ -526,6 +546,59 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         setProDetailsOpen(false);
     };
 
+    const handleEdit = () => {
+        if (rowData?.completeStatus === 'APPROVED') return;
+        setSavedWarehouseRows(new Set(warehouseFields.map((item) => item.id)));
+        setReceiptInputValues(Object.fromEntries(warehouseFields.map((item) => [item.id, getShipmentReceiptOptionLabel(item.warehouseNo)])));
+        setIsEditing(true);
+    };
+
+    const handleCancel = (closeAfterDiscard) => {
+        if (submitInFlightRef.current) return;
+        if (viewMode && isEditing) {
+            setCloseFormAfterDiscard(closeAfterDiscard);
+            setCancelEditDialogOpen(true);
+        } else handleClose();
+    };
+
+    const handleDiscardChanges = () => {
+        Object.values(receiptSearchTimers.current).forEach(clearTimeout);
+        reset(savedFormValuesRef.current);
+        setBarcodeValue(savedFormValuesRef.current.rmProNo);
+        setReceiptInputValues({});
+        setSavedWarehouseRows(new Set());
+        setSubmitError('');
+        setRowSaveError('');
+        setWarehouseReceiptError(false);
+        setPendingReceiptSelection(null);
+        setCancelEditDialogOpen(false);
+        setIsEditing(false);
+        if (closeFormAfterDiscard) handleClose();
+        setCloseFormAfterDiscard(false);
+    };
+
+    const handleOpenNotes = () => {
+        setNotesMessage('');
+        setNotesDialogOpen(true);
+        dispatch(getWarehouseReceiptNotes(rowData?.noteThreadId || 0));
+    };
+
+    const handleAddNote = async () => {
+        if (receiptNotesSaving) return;
+        const messageText = noteText.trim();
+        if (!messageText) {
+            setNotesMessage('Notes is mandatory');
+            return;
+        }
+        const response = await dispatch(postWarehouseReceiptNote({ noteThreadId: rowData?.noteThreadId || 0, messageText }));
+        if (response?.error) {
+            setNotesMessage(response.message || 'Failed to add shipment note');
+            return;
+        }
+        setNoteText('');
+        setNotesMessage('');
+    };
+
     const handleReset = () => {
         if (viewMode || submitInFlightRef.current) return;
         setResetConfirmationOpen(false);
@@ -585,12 +658,12 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     };
 
     const onSubmit = async (data, confirmed = false) => {
-        if (viewMode || submitInFlightRef.current) return;
+        if (readOnly || submitInFlightRef.current) return;
         if (!validateDateRange(data)) return;
         setSubmitError('');
         const isProSearch = data.loadManifestType === 'Pro Entry Search';
         const isDateRange = data.loadManifestType === 'FromToDateSelection';
-        if (isProSearch && !proReceiptsConfirmed) {
+        if (isProSearch && !proReceiptsConfirmed && !viewMode) {
             setProDetailsOpen(false);
             setProFilter('');
             setOpenProModal(true);
@@ -611,7 +684,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 return;
             }
         }
-        if (confirmed !== true) {
+        if (!viewMode && confirmed !== true) {
             setSubmitConfirmationOpen(true);
             return;
         }
@@ -636,7 +709,14 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             startDate: isDateRange ? formatDate(data.fromDate) : '',
             endDate: isDateRange ? formatDate(data.toDate) : '',
             instructions: data.instructions,
-            containers: [{ container: String(data.containerNo || '').trim() }],
+            ...(viewMode ? {
+                isCanceled: rowData?.isCanceled || 'N',
+                isShipped: rowData?.isShipped || 'N',
+                isScanned: rowData?.isScanned || 'N',
+                pickupEntry: rowData?.pickupEntry || 'N',
+                pickupEntryNumber: rowData?.pickupEntryNumber || '',
+            } : {}),
+            containers: String(data.containerNo || '').split(',').map((container) => container.trim()).filter(Boolean).map((container) => ({ container })),
             receipts: data.warehouses
                 .filter((item) => item.warehouseNo?.receiptId)
                 .map((item) => ({ receiptId: Number(item.warehouseNo.receiptId) })),
@@ -644,14 +724,26 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
         submitInFlightRef.current = true;
         try {
-            const result = await dispatch(postShipment(payload));
+            const shipmentId = rowData?.shipmentId || rowData?.id;
+            if (viewMode && !shipmentId) {
+                setSubmitError('Shipment ID is unavailable.');
+                return;
+            }
+            const result = viewMode
+                ? await dispatch(updateShipment(shipmentId, payload))
+                : await dispatch(postShipment(payload));
             if (result?.success) {
-                handleClose();
+                if (viewMode) {
+                    savedFormValuesRef.current = data;
+                    reset(data);
+                    setBarcodeValue(data.rmProNo);
+                    setIsEditing(false);
+                } else handleClose();
             } else {
-                setSubmitError(result?.error || 'Failed to create shipment');
+                setSubmitError(result?.error || `Failed to ${viewMode ? 'update' : 'create'} shipment`);
             }
         } catch (error) {
-            setSubmitError(error?.message || 'Failed to create shipment');
+            setSubmitError(error?.message || `Failed to ${viewMode ? 'update' : 'create'} shipment`);
         } finally {
             submitInFlightRef.current = false;
         }
@@ -660,20 +752,26 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     return (
         <ShipmentFormLayout
             title={viewMode ? 'View Ocean FCL Shipment Form' : 'New Ocean FCL Shipment Form'}
-            handleClose={handleClose}
+            handleClose={() => handleCancel(true)}
+            onCancel={() => handleCancel(false)}
             onReset={!viewMode ? () => setResetConfirmationOpen(true) : undefined}
             onSubmit={handleFormSubmit}
-            submitLabel={selectedManifestType === 'Pro Entry Search' && !proReceiptsConfirmed ? 'Next' : 'Submit'}
+            submitLabel={viewMode ? 'Save' : selectedManifestType === 'Pro Entry Search' && !proReceiptsConfirmed ? 'Next' : 'Submit'}
             submitLoading={createShipmentLoading}
-            submitLoadingLabel="Submitting..."
-            showSubmit={!viewMode}
-            readOnly={viewMode}
+            submitLoadingLabel={viewMode ? 'Saving...' : 'Submitting...'}
+            showSubmit={!viewMode || isEditing}
+            readOnly={readOnly}
             stickyHeader
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false}
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
+                    showEdit={viewMode && !isEditing}
+                    editDisabled={rowData?.completeStatus === 'APPROVED'}
+                    onEdit={handleEdit}
+                    showNotes={viewMode && !isEditing}
+                    onNotes={handleOpenNotes}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"
@@ -813,7 +911,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                         <Controller name="consignee" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
                                 fullWidth
-                                readOnly={viewMode}
+                                readOnly={readOnly}
                                 options={exportAirlineOptions}
                                 value={field.value}
                                 loading={exportAirlineLoading}
@@ -1003,9 +1101,9 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                     size="small"
                                                     options={canSelectWarehouse ? shipmentReceiptOptionsByField[item.id] || [] : []}
                                                     value={field.value}
-                                                    inputValue={viewMode ? getShipmentReceiptOptionLabel(field.value) : receiptInputValues[item.id] || ''}
-                                                    readOnly={viewMode || !canSelectWarehouse}
-                                                    openOnFocus={!viewMode && canSelectWarehouse}
+                                                    inputValue={readOnly ? getShipmentReceiptOptionLabel(field.value) : receiptInputValues[item.id] ?? getShipmentReceiptOptionLabel(field.value)}
+                                                    readOnly={readOnly || !canSelectWarehouse}
+                                                    openOnFocus={!readOnly && canSelectWarehouse}
                                                     loading={Boolean(shipmentReceiptLoadingByField[item.id])}
                                                     getOptionLabel={getShipmentReceiptOptionLabel}
                                                     isOptionEqualToValue={(option, value) =>
@@ -1143,7 +1241,8 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                 <Box sx={{ p: 1, textAlign: 'right' }}>
                                     <IconButton
                                         size="small"
-                                        disabled={selectedManifestType !== 'Pro Entry Search' && warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
+                                        disabled={(viewMode && selectedManifestType === 'FromToDateSelection')
+                                            || (selectedManifestType !== 'Pro Entry Search' && warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id))}
                                         onClick={() => {
                                             if (selectedManifestType === 'Pro Entry Search') {
                                                 const existingReceiptIds = new Set(watchedWarehouses.map((item) => String(item.warehouseNo?.receiptId)));
@@ -1390,6 +1489,137 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
 
 
+            <Dialog
+                open={cancelEditDialogOpen}
+                onClose={() => {
+                    setCancelEditDialogOpen(false);
+                    setCloseFormAfterDiscard(false);
+                }}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Discard unsaved changes?</DialogTitle>
+                <DialogContent>
+                    Your changes have not been saved. Do you want to discard them?
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => {
+                        setCancelEditDialogOpen(false);
+                        setCloseFormAfterDiscard(false);
+                    }} color="inherit">
+                        Keep Editing
+                    </Button>
+                    <Button onClick={handleDiscardChanges} variant="contained" sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' } }}>
+                        Discard
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={notesDialogOpen}
+                onClose={() => setNotesDialogOpen(false)}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{ sx: { borderRadius: 1, minHeight: 430 } }}
+            >
+                <DialogContent sx={{ p: 2 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+                        <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Shipment Notes</Typography>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setNotesDialogOpen(false)}
+                            sx={{ bgcolor: '#A22', height: 24, minWidth: 58, fontSize: 11, '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            OK
+                        </Button>
+                    </Stack>
+
+                    <Box sx={{ mt: 2.2, maxWidth: '100%' }}>
+                        <TextField
+                            variant="standard"
+                            label={(
+                                <Box component="span">
+                                    Notes <Box component="span" sx={{ color: '#A22' }}>*</Box>
+                                </Box>
+                            )}
+                            value={noteText}
+                            onChange={(event) => setNoteText(event.target.value)}
+                            fullWidth
+                            size="small"
+                            sx={{
+                                '& .MuiInputLabel-root': { fontSize: 11 },
+                                '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
+                            }}
+                        />
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={handleAddNote}
+                            disabled={receiptNotesSaving}
+                            sx={{ mt: 0.8, height: 24, minWidth: 82, bgcolor: '#A22', fontSize: 11, '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            {receiptNotesSaving ? 'Saving...' : 'Add Notes'}
+                        </Button>
+                    </Box>
+
+                    <Table
+                        size="small"
+                        sx={{
+                            mt: 3,
+                            border: '1px solid #d0d0d0',
+                            '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500 },
+                            '& td': { fontSize: 12, verticalAlign: 'top' },
+                        }}
+                    >
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ width: 190 }}>Time</TableCell>
+                                <TableCell sx={{ width: 120 }}>User</TableCell>
+                                <TableCell>Notes</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {receiptNotesLoading ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                                        <CircularProgress size={24} />
+                                    </TableCell>
+                                </TableRow>
+                            ) : receiptNotesError ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#A22' }}>
+                                        {receiptNotesError}
+                                    </TableCell>
+                                </TableRow>
+                            ) : receiptNotes.length ? (
+                                receiptNotes.map((note, index) => (
+                                    <TableRow key={note.noteMessageId || `${note.createdAt}-${note.createdBy}-${index}`}>
+                                        <TableCell>{formatNoteTime(note.createdAt)}</TableCell>
+                                        <TableCell>{note.createdByName || note.createdBy || ''}</TableCell>
+                                        <TableCell>{note.messageText || ''}</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 3 }}>No notes found</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </DialogContent>
+            </Dialog>
+            <Snackbar
+                open={Boolean(notesMessage)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setNotesMessage('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="error" variant="filled" onClose={() => setNotesMessage('')}>
+                    {notesMessage}
+                </Alert>
+            </Snackbar>
         </ShipmentFormLayout>
     );
 }

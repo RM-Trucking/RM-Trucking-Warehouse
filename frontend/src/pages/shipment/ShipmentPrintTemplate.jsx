@@ -6,12 +6,13 @@ import RMLogo from '../../assets/RM.png';
 const TITLES = {
     AIR: 'Airport Transfer',
     LCL: 'Ocean LCL Transfer',
-    FCL: 'Ocean FCL Transfer',
+    FCL: 'Ocean Export FCL',
+    OCEAN_FCL: 'Ocean Export FCL',
 };
 
 const border = '1px solid #111';
 const cell = { border, padding: '4px 6px', fontSize: 11, lineHeight: 1.3, verticalAlign: 'top' };
-const heading = { ...cell, background: '#cccccc', color: '#000', fontWeight: 700, textAlign: 'center', fontSize: 11, letterSpacing: 0.2 };
+const baseHeading = { ...cell, background: '#cccccc', color: '#000', fontWeight: 700, textAlign: 'center', fontSize: 11, letterSpacing: 0.2 };
 const valueOrBlank = (value) => value ?? '';
 const firstValue = (data, fields) => fields.find((field) => data?.[field] !== undefined && data?.[field] !== null && data?.[field] !== '')
     ? data[fields.find((field) => data?.[field] !== undefined && data?.[field] !== null && data?.[field] !== '')]
@@ -29,6 +30,8 @@ const getContainerNumber = (container) => typeof container === 'object'
     : container;
 
 const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
+    const isFcl = ['FCL', 'OCEAN_FCL'].includes(data?.shipmentType);
+    const heading = isFcl ? { ...baseHeading, background: '#000', color: '#fff' } : baseHeading;
     const title = TITLES[data?.shipmentType] || '';
     const barcode = firstValue(data, ['barcodeNumber', 'rmNumber', 'rmProNo']);
     const hasReceipts = Array.isArray(data?.receipts);
@@ -44,23 +47,27 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
     const shipperAddress = firstValue(data, ['shipperAddress']);
     const shipperCityStateZip = firstValue(data, ['shipperCityStateZip']);
     const shipperContact = firstValue(data, ['shipperContact']);
-    const consigneeName = firstValue(data, ['airlineName', 'consigneeName', 'consignee', 'consigneeId']);
-    const consigneeAddress = firstValue(data, ['consigneeAddress', 'airlineAddress', 'destination']);
-    const consigneeCity = firstValue(data, ['consigneeCityStateZip', 'airlineCityStateZip']);
-    const consigneeContact = firstValue(data, ['consigneeContact', 'airlineContact']);
+    const consigneeName = firstValue(data, isFcl ? ['destinationRailYardName', 'railYardName', 'consigneeName', 'airlineName'] : ['airlineName', 'consigneeName', 'consignee', 'consigneeId']);
+    const consigneeAddress = firstValue(data, isFcl ? ['destinationRailYardAddress', 'railYardAddress', 'consigneeAddress', 'airlineAddress'] : ['consigneeAddress', 'airlineAddress', 'destination']);
+    const consigneeCity = firstValue(data, isFcl ? ['destinationRailYardCityStateZip', 'consigneeCityStateZip', 'airlineCityStateZip'] : ['consigneeCityStateZip', 'airlineCityStateZip']);
+    const consigneeContact = firstValue(data, isFcl ? ['destinationRailYardContact', 'consigneeContact', 'airlineContact'] : ['consigneeContact', 'airlineContact']);
     const instructions = firstValue(data, ['instructions', 'specialInstructions', 'remarks', 'notes']);
     const receiptNumbers = receipts.map(getReceiptNumber).filter(Boolean);
     const containerNumbers = containers.map(getContainerNumber).filter(Boolean);
     const receiptContainerPageCount = Math.max(
         1,
-        Math.ceil(Math.max(receiptNumbers.length, containerNumbers.length) / 20)
+        isFcl ? Math.ceil(receiptNumbers.length / 40)
+            : Math.ceil(Math.max(receiptNumbers.length, containerNumbers.length) / 20)
     );
 
     return (
-        <div ref={ref} style={{ width: 760, minHeight: 1040, margin: '0 auto', padding: 14, boxSizing: 'border-box', color: '#000', background: '#fff', fontFamily: 'Arial, sans-serif' }}>
+        <div ref={ref} style={{ width: 760, minHeight: 1040, margin: '0 auto', padding: 14, boxSizing: 'border-box', color: '#000', background: '#fff', fontFamily: 'Arial, sans-serif', ...(isFcl ? { printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } : {}) }}>
             <style>{`
                 @page { size: A4 portrait; margin: 8mm; }
                 .shipment-barcode svg { width: 100%; height: 38px; display: block; }
+                .fcl-print-table td { overflow-wrap: anywhere; }
+                .fcl-print-table { break-inside: avoid; }
+                @media print { .fcl-print-table th, .fcl-print-table td { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
                 @media print { body { margin: 0; } }
             `}</style>
 
@@ -76,7 +83,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <tbody>
                     <tr>
-                        <td style={{ ...cell, border: 'none', width: '58%', height: 92, verticalAlign: 'middle', padding: 8 }}>
+                        <td style={{ ...cell, border: 'none', width: isFcl ? '65%' : '58%', height: 92, verticalAlign: 'middle', padding: 8 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
                                 <img src={RMLogo} alt="R&M Trucking" style={{ width: 160, height: 60, objectFit: 'contain' }} />
                                 <div style={{ fontSize: 12, lineHeight: 1.35, fontWeight: 700 }}>
@@ -86,7 +93,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                                 </div>
                             </div>
                         </td>
-                        <td style={{ ...cell, width: '42%', padding: 8 }}>
+                        <td style={{ ...cell, width: isFcl ? '35%' : '42%', padding: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                                 <strong style={{ fontSize: 16 }}>{title}</strong>
                                 <span style={{ fontSize: 9.5 }}>Date : {formatDate(firstValue(data, ['createdAt', 'shipmentDate', 'bookingDate']))}</span>
@@ -107,7 +114,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                 <tbody>
                     <tr>
                         <td style={{ ...heading, width: '50%', fontSize: 11, padding: '5px 7px' }}>SHIPPER</td>
-                        <td style={{ ...heading, width: '50%', fontSize: 11, padding: '5px 7px' }}>CONSIGNEE</td>
+                        <td style={{ ...heading, width: '50%', fontSize: 11, padding: '5px 7px' }}>{isFcl ? 'DESTINATION RAIL YARD' : 'CONSIGNEE'}</td>
                     </tr>
                     <tr>
                         <td style={{ ...cell, fontSize: 11 }}><strong>Bill To :</strong>&nbsp; {firstValue(data, ['customerName', 'customer', 'customerId'])}</td>
@@ -128,6 +135,68 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                 </tbody>
             </table>
 
+            {isFcl ? (
+                <>
+                    <table className="fcl-print-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', marginTop: 30 }}>
+                        <colgroup><col style={{ width: '13%' }} /><col style={{ width: '37%' }} /><col style={{ width: '14%' }} /><col style={{ width: '36%' }} /></colgroup>
+                        <tbody>
+                            <tr>
+                                <td style={cell}>Container #</td><td style={cell}>{containerNumbers.join(', ') || firstValue(data, ['containerNo', 'containerNumber'])}</td>
+                                <td style={cell}>Booking #</td><td style={cell}>{firstValue(data, ['booking', 'bookingNumber'])}</td>
+                            </tr>
+                            <tr>
+                                <td style={cell}>Customer Ref #</td><td style={cell}>{firstValue(data, ['customerRefNumber'])}</td>
+                                <td style={cell}>Early Return Date</td><td style={cell}>{formatDate(data?.earlyReturnDate)}</td>
+                            </tr>
+                            <tr>
+                                <td style={cell}>Seal #</td><td style={cell}>{firstValue(data, ['sealNumber', 'sealNo'])}</td>
+                                <td style={cell}>Drop by Date</td><td style={cell}>{formatDate(data?.dropByDate)}</td>
+                            </tr>
+                            <tr>
+                                <td style={cell}>MISC</td><td style={cell}>{firstValue(data, ['additionalRefNumber', 'additionalRefNo'])}</td>
+                                <td style={heading} colSpan={2}>SPECIAL INSTRUCTIONS / REMARKS</td>
+                            </tr>
+                            <tr>
+                                <td colSpan={2} style={{ padding: 0, verticalAlign: 'top' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                                        <tbody>
+                                            <tr>
+                                                <td style={{ ...heading, textAlign: 'left', width: '30%' }}>Total<br />No of Pieces</td>
+                                                <td style={{ ...heading, textAlign: 'left', width: '30%' }}>Total<br />Weight</td>
+                                                <td style={{ ...heading, textAlign: 'left', width: '40%' }}>Total<br />No of Warehouse Receipt</td>
+                                            </tr>
+                                            <tr>
+                                                <td style={{ ...cell, height: 54 }}>{totalPieces}</td>
+                                                <td style={cell}>{totalWeight}</td>
+                                                <td style={cell}>{hasReceipts ? receipts.length : ''}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </td>
+                                <td colSpan={2} style={{ ...cell, whiteSpace: 'pre-wrap' }}>{instructions}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style={{ border, borderTop: '6px solid #000', padding: '24px 12px', textAlign: 'center', fontSize: 10, lineHeight: 1.5, breakInside: 'avoid' }}>
+                        <strong>SUBJECT TO ALL GOVERNING TARIFFS PUBLISHED BY R&amp;M TRUCKING, INC.</strong>
+                        <div style={{ marginTop: 12 }}>ALL LOADS: SHIPPER LOAD, STOW, AND COUNT HAZARDOUS GOODS MUST BE SECURE TO PREVENT MOVEMENT DURING TRANSPORT.</div>
+                        <div>IF DROPPED EMPTY/LOADED MUST BE SENT VIA EMAIL TO RAILDISPATCH@RMTRUCKING.COM - RECOVERY WITHIN 36 BUSINESS HOURS</div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, padding: '18px 6px 24px', fontSize: 11, breakInside: 'avoid' }}>
+                        {[
+                            ['Driver', firstValue(data, ['driverName', 'driverNumber', 'driver'])],
+                            ['Received By', firstValue(data, ['receivedBy'])],
+                            ['Date', ''],
+                            ['Time', ''],
+                        ].map(([label, value]) => (
+                            <div key={label}>
+                                <span>{label}</span>
+                                <div style={{ minHeight: 22, borderBottom: border, marginTop: 6, overflowWrap: 'anywhere' }}>{value}</div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            ) : (<>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                 <div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -163,21 +232,28 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                 <strong>SUBJECT TO ALL GOVERNING TARIFFS PUBLISHED BY R&amp;M TRUCKING, INC.</strong>
                 <div style={{ marginTop: 13, fontSize: 12 }}>The Liability of R&amp;M Trucking including negligence is limited to the sum of 8.50 cents per pound or $250 maximum unless a greater valuation shall be paid for or agreed to be pay in writing prior to shipping by emailing info@rmtrucking.com Visit www.rmtrucking.com for our governing provisions.</div>
             </div>
+            </>)}
 
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <tbody>
                     <tr>
-                        <td style={heading} colSpan={2}>WAREHOUSE RECEIPT NUMBERS</td>
-                        <td style={heading} colSpan={2}>CONTAINER NUMBERS</td>
+                        {isFcl ? (
+                            <td style={{ ...heading, textAlign: 'center' }} colSpan={4}>WAREHOUSE RECEIPT NUMBERS</td>
+                        ) : (
+                            <>
+                                <td style={heading} colSpan={2}>WAREHOUSE RECEIPT NUMBERS</td>
+                                <td style={heading} colSpan={2}>CONTAINER NUMBERS</td>
+                            </>
+                        )}
                     </tr>
                     {Array.from({ length: 10 }, (_, rowIndex) => {
-                        const pageOffset = pageIndex * 20;
+                        const pageOffset = pageIndex * (isFcl ? 40 : 20);
                         return (
                             <tr key={rowIndex}>
                                 <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(receiptNumbers[pageOffset + rowIndex])}</td>
                                 <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(receiptNumbers[pageOffset + 10 + rowIndex])}</td>
-                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(containerNumbers[pageOffset + rowIndex])}</td>
-                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(containerNumbers[pageOffset + 10 + rowIndex])}</td>
+                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(isFcl ? receiptNumbers[pageOffset + 20 + rowIndex] : containerNumbers[pageOffset + rowIndex])}</td>
+                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(isFcl ? receiptNumbers[pageOffset + 30 + rowIndex] : containerNumbers[pageOffset + 10 + rowIndex])}</td>
                             </tr>
                         );
                     })}
