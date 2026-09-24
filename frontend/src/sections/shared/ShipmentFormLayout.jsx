@@ -68,13 +68,11 @@ export default function ShipmentFormLayout({
                     )}
                     {onReset && (
                         <Button
-                            variant="outlined"
+                            variant="contained"
                             onClick={onReset}
+                            disabled={submitLoading}
                             size="small"
-                            sx={{
-                                bgcolor: '#fff', color: '#000', borderColor: '#000',
-                                '&:hover': { bgcolor: '#f0f0f0', borderColor: '#000' }
-                            }}
+                            sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, '&:disabled': { bgcolor: '#d0d0d0' } }}
                         >
                             Reset
                         </Button>

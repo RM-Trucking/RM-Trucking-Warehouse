@@ -116,7 +116,8 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     const scanGunResetTimerRef = useRef(null);
 
     const receipts = Array.isArray(currentShipment?.receipts) ? currentShipment.receipts : [];
-    const formName = ['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType)
+    const isFclShipment = ['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType);
+    const formName = isFclShipment
         ? 'FCL Form'
         : ['OCEAN_LCL', 'LCL'].includes(currentShipment?.shipmentType) ? 'LCL Form' : 'Air Form';
     const destination = currentShipment?.destination || currentShipment?.destinationName || currentShipment?.stationName || '-';
@@ -515,14 +516,27 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
     };
 
     const handleReceiptSearch = (fieldKey, value, reason) => {
-        if (reason === 'reset') return;
         if (receiptSearchTimersRef.current[fieldKey]) clearTimeout(receiptSearchTimersRef.current[fieldKey]);
+        if (reason !== 'input' && reason !== 'clear') return;
         receiptSearchTimersRef.current[fieldKey] = setTimeout(() => {
-            dispatch(getShipmentReceiptOptions(value, fieldKey));
+            const shipmentFilters = { shipmentType: currentShipment?.shipmentType };
+            if (['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType)) {
+                const stationScope = currentShipment.stationScope || (currentShipment.stationId ? 'SPECIFIC' : 'ALL');
+                Object.assign(shipmentFilters, {
+                    shipmentType: 'OCEAN_FCL',
+                    manifestType: currentShipment.manifestType === 'DATE_RANGE' ? 'DATE_RANGE' : 'DIRECT',
+                    customerId: Number(currentShipment.customerId),
+                    destination: currentShipment.destination,
+                    stationScope,
+                    stationId: stationScope === 'ALL' ? null : Number(currentShipment.stationId),
+                });
+            }
+            dispatch(getShipmentReceiptOptions(value, fieldKey, shipmentFilters));
         }, 500);
     };
 
     const handleAddReceiptSelection = async (temporaryId, receipt) => {
+        clearTimeout(receiptSearchTimersRef.current[temporaryId]);
         if (!receipt?.receiptId || addShipmentReceiptLoading) return;
         const shipmentId = currentShipment?.shipmentId || currentShipment?.id;
         if (!shipmentId) {
@@ -606,17 +620,31 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                 }}
             >
                 <Box>
-                    <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
-                        Shipment Form - {currentShipment?.barcodeNumber || currentShipment?.rmNumber || currentShipment?.shipmentId}
-                    </Typography>
                     <Button
                         onClick={onClose}
                         color="inherit"
                         size="small"
-                        sx={{ minWidth: 0, p: 0, mt: 0.5, fontSize: 11, textTransform: 'none' }}
+                        sx={{ minWidth: 0, p: 0, fontSize: 11, textTransform: 'none' }}
                     >
                         &lt;&nbsp; {formName} / Scan Status
                     </Button>
+                    <Typography sx={{ mt: 0.5, fontSize: 13, fontWeight: 700 }}>
+                        Shipment Form - {currentShipment?.barcodeNumber || currentShipment?.rmNumber || currentShipment?.shipmentId}
+                    </Typography>
+                    {['OCEAN_FCL', 'FCL'].includes(currentShipment?.shipmentType) && (
+                        <>
+                            <Typography sx={{ mt: 0.5, fontSize: 11 }}>
+                                Manifest Type: {currentShipment?.manifestType || '-'}
+                            </Typography>
+                            {currentShipment?.manifestType === 'DATE_RANGE' && (
+                                <Typography sx={{ mt: 0.5, fontSize: 11 }}>
+                                    Start Date: {currentShipment?.startDate || '-'}
+                                    {' | '}
+                                    End Date: {currentShipment?.endDate || '-'}
+                                </Typography>
+                            )}
+                        </>
+                    )}
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
@@ -631,6 +659,17 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 sx={{ minWidth: 72, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
                             >
                                 {revokeCompletionLoading ? <CircularProgress size={14} color="inherit" /> : 'Re assign'}
+                            </Button>
+                        )}
+                        {((currentShipment?.manifestType === 'DATE_RANGE' && currentShipment?.completeStatus !== 'REQUESTED')
+                            || (!showApprovalAction && !areAllReceiptsScanned)) && (
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => openScanner('scan')}
+                                sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
+                            >
+                                Scan
                             </Button>
                         )}
                         {showApprovalAction ? (
@@ -649,16 +688,6 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             </Button>
                         ) : (
                             <>
-                                {!areAllReceiptsScanned && (
-                                    <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={() => openScanner('scan')}
-                                        sx={{ minWidth: 58, bgcolor: '#A22', fontSize: 10, py: 0.2, px: 1, textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } }}
-                                    >
-                                        Scan
-                                    </Button>
-                                )}
                                 <Button
                                     variant="contained"
                                     size="small"
@@ -705,6 +734,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                 {!mobile && <TableCell sx={{ fontWeight: 700, width: 50 }}>Sno</TableCell>}
                                 <TableCell sx={{ fontWeight: 700 }}>{mobile ? 'Warehouse #' : 'Warehouse Receipt #'}</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Location</TableCell>
+                                {isFclShipment && <TableCell sx={{ fontWeight: 700 }}>Destination</TableCell>}
                                 <TableCell sx={{ fontWeight: 700 }}>Items</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Weight (lbs)</TableCell>
                                 <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
@@ -763,6 +793,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                                             ) : receipt.receiptNumber || '-'}
                                         </TableCell>
                                         <TableCell>{receipt.location || receipt.locationCode || currentShipment?.location || '-'}</TableCell>
+                                        {isFclShipment && <TableCell>{receipt.destination || receipt.finalDestination || '-'}</TableCell>}
                                         <TableCell>
                                             <Box
                                                 component="span"
@@ -836,7 +867,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                             })}
                             {!receipts.length && (
                                 <TableRow>
-                                    <TableCell colSpan={mobile ? 6 : 7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                    <TableCell colSpan={(mobile ? 6 : 7) + (isFclShipment ? 1 : 0)} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                                         No warehouse receipts available.
                                     </TableCell>
                                 </TableRow>
@@ -844,7 +875,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                         </TableBody>
                     </Table>
                 </TableContainer>
-                {canManageAvailableReceipts && (
+                {canManageAvailableReceipts && currentShipment?.manifestType !== 'DATE_RANGE' && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                         <IconButton
                             size="small"
