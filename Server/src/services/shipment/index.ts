@@ -113,6 +113,13 @@ function validateReceiptForShipment(shipment: any, warehouseReceipt: any): void 
     }
 }
 
+function validateContainersForShipment(shipmentType: unknown, containers: Array<{ container: string }>): void {
+    const normalizedShipmentType = String(shipmentType ?? "").toUpperCase();
+    if ((normalizedShipmentType === "OCEAN_FCL" || normalizedShipmentType === "OCEAN_LCL") && containers.length > 1) {
+        throwValidationError(`${normalizedShipmentType} shipments can have only one container number.`);
+    }
+}
+
 async function syncReceiptDestinationForShipment(
     conn: Connection,
     shipment: any,
@@ -156,7 +163,9 @@ function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWareh
         isShipped: "N",
         isScanned: "N",
         pickupEntry: "N",
-        barcodeNumber: normalizeBarcodeNumber((payload as any).barcodeNumber),
+        barcodeNumber: (payload as any).barcodeNumber !== undefined
+            ? normalizeBarcodeNumber((payload as any).barcodeNumber)
+            : (isUpdate ? undefined : ""),
         airBillNumber: (payload as any).airBillNumber ?? "",
         booking: (payload as any).booking ?? "",
         customerRefNumber: (payload as any).customerRefNumber ?? "",
@@ -228,7 +237,7 @@ export async function createShipmentWithRelations(
     try {
         await conn.beginTransaction();
 
-        const entityId = await entityDB.createWarehouseEntity(conn, 'SHIPMENT', normalizedPayload.barcodeNumber);
+        const entityId = await entityDB.createWarehouseEntity(conn, 'SHIPMENT', normalizedPayload.barcodeNumber ?? "");
         const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
 
         normalizedPayload.entityId = entityId;
@@ -331,6 +340,12 @@ export async function updateShipmentWithRelations(
     }
     if (payload.stationScope === "ALL" && payload.stationId !== null) {
         throwValidationError("stationId must be null for ALL station scope.");
+    }
+    if (String(effectiveShipmentType).toUpperCase() === "OCEAN_FCL" || String(effectiveShipmentType).toUpperCase() === "OCEAN_LCL") {
+        const containers = Object.prototype.hasOwnProperty.call(payload, "containers")
+            ? payload.containers ?? []
+            : await shipmentDB.getContainersByShipmentId(conn, shipmentId);
+        validateContainersForShipment(effectiveShipmentType, containers);
     }
     if (typeof payload.barcodeNumber !== "undefined") {
         const incomingBarcode = normalizeBarcodeNumber(payload.barcodeNumber);
