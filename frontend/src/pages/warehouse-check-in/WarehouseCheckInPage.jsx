@@ -2055,11 +2055,15 @@ export default function WarehouseCheckInPage({
         cubicMeter,
       };
     });
-    const piecesInland = freightDetails.reduce(
+    const piecesInland = row.parcelInitialValues
+      ? toNumberOrNull(row.parcelInitialValues.pieces)
+      : freightDetails.reduce(
       (sum, item) => sum + Number(item.pieces || 0),
       0,
     );
-    const weightInland = freightDetails.reduce(
+    const weightInland = row.parcelInitialValues
+      ? toDecimal10_2NumberOrNull(row.parcelInitialValues.weight)
+      : freightDetails.reduce(
       (sum, item) => sum + Number(item.weight || 0),
       0,
     );
@@ -2767,10 +2771,14 @@ export default function WarehouseCheckInPage({
       customer: receiptData.customerName
         ? `${receiptData.customerName}${receiptData.stationName ? ` | ${receiptData.stationName}` : ""}`
         : "",
-      piecesInland: parcelForm.pieces,
-      weightInland: parcelForm.weight,
       driverName: parcelForm.driverName || "",
       ...receiptData,
+      piecesInland: parcelForm.pieces,
+      weightInland: parcelForm.weight,
+      parcelInitialValues: {
+        pieces: parcelForm.pieces,
+        weight: parcelForm.weight,
+      },
     };
     const key = `${receiptData.proNumber || parcelForm.proNumber}-${row.id}`;
     const form = createForm(1, receiptData.receiptNumber);

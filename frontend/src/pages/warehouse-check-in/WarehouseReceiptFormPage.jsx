@@ -2139,8 +2139,12 @@ function WarehouseReceiptFormContent() {
           ...(options.includeFreightDetailImages && existingImages.length ? { images: existingImages } : {}),
         };
       });
-      const piecesInland = freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
-      const weightInland = freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+      const piecesInland = formRow.parcelInitialValues
+        ? toNumberOrNull(formRow.parcelInitialValues.pieces)
+        : freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
+      const weightInland = formRow.parcelInitialValues
+        ? toDecimal10_2NumberOrNull(formRow.parcelInitialValues.weight)
+        : freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
       const reWeight = freightDetails.reduce(
         (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
         0
