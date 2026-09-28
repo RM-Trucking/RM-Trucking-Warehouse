@@ -395,6 +395,9 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     }, [warehouseFields]);
 
     const watchedWarehouses = useWatch({ control, name: 'warehouses' });
+    const showNoWarehouseReceipts = viewMode
+        && selectedManifestType === 'FromToDateSelection'
+        && !watchedWarehouses.some((item) => Boolean(item.warehouseNo));
     const shipmentFiltersLocked = viewMode || watchedWarehouses.some((item) => Boolean(item.warehouseNo?.receiptId));
     const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
     const totalWeight = watchedWarehouses.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
@@ -461,7 +464,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         const selectedCount = selectedIds.filter((id) => visibleIds.has(id)).length;
         return (
             <Checkbox size="small" sx={{ p: 0.5 }}
-                disabled={proDetailsOpen || !visibleIds.size}
+                disabled={!visibleIds.size}
                 checked={visibleIds.size > 0 && selectedCount === visibleIds.size}
                 indeterminate={selectedCount > 0 && selectedCount < visibleIds.size}
                 onChange={(event) => {
@@ -478,8 +481,14 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         {
             field: 'selection', headerName: '', width: 44, sortable: false, filterable: false,
             renderHeader: renderSelectAllHeader,
-            renderCell: ({ row }) => <Checkbox size="small" sx={{ p: 0.5 }} disabled
+            renderCell: ({ row }) => <Checkbox size="small" sx={{ p: 0.5 }}
                 checked={detailReceiptIds.includes(row.id)}
+                onChange={(event) => {
+                    const { checked } = event.target;
+                    setDetailReceiptIds((previous) => checked
+                        ? [...new Set([...previous, row.id])]
+                        : previous.filter((id) => id !== row.id));
+                }}
                 slotProps={{ input: { 'aria-label': `Select receipt ${row.receiptNumber}` } }} />,
         },
         { field: 'proNumber', headerName: 'Pro Number', flex: 1, minWidth: 120 },
@@ -1087,7 +1096,11 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                     <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Status</Typography>
                                     <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
                                 </Stack>
-                                {warehouseFields.map((item, index) => (
+                                {showNoWarehouseReceipts ? (
+                                    <Typography sx={{ p: 3, textAlign: 'center', fontSize: 13 }}>
+                                        No Warehouse Receipts available
+                                    </Typography>
+                                ) : warehouseFields.map((item, index) => (
                                     <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
                                         <Box sx={{ width: '6%', pl: 1 }}>
                                             <Typography sx={{ fontSize: '13px', color: '#555' }}>

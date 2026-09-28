@@ -20,20 +20,23 @@ const actionButtonSx = {
 };
 
 const formTabs = [
-    { value: 'AIR', label: 'Air Form' },
-    { value: 'OCEAN_LCL', label: 'LCL Form' },
-    { value: 'OCEAN_FCL', label: 'FCL Form' },
+    { value: 'AIR', label: 'Air Form', countKey: 'air' },
+    { value: 'OCEAN_LCL', label: 'LCL Form', countKey: 'lcl' },
+    { value: 'OCEAN_FCL', label: 'FCL Form', countKey: 'fcl' },
 ];
+
+const PAGE_SIZE = 50;
 
 export default function ShipmentMobileScanPage() {
     const dispatch = useDispatch();
-    const { shipmentData, isLoading } = useSelector((state) => state.shipmentdata);
+    const { shipmentData, isLoading, pagination, countList } = useSelector((state) => state.shipmentdata);
     const [shipmentType, setShipmentType] = useState('AIR');
+    const [page, setPage] = useState(1);
     const [selectedShipment, setSelectedShipment] = useState(null);
 
     useEffect(() => {
-        dispatch(getShipmentData({ pageNo: 1, pageSize: 50 }));
-    }, [dispatch]);
+        dispatch(getShipmentData({ shipmentType, pageNo: page, pageSize: PAGE_SIZE }));
+    }, [dispatch, shipmentType, page]);
 
     const rowsByType = useMemo(() => formTabs.reduce((groups, tab) => ({
         ...groups,
@@ -42,7 +45,7 @@ export default function ShipmentMobileScanPage() {
 
     const handleScannerComplete = () => {
         setSelectedShipment(null);
-        dispatch(getShipmentData({ pageNo: 1, pageSize: 50 }));
+        dispatch(getShipmentData({ shipmentType, pageNo: page, pageSize: PAGE_SIZE }));
     };
 
     if (selectedShipment) {
@@ -57,6 +60,8 @@ export default function ShipmentMobileScanPage() {
     }
 
     const visibleRows = rowsByType[shipmentType] || [];
+    const totalRecords = Number(pagination?.totalRecords) || 0;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / PAGE_SIZE));
 
     return (
         <Box sx={{ minHeight: '100vh', bgcolor: '#fff', pt: 1 }}>
@@ -65,7 +70,10 @@ export default function ShipmentMobileScanPage() {
             </Typography>
             <Tabs
                 value={shipmentType}
-                onChange={(event, value) => setShipmentType(value)}
+                onChange={(event, value) => {
+                    setShipmentType(value);
+                    setPage(1);
+                }}
                 variant="fullWidth"
                 sx={{
                     minHeight: 38,
@@ -79,7 +87,7 @@ export default function ShipmentMobileScanPage() {
                     <Tab
                         key={tab.value}
                         value={tab.value}
-                        label={`${tab.label} (${rowsByType[tab.value]?.length || 0})`}
+                        label={`${tab.label} (${countList?.[tab.countKey] ?? 0})`}
                     />
                 ))}
             </Tabs>
@@ -91,7 +99,9 @@ export default function ShipmentMobileScanPage() {
                             <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>RM Pro No</TableCell>
                             <TableCell sx={{ width: 145, px: 1, fontSize: 11, fontWeight: 700 }}>Customer</TableCell>
                             <TableCell sx={{ width: 120, px: 1, fontSize: 11, fontWeight: 700 }}>Station</TableCell>
-                            <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>Air Bill No.</TableCell>
+                            <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>
+                                {shipmentType === 'OCEAN_FCL' ? 'Destination' : 'Air Bill No.'}
+                            </TableCell>
                             <TableCell sx={{ position: 'sticky', right: 0, zIndex: 3, width: 90, px: 1, bgcolor: '#d1d1d1', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.35)', fontSize: 11, fontWeight: 700 }}>Actions</TableCell>
                         </TableRow>
                     </TableHead>
@@ -114,7 +124,7 @@ export default function ShipmentMobileScanPage() {
                                     {shipment.stationName || shipment.station || '-'}
                                 </TableCell>
                                 <TableCell sx={{ px: 1, py: 0.75, fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {shipment.airBillNumber || '-'}
+                                    {(shipmentType === 'OCEAN_FCL' ? shipment.destination : shipment.airBillNumber) || '-'}
                                 </TableCell>
                                 <TableCell sx={{ position: 'sticky', right: 0, zIndex: 2, px: 1, py: 0.5, bgcolor: '#fff', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.25)' }}>
                                     <Stack direction="row" spacing={0.5}>
@@ -136,6 +146,29 @@ export default function ShipmentMobileScanPage() {
                     </TableBody>
                 </Table>
             </TableContainer>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 1.25, py: 2 }}>
+                <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={isLoading || page <= 1}
+                    onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+                    sx={{ textTransform: 'none', minHeight: 44 }}
+                >
+                    Previous
+                </Button>
+                <Typography sx={{ fontSize: 12 }} aria-live="polite">
+                    {isLoading ? `Page ${page}` : `Page ${page} of ${totalPages}`}
+                </Typography>
+                <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={isLoading || page >= totalPages}
+                    onClick={() => setPage((currentPage) => currentPage + 1)}
+                    sx={{ textTransform: 'none', minHeight: 44 }}
+                >
+                    Next
+                </Button>
+            </Stack>
         </Box>
     );
 }

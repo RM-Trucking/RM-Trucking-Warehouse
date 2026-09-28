@@ -1237,6 +1237,11 @@ function WarehouseReceiptFormContent() {
   const splitFreightImageFormIndexRef = useRef(null);
   const editReceiptSnapshotRef = useRef(null);
   const selectedDraftKey = state?.draftKey || 'regular';
+  const handleFreightCheckboxLabelClick = (event) => {
+    if (selectedDraftKey === 'regular' && !event.target.closest('.MuiCheckbox-root')) {
+      event.preventDefault();
+    }
+  };
   const isWarehouseReceiptView = Boolean(state?.warehouseReceiptView);
   const isWarehouseReceiptEdit = Boolean(state?.warehouseReceiptEdit);
   const viewReceiptSummary = state?.viewReceiptSummary || null;
@@ -4867,6 +4872,7 @@ function WarehouseReceiptFormContent() {
                     {FREIGHT_CONDITION_OPTIONS.map((label) => (
                       <FormControlLabel
                         key={label}
+                        onClick={handleFreightCheckboxLabelClick}
                         control={
                           <Checkbox
                             checked={Boolean(splitFreightInfo.conditions[label])}
@@ -4887,6 +4893,7 @@ function WarehouseReceiptFormContent() {
                   <Stack sx={{ flex: 1.1, minWidth: 0 }} spacing={0.7}>
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0 }}>
                       <FormControlLabel
+                        onClick={handleFreightCheckboxLabelClick}
                         control={
                           <Checkbox
                             checked={splitFreightInfo.badFreightCondition}
@@ -4901,7 +4908,7 @@ function WarehouseReceiptFormContent() {
                             sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
                           />
                         }
-                        label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
+                        label={<Typography sx={{ fontSize: 12 }}>Freight Condition</Typography>}
                       />
                       {splitFreightInfo.badFreightCondition && (
                         <>
@@ -5646,6 +5653,7 @@ function WarehouseReceiptFormContent() {
                     {FREIGHT_CONDITION_OPTIONS.map((label) => (
                       <FormControlLabel
                         key={label}
+                        onClick={handleFreightCheckboxLabelClick}
                         control={
                           <Checkbox
                             checked={Boolean(activeFreightInfo.conditions[label])}
@@ -5682,6 +5690,7 @@ function WarehouseReceiptFormContent() {
                     />
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0 }}>
                       <FormControlLabel
+                        onClick={handleFreightCheckboxLabelClick}
                         control={
                           <Checkbox
                             checked={activeFreightInfo.badFreightCondition}
@@ -5706,7 +5715,7 @@ function WarehouseReceiptFormContent() {
                             sx={{ p: 0.4, color: '#193f75', '&.Mui-checked': { color: '#193f75' } }}
                           />
                         }
-                        label={<Typography sx={{ fontSize: 12 }}>Bad Freight Condition</Typography>}
+                        label={<Typography sx={{ fontSize: 12 }}>Freight Condition</Typography>}
                       />
                       {activeFreightInfo.badFreightCondition && (
                         <>

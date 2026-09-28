@@ -57,6 +57,7 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
         shipmentData: apiShipmentData,
         isLoading,
         pagination,
+        countList,
         shipmentSearchStr,
     } = useSelector((state) => state.shipmentdata);
     
@@ -135,9 +136,9 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     };
 
     const TABS = [
-        { value: 'active', label: 'Air Form' },
-        { value: 'inactive', label: 'LCL Form' },
-        { value: 'incomplete', label: 'FCL Form' },
+        { value: 'active', label: 'Air Form', countKey: 'air' },
+        { value: 'inactive', label: 'LCL Form', countKey: 'lcl' },
+        { value: 'incomplete', label: 'FCL Form', countKey: 'fcl' },
     ];
 
     // Error boundary info
@@ -472,7 +473,7 @@ const handleClosePickupForm = () => {
                             <Tab
                                 key={tab.value}
                                 value={tab.value}
-                                label={tab.label}
+                                label={`${tab.label} (${countList?.[tab.countKey] ?? 0})`}
                                 aria-disabled={tab.comingSoon || undefined}
                                 onClick={() => {
                                     if (tab.comingSoon) setComingSoonMessage(`${tab.label} will be available soon.`);
