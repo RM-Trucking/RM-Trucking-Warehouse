@@ -6,17 +6,6 @@ const MAX_IMAGE_SIZE = 500 * 1024; // 500KB per image
 const REQUEST_TIMEOUT = 10000; // 10 seconds timeout
 const MAX_CONCURRENT_DOWNLOADS = 10; // limit simultaneous image fetches
 
-// Filter patterns for relevant images
-const RELEVANT_IMAGE_PATTERNS = [
-    /scale-\d+/i,  // Scale-1, Scale-2, Scale-3, etc.
-    /-marked/i      // Any image ending with -marked (Femto-0-marked, etc.)
-];
-
-// Helper to check if image path is relevant
-function isRelevantImage(imagePath: string): boolean {
-    return RELEVANT_IMAGE_PATTERNS.some(pattern => pattern.test(imagePath));
-}
-
 // Helper function to fetch with timeout
 function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = REQUEST_TIMEOUT): Promise<Response> {
     const controller = new AbortController();
@@ -162,7 +151,12 @@ export async function getDimentionsFromCargoAPI(
                 : [imagesNode.Path];
         }
 
-        const relevantImages = imagePaths.filter(isRelevantImage);
+        const scaleImages = imagePaths.filter(imagePath => /scale/i.test(imagePath)).slice(0, 2);
+        const markedImage = imagePaths.find(imagePath => /marked/i.test(imagePath));
+        const relevantImages = [
+            ...scaleImages,
+            ...(markedImage && !scaleImages.includes(markedImage) ? [markedImage] : [])
+        ];
         console.log(`Filtered ${imagePaths.length} images down to ${relevantImages.length} relevant images`);
 
         const imagesBase64 = await fetchImagesWithLimit(relevantImages, baseUrl, cargoAPI.apiKey);

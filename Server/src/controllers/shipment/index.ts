@@ -62,6 +62,7 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
                 page: result.page,
                 pageSize: result.pageSize,
             },
+            countList: result.countList,
         });
     } catch (error: any) {
         console.error(error);
@@ -259,7 +260,8 @@ export async function unscanFreight(req: Request, res: Response, conn: Connectio
             return;
         }
 
-        const updatedShipment = await shipmentService.unscanFreight(conn, shipmentId, barcodeValue);
+        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const updatedShipment = await shipmentService.unscanFreight(conn, shipmentId, barcodeValue, userId);
         res.status(200).json({ success: true, message: "Freight un-scanned successfully", data: updatedShipment });
 
     } catch (error: any) {

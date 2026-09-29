@@ -2,6 +2,7 @@ import { Connection } from "odbc";
 import * as shipmentDB from "../../database/shipment";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
+import * as userDB from "../../database/maintanance/auth";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
 import { emitAuditLog } from "../../utils/email";
 import { generatePickupEDI } from "../../utils/pickupEDIHandler";
@@ -137,13 +138,17 @@ async function syncReceiptDestinationForShipment(
         updatedBy: userId,
     });
 
+    const updatedByUserName = await userDB.getUserName(conn, userId);
+    const receiptNumber = warehouseReceipt.receiptNumber ?? "unknown";
+    const shipmentBarcode = shipment.barcodeNumber ?? shipment.shipmentId ?? "pending creation";
+
     emitAuditLog({
         receiptNumber: warehouseReceipt.receiptNumber,
         receiptId: Number(warehouseReceipt.receiptId),
         proNumber: warehouseReceipt.proNumber || undefined,
         userId,
         status: "PREPARED",
-        description: `Receipt destination updated through shipment assignment. Receipt ID: ${warehouseReceipt.receiptId}. Previous Destination: ${previousDestination || "empty"}. Updated Destination: ${updatedDestination}. Shipment ID: ${shipment.shipmentId ?? "pending creation"}. Updated By: ${userId}. Updated Date/Time: current event time.`,
+        description: `Receipt destination updated through shipment assignment. Receipt Number: ${receiptNumber}. Previous Destination: ${previousDestination || "empty"}. Updated Destination: ${updatedDestination}. Shipment Barcode: ${shipmentBarcode}. Updated By: ${updatedByUserName}.`,
         level: "INFO",
     });
 }
@@ -612,11 +617,12 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 export async function listShipments(
     conn: Connection,
     filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string }
-): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number }> {
+): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number; countList: { air: number; fcl: number; lcl: number } }> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
     const shipments = await shipmentDB.listShipments(conn, filters);
     const total = await shipmentDB.countShipments(conn, filters);
+    const countList = await shipmentDB.getCountOfShipments(conn);
 
     const data: WarehouseShipmentWithRelations[] = [];
     for (const shipment of shipments) {
@@ -626,7 +632,7 @@ export async function listShipments(
         }
     }
 
-    return { data, total, page, pageSize };
+    return { data, total, page, pageSize, countList };
 }
 
 function hasAllFreightScanned(freightInfos: Array<{ isScanned?: unknown }>): boolean {
@@ -734,14 +740,14 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
             throwValidationError("Item already scanned");
         }
 
-        if (isOceanFcl && !receiptLinkedThroughScan) {
+        if (isOceanFcl) {
             emitAuditLog({
                 receiptNumber: receipt.receiptNumber,
                 receiptId: Number(receipt.receiptId),
                 proNumber: receipt.proNumber || undefined,
                 userId,
                 status: "SCANNED",
-                description: `Freight ${freightBarcodeValue} was scanned for receipt ${receipt.receiptNumber} on shipment ${shipment.barcodeNumber}.`,
+                description: `Freight ${freightBarcodeValue} was scanned for receipt ${receipt.receiptNumber} on shipment ${shipment.barcodeNumber ?? shipmentId}.`,
                 level: "INFO",
             });
         }
@@ -772,7 +778,7 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
     }
 }
 
-export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string) {
+export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId = 0) {
     const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
         .split("-")
         .map(part => part.trim())
@@ -792,6 +798,11 @@ export async function unscanFreight(conn: Connection, shipmentId: number, barcod
         const receipt = await warehouseReceiptDB.getAllWarehouseReceiptByReceiptNumber(conn, receiptNumber);
         if (!receipt) {
             throwValidationError(`Receipt with number ${receiptNumber} was not found.`);
+        }
+
+        const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
+        if (!shipment) {
+            throwValidationError(`Shipment with id ${shipmentId} was not found.`);
         }
 
         const shipmentReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
@@ -816,6 +827,16 @@ export async function unscanFreight(conn: Connection, shipmentId: number, barcod
         }
 
         await warehouseReceiptDB.updateFreightInfo(conn, Number(matchedFreight.freightId), { isScanned: "N" });
+
+        emitAuditLog({
+            receiptNumber: receipt.receiptNumber,
+            receiptId: Number(receipt.receiptId),
+            proNumber: receipt.proNumber || undefined,
+            userId,
+            status: "PREPARED",
+            description: `Freight ${freightBarcodeValue} was un-scanned for receipt ${receipt.receiptNumber} on shipment ${shipment.barcodeNumber ?? shipmentId}.`,
+            level: "INFO",
+        });
 
         const receiptFreightInfos = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
         const currentReceiptFullyScanned = hasAllFreightScanned(receiptFreightInfos);
