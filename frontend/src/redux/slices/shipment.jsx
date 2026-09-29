@@ -29,6 +29,7 @@ const initialState = {
     deleteShipmentReceiptLoading: false,
     deleteShipmentReceiptError: null,
     shipmentData: [],
+    countList: { air: 0, fcl: 0, lcl: 0 },
     shipmentSearchStr: '',
     exportAirlineOptions: [],
     exportAirlineLoading: false,
@@ -284,6 +285,11 @@ const slice = createSlice({
             state.isLoading = false;
             state.shipmentSuccess = true;
             state.shipmentData = action.payload.data;
+            state.countList = {
+                air: action.payload.countList?.air ?? 0,
+                fcl: action.payload.countList?.fcl ?? 0,
+                lcl: action.payload.countList?.lcl ?? 0,
+            };
             state.pagination = {
                 page: action.payload?.pagination?.page || state.pagination?.page,
                 pageSize: action.payload?.pagination?.pageSize || state.pagination?.pageSize,
@@ -305,6 +311,7 @@ let latestShipmentListRequestId = 0;
 export function getShipmentData({
     pageNo = 1,
     pageSize = 10,
+    paginate = true,
     searchTerm = '',
     request = '',
     scanned = '',
@@ -320,7 +327,7 @@ export function getShipmentData({
         const requestId = ++latestShipmentListRequestId;
         dispatch(slice.actions.startLoading());
         try {
-            const params = { page: pageNo, pageSize };
+            const params = paginate ? { page: pageNo, pageSize } : {};
             if (String(searchTerm).trim()) params.searchTerm = String(searchTerm).trim();
             if (request !== '') params.request = request;
             if (scanned !== '') params.scanned = scanned;

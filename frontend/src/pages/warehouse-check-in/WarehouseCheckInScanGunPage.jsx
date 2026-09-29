@@ -424,7 +424,7 @@ function FreightOptionButtons({
               },
             }}
           >
-            {label}
+            {isBadFreight ? 'Freight Condition' : label}
           </Button>
           {isBadFreight && badFreightSelected && renderBadFreightActions()}
           {isBadFreight && badFreightSelected && (

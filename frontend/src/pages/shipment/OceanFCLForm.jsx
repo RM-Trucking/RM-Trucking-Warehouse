@@ -395,6 +395,9 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     }, [warehouseFields]);
 
     const watchedWarehouses = useWatch({ control, name: 'warehouses' });
+    const showNoWarehouseReceipts = viewMode
+        && selectedManifestType === 'FromToDateSelection'
+        && !watchedWarehouses.some((item) => Boolean(item.warehouseNo));
     const shipmentFiltersLocked = viewMode || watchedWarehouses.some((item) => Boolean(item.warehouseNo?.receiptId));
     const totalPieces = watchedWarehouses.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0);
     const totalWeight = watchedWarehouses.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
@@ -443,8 +446,12 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         const existingRows = proReceiptsConfirmed ? watchedWarehouses : [];
         const existingProNumbers = new Set(existingRows.map((item) => item.warehouseNo?.proNumber));
         const existingReceiptIds = new Set(existingRows.map((item) => String(item.warehouseNo?.receiptId)));
-        setDetailReceiptIds(proOptions.filter((item) => numbers.includes(item.proNumber) &&
-            (!existingProNumbers.has(item.proNumber) || existingReceiptIds.has(String(item.receiptId))))
+        setDetailReceiptIds((previous) => proOptions.filter((item) =>
+            numbers.includes(item.proNumber) && (
+                detailProNumbers.includes(item.proNumber)
+                    ? previous.includes(item.id)
+                    : !existingProNumbers.has(item.proNumber) || existingReceiptIds.has(String(item.receiptId))
+            ))
             .map((item) => item.id));
         setProFilter('');
         setProSearch('');
@@ -454,6 +461,17 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         setProDetailsOpen(true);
     };
 
+    const backToProList = () => {
+        const selectedNumbers = [...new Set(detailOptions
+            .filter((item) => detailReceiptIds.includes(item.id))
+            .map((item) => item.proNumber))];
+        setSelectedProNumbers(selectedNumbers);
+        setDetailProNumbers(selectedNumbers);
+        setProDetailsOpen(false);
+        setProFilter('');
+        setProSearch('');
+    };
+
     const renderSelectAllHeader = () => {
         const selectedIds = proDetailsOpen ? detailReceiptIds : selectedProNumbers;
         const setSelectedIds = proDetailsOpen ? setDetailReceiptIds : setSelectedProNumbers;
@@ -461,7 +479,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         const selectedCount = selectedIds.filter((id) => visibleIds.has(id)).length;
         return (
             <Checkbox size="small" sx={{ p: 0.5 }}
-                disabled={proDetailsOpen || !visibleIds.size}
+                disabled={!visibleIds.size}
                 checked={visibleIds.size > 0 && selectedCount === visibleIds.size}
                 indeterminate={selectedCount > 0 && selectedCount < visibleIds.size}
                 onChange={(event) => {
@@ -478,12 +496,18 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         {
             field: 'selection', headerName: '', width: 44, sortable: false, filterable: false,
             renderHeader: renderSelectAllHeader,
-            renderCell: ({ row }) => <Checkbox size="small" sx={{ p: 0.5 }} disabled
+            renderCell: ({ row }) => <Checkbox size="small" sx={{ p: 0.5 }}
                 checked={detailReceiptIds.includes(row.id)}
+                onChange={(event) => {
+                    const { checked } = event.target;
+                    setDetailReceiptIds((previous) => checked
+                        ? [...new Set([...previous, row.id])]
+                        : previous.filter((id) => id !== row.id));
+                }}
                 slotProps={{ input: { 'aria-label': `Select receipt ${row.receiptNumber}` } }} />,
         },
         { field: 'proNumber', headerName: 'Pro Number', flex: 1, minWidth: 120 },
-        { field: 'receiptNumber', headerName: 'Warehouse ID', flex: 1.1, minWidth: 130 },
+        { field: 'receiptNumber', headerName: 'Warehouse Receipt No', flex: 1.1, minWidth: 170 },
         { field: 'station', headerName: 'Station', flex: 1.5, minWidth: 160 },
         { field: 'destination', headerName: 'Destination', flex: 1.1, minWidth: 130,
             renderCell: ({ value }) => value || '-' },
@@ -1087,7 +1111,11 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                     <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Status</Typography>
                                     <Typography sx={{ width: '12%', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}>Actions</Typography>
                                 </Stack>
-                                {warehouseFields.map((item, index) => (
+                                {showNoWarehouseReceipts ? (
+                                    <Typography sx={{ p: 3, textAlign: 'center', fontSize: 13 }}>
+                                        No Warehouse Receipts available
+                                    </Typography>
+                                ) : warehouseFields.map((item, index) => (
                                     <Stack direction="row" alignItems="center" sx={{ p: 1, borderBottom: '1px solid #f0f0f0' }} key={item.id}>
                                         <Box sx={{ width: '6%', pl: 1 }}>
                                             <Typography sx={{ fontSize: '13px', color: '#555' }}>
@@ -1101,9 +1129,9 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                     size="small"
                                                     options={canSelectWarehouse ? shipmentReceiptOptionsByField[item.id] || [] : []}
                                                     value={field.value}
-                                                    inputValue={readOnly ? getShipmentReceiptOptionLabel(field.value) : receiptInputValues[item.id] ?? getShipmentReceiptOptionLabel(field.value)}
-                                                    readOnly={readOnly || !canSelectWarehouse}
-                                                    openOnFocus={!readOnly && canSelectWarehouse}
+                                                    inputValue={viewMode ? getShipmentReceiptOptionLabel(field.value) : receiptInputValues[item.id] ?? getShipmentReceiptOptionLabel(field.value)}
+                                                    readOnly={viewMode || !canSelectWarehouse}
+                                                    openOnFocus={!viewMode && canSelectWarehouse}
                                                     loading={Boolean(shipmentReceiptLoadingByField[item.id])}
                                                     getOptionLabel={getShipmentReceiptOptionLabel}
                                                     isOptionEqualToValue={(option, value) =>
@@ -1140,16 +1168,16 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                                             error={warehouseReceiptError && index === 0}
                                                             inputProps={{
                                                                 ...params.inputProps,
-                                                                readOnly: !canSelectWarehouse,
+                                                                readOnly: viewMode || !canSelectWarehouse,
                                                                 onMouseDown: (event) => {
-                                                                    if (!canSelectWarehouse) {
+                                                                    if (!viewMode && !canSelectWarehouse) {
                                                                         event.preventDefault();
                                                                         setWarehouseAlertOpen(true);
                                                                     }
                                                                 },
                                                                 onFocus: (event) => {
                                                                     params.inputProps?.onFocus?.(event);
-                                                                    if (!canSelectWarehouse) {
+                                                                    if (!viewMode && !canSelectWarehouse) {
                                                                         setWarehouseAlertOpen(true);
                                                                     }
                                                                 },
@@ -1221,12 +1249,13 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                         <Box sx={{ width: '12%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
                                             {getReceiptStatus(watchedWarehouses[index]?.warehouseNo) === 'Available' && (
                                                 <>
-                                                    <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
+                                                    <IconButton size="small" disabled={viewMode} onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
                                                         <Iconify icon="mingcute:delete-2-fill" width={18} />
                                                     </IconButton>
                                                     <IconButton
                                                         size="small"
                                                         onClick={() => saveWarehouseRow(item.id, index)}
+                                                        disabled={viewMode}
                                                         color={savedWarehouseRows.has(item.id) ? 'success' : 'default'}
                                                         sx={{ p: 0.5, color: savedWarehouseRows.has(item.id) ? 'success.main' : '#000' }}
                                                     >
@@ -1241,7 +1270,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                 <Box sx={{ p: 1, textAlign: 'right' }}>
                                     <IconButton
                                         size="small"
-                                        disabled={(viewMode && selectedManifestType === 'FromToDateSelection')
+                                        disabled={viewMode
                                             || (selectedManifestType !== 'Pro Entry Search' && warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id))}
                                         onClick={() => {
                                             if (selectedManifestType === 'Pro Entry Search') {
@@ -1426,9 +1455,9 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                                     <MenuItem key={value} value={value}><Checkbox size="small" checked={destinationFilters.includes(value)} />{value || 'Blank'}</MenuItem>
                                 ))}
                             </TextField>
-                            <TextField select variant="standard" label="Warehouse ID" value={warehouseFilter}
+                            <TextField select variant="standard" label="Warehouse Receipt No" value={warehouseFilter}
                                 onChange={(event) => setWarehouseFilter(event.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 125 }}>
+                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 170 }}>
                                 <MenuItem value="">All</MenuItem>
                                 {[...new Set(detailOptions.map((item) => String(item.receiptNumber)))].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
                             </TextField>
@@ -1476,7 +1505,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                 </DialogContent>
                 <DialogActions sx={{ px: 2.5, pb: 2, pt: 1 }}>
                     {proDetailsOpen && <Button variant="outlined" size="small" disabled={createShipmentLoading}
-                        onClick={() => { setProDetailsOpen(false); setProFilter(''); setProSearch(''); }}
+                        onClick={backToProList}
                         sx={{ color: '#333', borderColor: '#999', fontSize: 11, textTransform: 'none', py: 0.25 }}>Back</Button>}
                     <Button variant="contained" size="small"
                         onClick={proDetailsOpen ? confirmProReceipts : openProDetails}

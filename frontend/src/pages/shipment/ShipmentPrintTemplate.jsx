@@ -153,7 +153,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                                 <td style={cell}>Drop by Date</td><td style={cell}>{formatDate(data?.dropByDate)}</td>
                             </tr>
                             <tr>
-                                <td style={cell}>MISC</td><td style={cell}>{firstValue(data, ['additionalRefNumber', 'additionalRefNo'])}</td>
+                                <td style={cell}>MISC</td><td style={cell}></td>
                                 <td style={heading} colSpan={2}>SPECIAL INSTRUCTIONS / REMARKS</td>
                             </tr>
                             <tr>
