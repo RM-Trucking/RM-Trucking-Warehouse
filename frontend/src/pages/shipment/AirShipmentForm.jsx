@@ -411,7 +411,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             earlyReturnDate: '',
             dropByDate: '',
             manifestType: 'DIRECT',
-            stationScope: 'ALL',
+            stationScope: 'SPECIFIC',
             startDate: '',
             endDate: '',
             barcodeNumber: data.rmProNo,

@@ -2139,11 +2139,16 @@ function WarehouseReceiptFormContent() {
           ...(options.includeFreightDetailImages && existingImages.length ? { images: existingImages } : {}),
         };
       });
-      const piecesInland = formRow.parcelInitialValues
-        ? toNumberOrNull(formRow.parcelInitialValues.pieces)
+      const parcelInitialValues = !isMobileReceiptForm
+        && selectedDraftKey === 'regular'
+        && selectedDraft?.searchType === 'parcel'
+          ? selectedDraft.parcelForm || formRow.parcelInitialValues
+          : formRow.parcelInitialValues;
+      const piecesInland = parcelInitialValues
+        ? toNumberOrNull(parcelInitialValues.pieces)
         : freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
-      const weightInland = formRow.parcelInitialValues
-        ? toDecimal10_2NumberOrNull(formRow.parcelInitialValues.weight)
+      const weightInland = parcelInitialValues
+        ? toDecimal10_2NumberOrNull(parcelInitialValues.weight)
         : freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
       const reWeight = freightDetails.reduce(
         (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
