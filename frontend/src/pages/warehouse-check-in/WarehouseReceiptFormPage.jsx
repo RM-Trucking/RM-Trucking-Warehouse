@@ -3599,7 +3599,7 @@ function WarehouseReceiptFormContent() {
   };
 
   const renderSplitApprovalLinks = (text) => {
-    const matches = [...text.matchAll(/\breceipt\s+(\d+)|\bshipment(?:\s+barcode:)?\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)/gi)];
+    const matches = [...text.matchAll(/\breceipt\s+(?:(?:number|ID)\s*:?\s*)?(\d+)|\bshipment(?:\s+barcode:)?\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)/gi)];
     const hasShipmentBarcode = matches.some((match) => match[2]);
     if (!hasShipmentBarcode) return null;
 
@@ -3650,7 +3650,7 @@ function WarehouseReceiptFormContent() {
       });
     }
 
-    const receiptMatch = text.match(/((?:parent\s+)?receipt\s+ID\s+)(\d+)/i);
+    const receiptMatch = text.match(/((?:parent\s+)?receipt\s+(?:ID|number)\s*:?\s*)(\d+)/i);
 
     if (receiptMatch) {
       const receiptId = receiptMatch[2];
