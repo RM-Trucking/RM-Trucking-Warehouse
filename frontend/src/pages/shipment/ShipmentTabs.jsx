@@ -322,7 +322,7 @@ const handleClosePickupForm = () => {
         },
         {
             field: 'billNumber',
-            headerName: currentTab === 'active' ? 'Air Bill No' : 'Bill Number',
+            headerName: currentTab === 'incomplete' ? 'Bill Number' : 'Air Bill No',
             flex: 1,
             minWidth: 150,
             headerAlign: 'left',
@@ -437,9 +437,9 @@ const handleClosePickupForm = () => {
         ? airColumns
             .filter((column) => column.field !== 'billNumber')
             .flatMap((column) => column.field === 'station' ? [column, destinationColumn] : [column])
-        : currentTab === 'active'
-            ? airColumns
-            : [...baseColumns, actionColumn];
+        : currentTab === 'inactive'
+            ? airColumns.filter((column) => column.field !== 'billNumber')
+            : airColumns;
 
     return (
         <>
