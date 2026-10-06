@@ -208,7 +208,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                             <tr><td style={{ ...cell, height: 43, textAlign: 'center', fontWeight: 700 }}>{totalPieces}</td><td style={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{totalWeight}</td><td style={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{hasReceipts ? receipts.length : ''}</td></tr>
                             <tr><td style={{ ...cell, height: 22 }} colSpan={1}>Booking #</td><td style={cell} colSpan={2}>{firstValue(data, ['booking', 'bookingNumber'])}</td></tr>
                             <tr><td style={{ ...cell, height: 22, fontSize: 10 }} colSpan={1}>Customer Ref #</td><td style={{ ...cell, fontSize: 9 }} colSpan={2}>{firstValue(data, ['customerRefNumber'])}</td></tr>
-                            <tr><td style={{ ...cell, height: 22 }} colSpan={1}>MISC</td><td style={cell} colSpan={2}>{firstValue(data, ['additionalRefNumber', 'additionalRefNo'])}</td></tr>
+                            <tr><td style={{ ...cell, height: 22 }} colSpan={1}>MISC</td><td style={cell} colSpan={2}></td></tr>
                             <tr><td style={heading} colSpan={3}>RECEIVED IN GOOD ORDER EXCEPT AS NOTED</td></tr>
                             <tr><td style={{ ...cell, height: 80 }} colSpan={3}>{firstValue(data, ['receivedConditionNotes', 'conditionNotes'])}</td></tr>
                             <tr><td style={cell}>Received By</td><td style={cell} colSpan={2}>{firstValue(data, ['receivedBy'])}</td></tr>
