@@ -5,7 +5,8 @@ import RMLogo from '../../assets/RM.png';
 
 const TITLES = {
     AIR: 'Airport Transfer',
-    LCL: 'Ocean LCL Transfer',
+    LCL: 'Ocean Export LCL',
+    OCEAN_LCL: 'Ocean Export LCL',
     FCL: 'Ocean Export FCL',
     OCEAN_FCL: 'Ocean Export FCL',
 };
@@ -31,6 +32,8 @@ const getContainerNumber = (container) => typeof container === 'object'
 
 const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
     const isFcl = ['FCL', 'OCEAN_FCL'].includes(data?.shipmentType);
+    const isLcl = ['LCL', 'OCEAN_LCL'].includes(data?.shipmentType);
+    const warehouseOnly = isFcl || isLcl;
     const heading = isFcl ? { ...baseHeading, background: '#000', color: '#fff' } : baseHeading;
     const title = TITLES[data?.shipmentType] || '';
     const barcode = firstValue(data, ['barcodeNumber', 'rmNumber', 'rmProNo']);
@@ -56,7 +59,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
     const containerNumbers = containers.map(getContainerNumber).filter(Boolean);
     const receiptContainerPageCount = Math.max(
         1,
-        isFcl ? Math.ceil(receiptNumbers.length / 40)
+        warehouseOnly ? Math.ceil(receiptNumbers.length / 40)
             : Math.ceil(Math.max(receiptNumbers.length, containerNumbers.length) / 20)
     );
 
@@ -219,8 +222,17 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                         <tbody>
                             <tr><td style={heading} colSpan={3}>SPECIAL INSTRUCTIONS / REMARKS</td></tr>
                             <tr><td style={{ ...cell, height: 177, whiteSpace: 'pre-wrap' }} colSpan={3}>{instructions}</td></tr>
-                            <tr><td style={{ ...cell, width: '34%' }}>Forwarder</td><td style={{ ...cell, width: '33%' }}>Time IN</td><td style={{ ...cell, width: '33%' }}>Time OUT</td></tr>
-                            <tr><td style={cell}>Airline</td><td style={cell}>Time IN</td><td style={cell}>Time OUT</td></tr>
+                            {isLcl ? (
+                                <>
+                                    <tr><td style={{ ...cell, width: '34%' }}>Time IN</td><td style={cell} colSpan={2}></td></tr>
+                                    <tr><td style={cell}>Time OUT</td><td style={cell} colSpan={2}></td></tr>
+                                </>
+                            ) : (
+                                <>
+                                    <tr><td style={{ ...cell, width: '34%' }}>Forwarder</td><td style={{ ...cell, width: '33%' }}>Time IN</td><td style={{ ...cell, width: '33%' }}>Time OUT</td></tr>
+                                    <tr><td style={cell}>Airline</td><td style={cell}>Time IN</td><td style={cell}>Time OUT</td></tr>
+                                </>
+                            )}
                             <tr><td style={heading} colSpan={3}>DRIVER NUMBER &amp; INITIALS</td></tr>
                             <tr><td style={{ ...cell, height: 52 }} colSpan={3}>{firstValue(data, ['driverNumber', 'driverName', 'driver'])}</td></tr>
                         </tbody>
@@ -237,7 +249,7 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <tbody>
                     <tr>
-                        {isFcl ? (
+                        {warehouseOnly ? (
                             <td style={{ ...heading, textAlign: 'center' }} colSpan={4}>WAREHOUSE RECEIPT NUMBERS</td>
                         ) : (
                             <>
@@ -247,13 +259,13 @@ const ShipmentPrintTemplate = forwardRef(({ data }, ref) => {
                         )}
                     </tr>
                     {Array.from({ length: 10 }, (_, rowIndex) => {
-                        const pageOffset = pageIndex * (isFcl ? 40 : 20);
+                        const pageOffset = pageIndex * (warehouseOnly ? 40 : 20);
                         return (
                             <tr key={rowIndex}>
                                 <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(receiptNumbers[pageOffset + rowIndex])}</td>
                                 <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(receiptNumbers[pageOffset + 10 + rowIndex])}</td>
-                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(isFcl ? receiptNumbers[pageOffset + 20 + rowIndex] : containerNumbers[pageOffset + rowIndex])}</td>
-                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(isFcl ? receiptNumbers[pageOffset + 30 + rowIndex] : containerNumbers[pageOffset + 10 + rowIndex])}</td>
+                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(warehouseOnly ? receiptNumbers[pageOffset + 20 + rowIndex] : containerNumbers[pageOffset + rowIndex])}</td>
+                                <td style={{ ...cell, width: '25%', height: 20, padding: '2px 5px', lineHeight: 1.1 }}>{valueOrBlank(warehouseOnly ? receiptNumbers[pageOffset + 30 + rowIndex] : containerNumbers[pageOffset + 10 + rowIndex])}</td>
                             </tr>
                         );
                     })}
