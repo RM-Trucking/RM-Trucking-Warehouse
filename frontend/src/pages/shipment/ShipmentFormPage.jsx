@@ -322,7 +322,7 @@ function ShipmentFormPageContent() {
       >
         {viewShipment?.shipmentType === 'AIR' ? (
           <NewAirShipmentForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
-        ) : viewShipment?.shipmentType === 'LCL' ? (
+        ) : ['OCEAN_LCL', 'LCL'].includes(viewShipment?.shipmentType) ? (
           <OceanLCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : ['OCEAN_FCL', 'FCL'].includes(viewShipment?.shipmentType) ? (
           <OceanFCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />

@@ -1,15 +1,15 @@
 import PropTypes from 'prop-types';
 import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Autocomplete, CircularProgress, Typography, Stack, Grid, IconButton, Box } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Autocomplete, CircularProgress, Typography, Stack, Grid, IconButton, Box, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
 
 import StyledTextField from '../../sections/shared/StyledTextField';
 import Iconify from '../../components/iconify';
 import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/ShipmentFormLayout';
 
 import { useDispatch, useSelector } from '../../redux/store';
-import { searchWarehouseReceiptCustomers, searchWarehouseReceiptStations } from '../../redux/slices/warehouseReceipt';
-import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment } from '../../redux/slices/shipment';
+import { getWarehouseReceiptNotes, postWarehouseReceiptNote, searchWarehouseReceiptCustomers, searchWarehouseReceiptStations } from '../../redux/slices/warehouseReceipt';
+import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment, updateShipment } from '../../redux/slices/shipment';
 
 const getCustomerOptionLabel = (option) => {
     if (!option) return '';
@@ -63,6 +63,17 @@ const statusStyles = {
     Available: { bgcolor: '#f1f1f1', color: '#333' },
 };
 
+const formatNoteTime = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-US', {
+        month: 'numeric', day: 'numeric', year: '2-digit',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+};
+
+
 NewOceanLCLShipmentForm.propTypes = {
     handleClose: PropTypes.func.isRequired,
     rowData: PropTypes.object,
@@ -71,10 +82,10 @@ NewOceanLCLShipmentForm.propTypes = {
 
 export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const dispatch = useDispatch();
-    const { customerOptions, customerLoading, stationOptions, stationLoading } = useSelector((state) => state.warehouseReceiptdata);
+    const { customerOptions, customerLoading, stationOptions, stationLoading, receiptNotes, receiptNotesLoading, receiptNotesSaving, receiptNotesError } = useSelector((state) => state.warehouseReceiptdata);
     const { exportAirlineOptions, exportAirlineLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField, createShipmentLoading } = useSelector((state) => state.shipmentdata);
     const defaultValues = {
-        rmProNo: rowData?.barcodeNumber || '',
+        rmProNo: String(rowData?.barcodeNumber || '').replace(/\s/g, ''),
         customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || String(rowData.customerId || '') } : null,
         station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || String(rowData.stationId || '') } : null,
         consignee: rowData ? {
@@ -97,9 +108,10 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
     };
 
-    const { control, handleSubmit, watch, setValue, clearErrors } = useForm({ defaultValues });
+    const { control, handleSubmit, watch, setValue, clearErrors, reset } = useForm({ defaultValues });
+    const savedFormValuesRef = useRef(defaultValues);
 
-    const [barcodeValue, setBarcodeValue] = useState('');
+    const [barcodeValue, setBarcodeValue] = useState(viewMode ? defaultValues.rmProNo : '');
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
     const [stationSearchValue, setStationSearchValue] = useState(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
     const [warehouseAlertOpen, setWarehouseAlertOpen] = useState(false);
@@ -111,6 +123,12 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
     const [savedWarehouseRows, setSavedWarehouseRows] = useState(() => new Set());
     const [submitError, setSubmitError] = useState('');
     const [rowSaveError, setRowSaveError] = useState('');
+    const [isEditing, setIsEditing] = useState(!viewMode);
+    const [cancelEditDialogOpen, setCancelEditDialogOpen] = useState(false);
+    const [closeFormAfterDiscard, setCloseFormAfterDiscard] = useState(false);
+    const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+    const [noteText, setNoteText] = useState('');
+    const [notesMessage, setNotesMessage] = useState('');
     const receiptSearchTimers = useRef({});
 
     const rmProValue = useWatch({ control, name: 'rmProNo' });
@@ -120,7 +138,30 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
     const selectedStationId = selectedStation?.stationId || selectedStation?.id || '';
     const selectedCustomerId = selectedCustomer?.customerId || selectedCustomer?.id || '';
 
-    const canSelectWarehouse = Boolean(selectedCustomerId && selectedStationId) && !viewMode;
+    const canSelectWarehouse = Boolean(selectedCustomerId && selectedStationId) && (!viewMode || isEditing);
+
+    const handleOpenNotes = () => {
+        setNotesDialogOpen(true);
+        dispatch(getWarehouseReceiptNotes(rowData?.noteThreadId || 0));
+    };
+
+    const handleAddNote = async () => {
+        const messageText = noteText.trim();
+        if (!messageText) {
+            setNotesMessage('Notes is mandatory');
+            return;
+        }
+
+        const response = await dispatch(postWarehouseReceiptNote({
+            noteThreadId: rowData?.noteThreadId || 0,
+            messageText,
+        }));
+        if (response?.error) {
+            setNotesMessage(response.message || 'Failed to add shipment note');
+            return;
+        }
+        setNoteText('');
+    };
 
     const handleWarehouseAlertClose = (event, reason) => {
         if (reason === 'clickaway') return;
@@ -246,6 +287,46 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
         setSavedWarehouseRows((previous) => new Set(previous).add(rowId));
     };
 
+    const handleEdit = () => {
+        setSavedWarehouseRows(new Set(warehouseFields.map((item) => item.id)));
+        setIsEditing(true);
+    };
+
+    const handleCancel = () => {
+        if (viewMode && isEditing) {
+            setCloseFormAfterDiscard(false);
+            setCancelEditDialogOpen(true);
+            return;
+        }
+
+        handleClose();
+    };
+
+    const handleHeaderClose = () => {
+        if (viewMode && isEditing) {
+            setCloseFormAfterDiscard(true);
+            setCancelEditDialogOpen(true);
+            return;
+        }
+        handleClose();
+    };
+
+    const handleDiscardChanges = () => {
+        reset(savedFormValuesRef.current);
+        setBarcodeValue(savedFormValuesRef.current.rmProNo);
+        setCustomerSearchValue(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
+        setStationSearchValue(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
+        setSubmitError('');
+        setRowSaveError('');
+        setCancelEditDialogOpen(false);
+        if (closeFormAfterDiscard) {
+            handleClose();
+        } else {
+            setIsEditing(false);
+        }
+        setCloseFormAfterDiscard(false);
+    };
+
     const onSubmit = async (data) => {
         if (createShipmentLoading) return;
         setSubmitError('');
@@ -283,16 +364,32 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
             pieces: totalPieces,
             weight: totalWeight,
             instructions: data.instructions,
+            ...(viewMode ? {
+                isCanceled: rowData?.isCanceled || 'N',
+                isShipped: rowData?.isShipped || 'N',
+                isScanned: rowData?.isScanned || 'N',
+                pickupEntry: rowData?.pickupEntry || 'N',
+                pickupEntryNumber: rowData?.pickupEntryNumber || '',
+            } : {}),
             containers: [],
             receipts: selectedReceipts,
         };
 
-        const result = await dispatch(postShipment(payload));
+        const shipmentId = rowData?.shipmentId || rowData?.id;
+        const result = viewMode
+            ? await dispatch(updateShipment(shipmentId, payload))
+            : await dispatch(postShipment(payload));
         if (result?.success) {
-            handleClose();
+            if (viewMode) {
+                savedFormValuesRef.current = data;
+                setBarcodeValue(data.rmProNo);
+                setIsEditing(false);
+            } else {
+                handleClose();
+            }
             return;
         }
-        setSubmitError(result?.error || 'Failed to create shipment');
+        setSubmitError(result?.error || `Failed to ${viewMode ? 'update' : 'create'} shipment`);
     };
 
     const onInvalid = () => {
@@ -302,23 +399,48 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
     return (
         <ShipmentFormLayout
             title={viewMode ? 'View Ocean LCL Shipment Form' : 'New Ocean LCL Shipment Form'}
-            handleClose={handleClose}
+            handleClose={handleHeaderClose}
+            onCancel={handleCancel}
             onSubmit={handleSubmit(onSubmit, onInvalid)}
             submitLoading={createShipmentLoading}
-            showSubmit={!viewMode}
-            readOnly={viewMode}
+            submitLabel={viewMode ? 'Save' : 'Submit'}
+            submitLoadingLabel={viewMode ? 'Saving...' : 'Submitting...'}
+            showSubmit={!viewMode || isEditing}
+            readOnly={viewMode && !isEditing}
+            stickyHeader
             topInfoPanel={
                 <TopInfoPanel 
                     showBarcodeGraphic={false}
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
+                    showEdit={viewMode && !isEditing}
+                    editDisabled={rowData?.completeStatus === 'APPROVED'}
+                    onEdit={handleEdit}
+                    showNotes={viewMode && !isEditing}
+                    onNotes={handleOpenNotes}
                     rmProInputNode={
                         <Controller
                             name="rmProNo"
                             control={control}
-                            render={({ field }) => (
+                            rules={{
+                                required: 'RM PRO Number is required',
+                                validate: (value) => !/\s/.test(value) || 'Spaces are not allowed in RM PRO Number',
+                            }}
+                            render={({ field, fieldState: { error } }) => (
                                 <Box sx={{ bgcolor: '#fff', borderRadius: 0.5 }}>
-                                    <StyledTextField {...field} variant="outlined" size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { height: '30px' } }} />
+                                    <StyledTextField
+                                        {...field}
+                                        onChange={(event) => field.onChange(event.target.value.replace(/\s/g, ''))}
+                                        onKeyDown={(event) => {
+                                            if (event.key === ' ') event.preventDefault();
+                                        }}
+                                        variant="outlined"
+                                        size="small"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        sx={{ '& .MuiOutlinedInput-root': { height: '30px' } }}
+                                    />
                                 </Box>
                             )}
                         />
@@ -426,7 +548,7 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
                         <Controller name="consignee" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
                             <Autocomplete
                                 fullWidth
-                                readOnly={viewMode}
+                                readOnly={viewMode && !isEditing}
                                 options={exportAirlineOptions}
                                 value={field.value}
                                 loading={exportAirlineLoading}
@@ -644,8 +766,11 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
                             <Box sx={{ p: 1, textAlign: 'right' }}>
                                 <IconButton
                                     size="small"
-                                    disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
-                                    onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
+                                    disabled={viewMode || (warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id))}
+                                    onClick={() => {
+                                        if (viewMode) return;
+                                        appendWarehouse({ warehouseNo: null, pieces: '', weight: '' });
+                                    }}
                                     sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
                                 >
                                     <Iconify icon="akar-icons:plus" width={16} />
@@ -737,6 +862,137 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
             >
                 <Alert severity="error" variant="filled" onClose={() => setSubmitError('')}>
                     {submitError}
+                </Alert>
+            </Snackbar>
+            <Dialog
+                open={cancelEditDialogOpen}
+                onClose={() => {
+                    setCancelEditDialogOpen(false);
+                    setCloseFormAfterDiscard(false);
+                }}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Discard unsaved changes?</DialogTitle>
+                <DialogContent>
+                    Your changes have not been saved. Do you want to discard them?
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => {
+                        setCancelEditDialogOpen(false);
+                        setCloseFormAfterDiscard(false);
+                    }} color="inherit">
+                        Keep Editing
+                    </Button>
+                    <Button onClick={handleDiscardChanges} variant="contained" sx={{ bgcolor: '#A22', '&:hover': { bgcolor: '#8b1c1c' } }}>
+                        Discard
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={notesDialogOpen}
+                onClose={() => setNotesDialogOpen(false)}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{ sx: { borderRadius: 1, minHeight: 430 } }}
+            >
+                <DialogContent sx={{ p: 2 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ borderBottom: '1px solid #777', pb: 0.8 }}>
+                        <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Shipment Notes</Typography>
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setNotesDialogOpen(false)}
+                            sx={{ bgcolor: '#A22', height: 24, minWidth: 58, fontSize: 11, '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            OK
+                        </Button>
+                    </Stack>
+
+                    <Box sx={{ mt: 2.2, maxWidth: '100%' }}>
+                        <TextField
+                            variant="standard"
+                            label={(
+                                <Box component="span">
+                                    Notes <Box component="span" sx={{ color: '#A22' }}>*</Box>
+                                </Box>
+                            )}
+                            value={noteText}
+                            onChange={(event) => setNoteText(event.target.value)}
+                            fullWidth
+                            size="small"
+                            sx={{
+                                '& .MuiInputLabel-root': { fontSize: 11 },
+                                '& .MuiInputBase-input': { fontSize: 12, py: 0.2 },
+                            }}
+                        />
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={handleAddNote}
+                            disabled={receiptNotesSaving}
+                            sx={{ mt: 0.8, height: 24, minWidth: 82, bgcolor: '#A22', fontSize: 11, '&:hover': { bgcolor: '#8b1c1c' } }}
+                        >
+                            {receiptNotesSaving ? 'Saving...' : 'Add Notes'}
+                        </Button>
+                    </Box>
+
+                    <Table
+                        size="small"
+                        sx={{
+                            mt: 3,
+                            border: '1px solid #d0d0d0',
+                            '& th': { bgcolor: '#f5f5f5', fontSize: 11, fontWeight: 500 },
+                            '& td': { fontSize: 12, verticalAlign: 'top' },
+                        }}
+                    >
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ width: 190 }}>Time</TableCell>
+                                <TableCell sx={{ width: 120 }}>User</TableCell>
+                                <TableCell>Notes</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {receiptNotesLoading ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                                        <CircularProgress size={24} />
+                                    </TableCell>
+                                </TableRow>
+                            ) : receiptNotesError ? (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 3, color: '#A22' }}>
+                                        {receiptNotesError}
+                                    </TableCell>
+                                </TableRow>
+                            ) : receiptNotes.length ? (
+                                receiptNotes.map((note, index) => (
+                                    <TableRow key={note.noteMessageId || `${note.createdAt}-${note.createdBy}-${index}`}>
+                                        <TableCell>{formatNoteTime(note.createdAt)}</TableCell>
+                                        <TableCell>{note.createdByName || note.createdBy || ''}</TableCell>
+                                        <TableCell>{note.messageText || ''}</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={3} align="center" sx={{ py: 3 }}>No notes found</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </DialogContent>
+            </Dialog>
+            <Snackbar
+                open={Boolean(notesMessage)}
+                autoHideDuration={4000}
+                onClose={(event, reason) => {
+                    if (reason !== 'clickaway') setNotesMessage('');
+                }}
+                anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+            >
+                <Alert severity="error" variant="filled" onClose={() => setNotesMessage('')}>
+                    {notesMessage}
                 </Alert>
             </Snackbar>
         </ShipmentFormLayout>
