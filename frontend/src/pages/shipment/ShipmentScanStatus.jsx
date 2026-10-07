@@ -647,7 +647,7 @@ export default function ShipmentScanStatus({ shipment, onClose, onCompleteSucces
                     )}
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
-                    <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Dest: {destination}</Typography>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700 }}>Station Name: {destination}</Typography>
                     <Typography sx={{ fontSize: 11, fontWeight: 700 }}>PRO# - {proNumber}</Typography>
                     <Stack direction="row" spacing={0.75} justifyContent="flex-end" sx={{ mt: 0.5 }}>
                         {currentShipment?.completeStatus === 'REQUESTED' && showApprovalAction && (

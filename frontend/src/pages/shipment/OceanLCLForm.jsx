@@ -746,7 +746,7 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
                                     <Box sx={{ width: '15%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
                                         {getReceiptStatus(watchedWarehouses[index]?.warehouseNo) === 'Available' && (
                                             <>
-                                                <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
+                                                <IconButton size="small" disabled={viewMode} onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
                                                     <Iconify icon="mingcute:delete-2-fill" width={18} />
                                                 </IconButton>
                                                 <IconButton
@@ -838,10 +838,9 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
                 maxWidth="xs"
                 fullWidth
             >
-                <DialogTitle>Station mismatch</DialogTitle>
+                <DialogTitle>Customer mismatch</DialogTitle>
                 <DialogContent>
-                    The selected receipt belongs to a different station than the station selected
-                    in Customer Details. Do you want to proceed?
+                    The selected receipt does not match the Station/Customer in Customer Details. Would you like to proceed?
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setPendingReceiptSelection(null)} color="inherit">
