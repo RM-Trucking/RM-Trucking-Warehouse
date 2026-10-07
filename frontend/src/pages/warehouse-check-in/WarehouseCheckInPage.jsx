@@ -2115,6 +2115,10 @@ export default function WarehouseCheckInPage({
             carrierId: toNumberOrNull(row.carrierId),
             piecesInland,
             weightInland,
+            piecesOnReceipt: freightDetails.reduce(
+              (sum, item) => sum + Number(item.pieces || 0),
+              0,
+            ),
             reWeight,
             cubicMeter,
             proNumber: toValueOrNull(
