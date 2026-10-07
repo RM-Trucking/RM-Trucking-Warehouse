@@ -1457,13 +1457,13 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             </TextField>
                             <TextField select variant="standard" label="Warehouse Receipt No" value={warehouseFilter}
                                 onChange={(event) => setWarehouseFilter(event.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 170 }}>
+                                slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }} sx={{ width: 170 }}>
                                 <MenuItem value="">All</MenuItem>
                                 {[...new Set(detailOptions.map((item) => String(item.receiptNumber)))].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
                             </TextField>
                             <TextField select variant="standard" label="Haz Mat" value={hazmatFilter}
                                 onChange={(event) => setHazmatFilter(event.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 125 }}>
+                                slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }} sx={{ width: 125 }}>
                                 <MenuItem value="">All</MenuItem>
                                 <MenuItem value="Yes">Hazmat Only</MenuItem>
                                 <MenuItem value="No">No Hazmat</MenuItem>

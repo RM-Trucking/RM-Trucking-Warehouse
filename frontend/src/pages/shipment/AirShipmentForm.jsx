@@ -698,6 +698,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                                 fullWidth
                                                 size="small"
                                                 placeholder="Enter a container number"
+                                                slotProps={{ htmlInput: { maxLength: 20 } }}
                                                 sx={{ bgcolor: '#e0e0e0', borderRadius: 1, '& fieldset': { border: 'none' } }}
                                             />
                                         )} />
@@ -868,7 +869,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                                     <Box sx={{ width: '15%', display: 'flex', justifyContent: 'center', gap: 0.25 }}>
                                         {getReceiptStatus(watchedWarehouses[index]?.warehouseNo) === 'Available' && (
                                             <>
-                                                <IconButton size="small" onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
+                                                <IconButton size="small" disabled={viewMode} onClick={() => removeWarehouse(index)} sx={{ color: '#000', p: 0.5 }}>
                                                     <Iconify icon="mingcute:delete-2-fill" width={18} />
                                                 </IconButton>
                                                 <IconButton
@@ -888,7 +889,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                             <Box sx={{ p: 1, textAlign: 'right' }}>
                                 <IconButton
                                     size="small"
-                                    disabled={warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id)}
+                                    disabled={viewMode || (warehouseFields.length > 0 && !savedWarehouseRows.has(warehouseFields[warehouseFields.length - 1]?.id))}
                                     onClick={() => appendWarehouse({ warehouseNo: null, pieces: '', weight: '' })}
                                     sx={{ bgcolor: '#A22', color: '#fff', borderRadius: '4px', p: '3px', '&:hover': { bgcolor: '#8b1c1c' }, '&.Mui-disabled': { bgcolor: '#ddd' } }}
                                 >
@@ -957,10 +958,9 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                 maxWidth="xs"
                 fullWidth
             >
-                <DialogTitle>Station mismatch</DialogTitle>
+                <DialogTitle>Customer mismatch</DialogTitle>
                 <DialogContent>
-                    The selected receipt belongs to a different station than the station selected
-                    in Customer Details. Do you want to proceed?
+                    The selected receipt does not match the Station/Customer in Customer Details. Would you like to proceed?
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setPendingReceiptSelection(null)} color="inherit">
