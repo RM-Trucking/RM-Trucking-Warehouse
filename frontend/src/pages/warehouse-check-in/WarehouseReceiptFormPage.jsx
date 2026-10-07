@@ -1357,6 +1357,7 @@ function WarehouseReceiptFormContent() {
   }, []);
 
   const activeForm = receiptForms.find((form) => form.id === activeTab) || receiptForms[0];
+  const piecesOnReceipt = activeForm.items.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
   const totalWeight = activeForm.items.reduce(
     (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
     0
@@ -2144,12 +2145,8 @@ function WarehouseReceiptFormContent() {
         && selectedDraft?.searchType === 'parcel'
           ? selectedDraft.parcelForm || formRow.parcelInitialValues
           : formRow.parcelInitialValues;
-      const piecesInland = parcelInitialValues
-        ? toNumberOrNull(parcelInitialValues.pieces)
-        : freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
-      const weightInland = parcelInitialValues
-        ? toDecimal10_2NumberOrNull(parcelInitialValues.weight)
-        : freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+      const piecesInland = getRowValue(formRow, ['piecesInland', 'pieces'], parcelInitialValues?.pieces ?? null);
+      const weightInland = getRowValue(formRow, ['weightInland', 'weight'], parcelInitialValues?.weight ?? null);
       const reWeight = freightDetails.reduce(
         (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
         0
@@ -2183,6 +2180,7 @@ function WarehouseReceiptFormContent() {
           carrierId: toNumberOrNull(formRow.carrierId),
           piecesInland,
           weightInland,
+          piecesOnReceipt: freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0),
           reWeight,
           cubicMeter,
           proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
@@ -2252,8 +2250,8 @@ function WarehouseReceiptFormContent() {
         removeImagePaths: item.removeImagePaths || [],
       };
     });
-    const piecesInland = freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0);
-    const weightInland = freightDetails.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+    const piecesInland = getRowValue(formRow, ['piecesInland', 'pieces'], null);
+    const weightInland = getRowValue(formRow, ['weightInland', 'weight'], null);
     const reWeight = freightDetails.reduce(
       (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
       0
@@ -2275,6 +2273,7 @@ function WarehouseReceiptFormContent() {
       carrierId: toNumberOrNull(formRow.carrierId),
       piecesInland,
       weightInland,
+      piecesOnReceipt: freightDetails.reduce((sum, item) => sum + Number(item.pieces || 0), 0),
       reWeight,
       proNumber: toValueOrNull(getRowValue(formRow, 'proNumber', '')),
       invoiceNumber: toLimitedValueOrNull(getRowValue(formRow, ['invoiceNo', 'invoiceNumber'], ''), 50),
@@ -4466,8 +4465,7 @@ function WarehouseReceiptFormContent() {
       : (splitRecalculateFormItems[splitTabValue] || [])
           .map((item, index) => ({ item, originalIndex: index }))
           .filter(({ item }) => item);
-    const splitPiecesInland = splitFormItems.reduce((sum, { item }) => sum + Number(item.pieces || 0), 0);
-    const splitWeightInland = splitFormItems.reduce((sum, { item }) => sum + Number(item.weight || 0), 0);
+    const splitPiecesOnReceipt = splitFormItems.reduce((sum, { item }) => sum + Number(item.pieces || 0), 0);
     const splitTotalWeight = splitFormItems.reduce(
       (sum, { item }) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
       0
@@ -4708,8 +4706,9 @@ function WarehouseReceiptFormContent() {
                   <Box sx={{ flex: 1 }} />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                  <DisplayField label="Pieces" value={splitPiecesInland} required />
-                  <DisplayField label="Weight" value={splitWeightInland} required />
+                  <DisplayField label="Pieces (Customer Info)" value={piecesInland} required />
+                  <DisplayField label="Weight (Customer Info)" value={weightInland} required />
+                  <DisplayField label="Pieces On Receipt" value={splitPiecesOnReceipt} required />
                   <DisplayField label="RE Weight" value={splitTotalWeight} required />
                   <DisplayField label="Total CBM (m³)" value={formatCubicMeterForItemTable(splitTotalCbm)} required />
                   <Box sx={{ flex: 1 }} />
@@ -5454,8 +5453,9 @@ function WarehouseReceiptFormContent() {
                   <Box sx={{ flex: 1 }} />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                  <DisplayField label="Pieces" value={piecesInland} required />
-                  <DisplayField label="Weight" value={weightInland} required />
+                  <DisplayField label="Pieces (Customer Info)" value={piecesInland} required />
+                  <DisplayField label="Weight (Customer Info)" value={weightInland} required />
+                  <DisplayField label="Pieces On Receipt" value={piecesOnReceipt} required />
                   <DisplayField label="RE Weight" value={totalWeight} required />
                   <DisplayField label="Total CBM (m³)" value={formatCubicMeterForItemTable(totalCbm)} required />
                   <Box sx={{ flex: 1 }} />

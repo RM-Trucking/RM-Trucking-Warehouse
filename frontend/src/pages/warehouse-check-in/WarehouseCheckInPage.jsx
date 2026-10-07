@@ -1272,6 +1272,11 @@ export default function WarehouseCheckInPage({
         "piecesInland",
         getRowValue(warehouseReceiptSearch.data, "piecesInland", ""),
       ),
+      weightInland: getRowValue(
+        row,
+        "weightInland",
+        getRowValue(warehouseReceiptSearch.data, "weightInland", ""),
+      ),
       customerEmails:
         row.customerEmails || warehouseReceiptSearch.data.customerEmails || [],
       toEmails: row.toEmails || warehouseReceiptSearch.data.toEmails || [],
@@ -2055,18 +2060,8 @@ export default function WarehouseCheckInPage({
         cubicMeter,
       };
     });
-    const piecesInland = row.parcelInitialValues
-      ? toNumberOrNull(row.parcelInitialValues.pieces)
-      : freightDetails.reduce(
-      (sum, item) => sum + Number(item.pieces || 0),
-      0,
-    );
-    const weightInland = row.parcelInitialValues
-      ? toDecimal10_2NumberOrNull(row.parcelInitialValues.weight)
-      : freightDetails.reduce(
-      (sum, item) => sum + Number(item.weight || 0),
-      0,
-    );
+    const piecesInland = getRowValue(row, ["piecesInland", "pieces"], row.parcelInitialValues?.pieces ?? null);
+    const weightInland = getRowValue(row, ["weightInland", "weight"], row.parcelInitialValues?.weight ?? null);
     const reWeight = freightDetails.reduce(
       (sum, item) => sum + Number(item.pieces || 0) * Number(item.weight || 0),
       0,
@@ -2115,6 +2110,10 @@ export default function WarehouseCheckInPage({
             carrierId: toNumberOrNull(row.carrierId),
             piecesInland,
             weightInland,
+            piecesOnReceipt: freightDetails.reduce(
+              (sum, item) => sum + Number(item.pieces || 0),
+              0,
+            ),
             reWeight,
             cubicMeter,
             proNumber: toValueOrNull(

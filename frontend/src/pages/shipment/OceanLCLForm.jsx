@@ -102,7 +102,7 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
         warehouses: rowData?.receipts?.length
             ? rowData.receipts.map((item) => ({
                 warehouseNo: { ...item, receiptNumber: item.receiptNumber || item.receiptId || '' },
-                pieces: item.pieces ?? item.piecesInland ?? '',
+                pieces: item.piecesOnReceipt ?? item.pieces ?? item.piecesInland ?? '',
                 weight: item.weight ?? item.reWeight ?? '',
             }))
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
@@ -191,7 +191,7 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
 
     const applyReceiptSelection = (index, receipt) => {
         setValue(`warehouses.${index}.warehouseNo`, receipt, { shouldDirty: true });
-        setValue(`warehouses.${index}.pieces`, receipt?.piecesInland ?? '', { shouldDirty: true });
+        setValue(`warehouses.${index}.pieces`, receipt?.piecesOnReceipt ?? receipt?.piecesInland ?? '', { shouldDirty: true });
         setValue(`warehouses.${index}.weight`, receipt?.reWeight ?? '', { shouldDirty: true });
         if (receipt) setWarehouseReceiptError(false);
     };
