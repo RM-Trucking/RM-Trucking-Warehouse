@@ -448,11 +448,22 @@ export async function addReceiptToShipment(conn: Connection, shipmentId: number,
                 return hasAllFreightScanned(freightInfos);
             })
         )).every(Boolean);
+        const shipmentTotals = shipmentReceiptsAfterAdd.reduce(
+            (totals, receipt: any) => ({
+                pieces: totals.pieces + (Number(receipt.piecesOnReceipt) || 0),
+                weight: totals.weight + (Number(receipt.reWeight) || 0),
+            }),
+            { pieces: 0, weight: 0 }
+        );
 
         await shipmentDB.updateShipment(
             conn,
             shipmentId,
-            { isScanned: allShipmentReceiptsScanned ? "Y" : "N" },
+            {
+                pieces: shipmentTotals.pieces,
+                weight: shipmentTotals.weight,
+                isScanned: allShipmentReceiptsScanned ? "Y" : "N",
+            },
             userId
         );
 
@@ -491,11 +502,22 @@ export async function removeReceiptFromShipment(conn: Connection, shipmentId: nu
                 return hasAllFreightScanned(freightInfos);
             })
         )).every(Boolean);
+        const shipmentTotals = shipmentReceiptsAfterRemove.reduce(
+            (totals, receipt: any) => ({
+                pieces: totals.pieces + (Number(receipt.piecesOnReceipt) || 0),
+                weight: totals.weight + (Number(receipt.reWeight) || 0),
+            }),
+            { pieces: 0, weight: 0 }
+        );
 
         await shipmentDB.updateShipment(
             conn,
             shipmentId,
-            { isScanned: allShipmentReceiptsScanned ? "Y" : "N" },
+            {
+                pieces: shipmentTotals.pieces,
+                weight: shipmentTotals.weight,
+                isScanned: allShipmentReceiptsScanned ? "Y" : "N",
+            },
             userId
         );
 
@@ -740,17 +762,15 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
             throwValidationError("Item already scanned");
         }
 
-        if (isOceanFcl) {
-            emitAuditLog({
-                receiptNumber: receipt.receiptNumber,
-                receiptId: Number(receipt.receiptId),
-                proNumber: receipt.proNumber || undefined,
-                userId,
-                status: "SCANNED",
-                description: `Freight ${freightBarcodeValue} was scanned for receipt ${receipt.receiptNumber} on shipment ${shipment.barcodeNumber ?? shipmentId}.`,
-                level: "INFO",
-            });
-        }
+        emitAuditLog({
+            receiptNumber: receipt.receiptNumber,
+            receiptId: Number(receipt.receiptId),
+            proNumber: receipt.proNumber || undefined,
+            userId,
+            status: "SCANNED",
+            description: `Freight ${freightBarcodeValue} was scanned for receipt ${receipt.receiptNumber} on shipment ${shipment.barcodeNumber ?? shipmentId}.`,
+            level: "INFO",
+        });
 
         const currentReceiptFullyScanned = !(await warehouseReceiptDB.hasUnscannedFreightByReceipt(conn, receipt.receiptId));
 
@@ -962,7 +982,7 @@ export async function signOffShipment(conn: Connection, shipmentId: number, user
         for (const rid of remainingReceiptIds) {
             const wh = await warehouseReceiptDB.getWarehouseReceiptById(conn, rid);
             if (wh) {
-                totalPieces += Number(wh.piecesInland) || 0;
+                totalPieces += Number(wh.piecesOnReceipt) || 0;
                 totalWeight += Number(wh.reWeight) || 0;
             }
         }
@@ -1071,6 +1091,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                 weightInland: originalReceipt.weightInland != null ? Number(originalReceipt.weightInland) : 0,
                 cubicMeter: originalReceipt.cubicMeter ?? null,
                 reWeight: originalReceipt.reWeight ?? null,
+                piecesOnReceipt: originalReceipt.piecesOnReceipt ?? null,
                 proNumber: originalReceipt.proNumber ?? null,
                 status: 'PREPARED',
                 entityId: entityId ?? null,
@@ -1164,9 +1185,11 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
             const newReceiptFreight = await warehouseReceiptDB.getFreightInfosByReceipt(conn, newReceiptId);
 
             const originalReWeight = remainingFreightForOriginal.reduce((sum, it) => sum + ((Number((it as any).pieces) || 0) * (Number((it as any).weight) || 0)), 0);
+            const originalPiecesOnReceipt = remainingFreightForOriginal.reduce((sum, it) => sum + (Number((it as any).pieces) || 0), 0);
             const originalCubicMeter = remainingFreightForOriginal.reduce((sum, it) => sum + (Number((it as any).cubicMeter) || 0), 0);
 
             const newReWeight = newReceiptFreight.reduce((sum, it) => sum + ((Number((it as any).pieces) || 0) * (Number((it as any).weight) || 0)), 0);
+            const newPiecesOnReceipt = newReceiptFreight.reduce((sum, it) => sum + (Number((it as any).pieces) || 0), 0);
             const newCubicMeter = newReceiptFreight.reduce((sum, it) => sum + (Number((it as any).cubicMeter) || 0), 0);
 
             const originalLabelCount = remainingFreightForOriginal.length;
@@ -1177,6 +1200,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                 reWeight: originalReWeight,
                 cubicMeter: originalCubicMeter,
                 labelCount: originalLabelCount,
+                piecesOnReceipt: originalPiecesOnReceipt,
                 status: remainingFreightForOriginal.length > 0 && remainingFreightForOriginal.every(fi => String((fi as any).isScanned).toUpperCase() === 'Y') ? 'SCANNED' : 'PREPARED',
                 updatedBy: userId,
             });
@@ -1200,6 +1224,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                 reWeight: newReWeight,
                 cubicMeter: newCubicMeter,
                 labelCount: newLabelCount,
+                piecesOnReceipt: newPiecesOnReceipt,
                 status: newReceiptFreight.length > 0 && newReceiptFreight.every(fi => String((fi as any).isScanned).toUpperCase() === 'Y') ? 'SCANNED' : 'PREPARED',
                 updatedBy: userId,
             });

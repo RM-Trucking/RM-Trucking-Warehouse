@@ -123,10 +123,11 @@ export async function createWarehouseReceipt(
                 "receivedBy",
                 "location",
                 "reWeight",
+                "piecesOnReceipt",
                 "approvalStatus",
                 "parentReceipt"
             )
-            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -172,6 +173,7 @@ export async function createWarehouseReceipt(
         receipt.receivedBy ?? '',
         receipt.location ?? '',
         receipt.reWeight ?? 0,
+        receipt.piecesOnReceipt ?? 0,
         receipt.approvalStatus ?? null,
         receipt.parentReceipt !== undefined && receipt.parentReceipt !== null ? Number(receipt.parentReceipt) : null
     ];
@@ -284,7 +286,7 @@ export async function getWarehouseReceiptForShipment(
 ): Promise<{ receiptId: number; receiptNumber: number; proNumber: string; carrierName: string; customerName: string; stationName: string; verificationId: number; customerId: number; stationId: number; carrierId: number; piecesInland: number; reWeight: number; createdAt: Date }[] | null> {
 
     let query = `
-        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight", "wh"."destination", "wh"."hazMat", "wh"."createdAt"
+        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesOnReceipt", "wh"."reWeight", "wh"."destination", "wh"."hazMat", "wh"."createdAt"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
@@ -799,6 +801,12 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         fields.push(`"reWeight" = ?`);
         params.push(updates.reWeight !== null && !isNaN(Number(updates.reWeight)) ? Number(updates.reWeight) : null);
     }
+
+    if (updates.piecesOnReceipt !== undefined) {
+        fields.push(`"piecesOnReceipt" = ?`);
+        params.push(updates.piecesOnReceipt !== null && !isNaN(Number(updates.piecesOnReceipt)) ? Number(updates.piecesOnReceipt) : null);
+    }
+
     if (updates.status !== undefined) {
         fields.push(`"status" = ?`);
         params.push(updates.status);

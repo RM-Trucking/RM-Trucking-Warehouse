@@ -6,6 +6,18 @@ const MAX_IMAGE_SIZE = 500 * 1024; // 500KB per image
 const REQUEST_TIMEOUT = 10000; // 10 seconds timeout
 const MAX_CONCURRENT_DOWNLOADS = 10; // limit simultaneous image fetches
 
+export function roundDimensionValue(value: number): number {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    if (Number.isInteger(value)) {
+        return value;
+    }
+
+    return value < 1 ? 1 : Math.round(value);
+}
+
 // Helper function to fetch with timeout
 function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = REQUEST_TIMEOUT): Promise<Response> {
     const controller = new AbortController();
@@ -162,10 +174,10 @@ export async function getDimentionsFromCargoAPI(
         const imagesBase64 = await fetchImagesWithLimit(relevantImages, baseUrl, cargoAPI.apiKey);
 
         return {
-            length: dimensionNode.Info?.Dimensions?.Length || 0,
-            width: dimensionNode.Info?.Dimensions?.Width || 0,
-            height: dimensionNode.Info?.Dimensions?.Height || 0,
-            weight: dimensionNode.Info?.Dimensions?.Weight?.Net || 0,
+            length: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Length) || 0),
+            width: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Width) || 0),
+            height: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Height) || 0),
+            weight: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Weight?.Net) || 0),
             images: imagesBase64
         };
     } catch (error) {
