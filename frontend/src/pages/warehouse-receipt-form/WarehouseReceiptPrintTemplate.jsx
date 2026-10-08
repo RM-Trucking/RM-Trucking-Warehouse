@@ -172,13 +172,13 @@ function ReceiptPage({ receipt, rows, allRows, pageIndex, totalPages }) {
               <InfoRow label="CARRIER" value={receipt.carrierName || receipt.carrier} />
               <InfoRow label="PRO NUMBER" value={receipt.proNumber} />
               <InfoRow label="INVOICE NUMBER" value={receipt.invoiceNumber} />
-              <InfoRow label="PO NUMBER" value={receipt.poNumber} />
               <InfoRow label="CUSTOMER REF NO" value={receipt.customerRefNumber} />
+              <InfoRow label="PACKAGE ID" value={receipt.packageId} />
             </Box>
             <Box>
-              <InfoRow label="PACKAGE ID" value={receipt.packageId} />
               <InfoRow label="PIECES (Customer Info)" value={totalPieces} />
               <InfoRow label="WEIGHT (Customer Info)" value={formatDecimalValue(totalWeight)} />
+              <InfoRow label="PIECES ON RECEIPT" value={receipt.piecesOnReceipt ?? allRows.reduce((sum, item) => sum + (Number(item.pieces) || 0), 0)} />
               <InfoRow label="RE WEIGHT" value={formatDecimalValue(receipt.reWeight ?? receipt.reweight)} />
               <InfoRow label="CBM (m³)" value={formatDecimalValue(totalCbm)} />
             </Box>
