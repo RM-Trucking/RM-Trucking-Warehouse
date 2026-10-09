@@ -66,6 +66,11 @@ BAD_FREIGHT_IMAGE_PATH=/home/warehouse-app-docs/bad-freight-images
 WAREHOUSE_IMAGE_PATH=/home/warehouse-app-docs/warehouse-images
 WAREHOUSE_DOC_PATH=/home/warehouse-app-docs/warehouse-docs
 TEMP_RECEIPT_OUTPUT=/home/warehouse-app-docs/temp-receipt-output
+PICKUP_EDI_OUTPUT=/home/FTP/PICKUPDATA/REQUEST
+PICKUP_EDI_RESPONSE =/home/FTP/PICKUPDATA/RESPONSE
+RECEIPT_EDI_OUTPUT=/home/FTP/RECEIPT/REQUEST/EDI
+RECEIPT_PDF_OUTPUT=/home/FTP/RECEIPT/REQUEST/PDF
+RECEIPT_INVOICE_RESPONSE=/home/FTP/RECEIPT/RESPONSE
 ENVFILE
 
 # Remove existing zip on remote

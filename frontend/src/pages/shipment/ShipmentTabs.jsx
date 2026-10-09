@@ -322,7 +322,7 @@ const handleClosePickupForm = () => {
         },
         {
             field: 'billNumber',
-            headerName: currentTab === 'active' ? 'Air Bill No' : 'Bill Number',
+            headerName: currentTab === 'incomplete' ? 'Bill Number' : 'Air Bill No',
             flex: 1,
             minWidth: 150,
             headerAlign: 'left',
@@ -398,7 +398,7 @@ const handleClosePickupForm = () => {
                         <IconButton
                             size="small"
                             disabled={params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y'
-                                && (currentTab === 'incomplete' || ['OCEAN_FCL', 'FCL'].includes(params.row.shipmentType) || pickupLoadingId !== null))}
+                                && (['inactive', 'incomplete'].includes(currentTab) || ['OCEAN_LCL', 'LCL', 'OCEAN_FCL', 'FCL'].includes(params.row.shipmentType) || pickupLoadingId !== null))}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (params.row.pickupEntry === 'Y') return;
@@ -437,9 +437,9 @@ const handleClosePickupForm = () => {
         ? airColumns
             .filter((column) => column.field !== 'billNumber')
             .flatMap((column) => column.field === 'station' ? [column, destinationColumn] : [column])
-        : currentTab === 'active'
-            ? airColumns
-            : [...baseColumns, actionColumn];
+        : currentTab === 'inactive'
+            ? airColumns.filter((column) => column.field !== 'billNumber')
+            : airColumns;
 
     return (
         <>
@@ -492,7 +492,7 @@ const handleClosePickupForm = () => {
                 </Box>
                 <Divider sx={{ borderColor: 'rgba(143, 143, 143, 1)', mb: 2 }} />
 
-                {(currentTab === 'active' || currentTab === 'incomplete') && (
+                {['active', 'inactive', 'incomplete'].includes(currentTab) && (
                     <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
                         {statusFilterOptions.map((status) => (
                             <FormControlLabel
@@ -512,7 +512,7 @@ const handleClosePickupForm = () => {
                     </Box>
                 )}
 
-                <Box sx={{ width: "100%", flex: 1, mt: currentTab === 'inactive' ? 2 : 0 }}>
+                <Box sx={{ width: "100%", flex: 1 }}>
                     <DataGrid
                         rows={shipmentData}
                         columns={columns}

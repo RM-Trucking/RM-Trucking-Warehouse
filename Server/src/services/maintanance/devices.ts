@@ -6,15 +6,16 @@ const MAX_IMAGE_SIZE = 500 * 1024; // 500KB per image
 const REQUEST_TIMEOUT = 10000; // 10 seconds timeout
 const MAX_CONCURRENT_DOWNLOADS = 10; // limit simultaneous image fetches
 
-// Filter patterns for relevant images
-const RELEVANT_IMAGE_PATTERNS = [
-    /scale-\d+/i,  // Scale-1, Scale-2, Scale-3, etc.
-    /-marked/i      // Any image ending with -marked (Femto-0-marked, etc.)
-];
+export function roundDimensionValue(value: number): number {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
 
-// Helper to check if image path is relevant
-function isRelevantImage(imagePath: string): boolean {
-    return RELEVANT_IMAGE_PATTERNS.some(pattern => pattern.test(imagePath));
+    if (Number.isInteger(value)) {
+        return value;
+    }
+
+    return value < 1 ? 1 : Math.round(value);
 }
 
 // Helper function to fetch with timeout
@@ -162,16 +163,21 @@ export async function getDimentionsFromCargoAPI(
                 : [imagesNode.Path];
         }
 
-        const relevantImages = imagePaths.filter(isRelevantImage);
+        const scaleImages = imagePaths.filter(imagePath => /scale/i.test(imagePath)).slice(0, 2);
+        const markedImage = imagePaths.find(imagePath => /marked/i.test(imagePath));
+        const relevantImages = [
+            ...scaleImages,
+            ...(markedImage && !scaleImages.includes(markedImage) ? [markedImage] : [])
+        ];
         console.log(`Filtered ${imagePaths.length} images down to ${relevantImages.length} relevant images`);
 
         const imagesBase64 = await fetchImagesWithLimit(relevantImages, baseUrl, cargoAPI.apiKey);
 
         return {
-            length: dimensionNode.Info?.Dimensions?.Length || 0,
-            width: dimensionNode.Info?.Dimensions?.Width || 0,
-            height: dimensionNode.Info?.Dimensions?.Height || 0,
-            weight: dimensionNode.Info?.Dimensions?.Weight?.Net || 0,
+            length: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Length) || 0),
+            width: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Width) || 0),
+            height: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Height) || 0),
+            weight: roundDimensionValue(Number(dimensionNode.Info?.Dimensions?.Weight?.Net) || 0),
             images: imagesBase64
         };
     } catch (error) {

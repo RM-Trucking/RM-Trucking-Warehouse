@@ -2135,12 +2135,10 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         customerRefNumber?: string;
     }
 ) {
-
-
     const { data: receipts } = await warehouseReceiptDB.listWarehouseReceipts(
         conn,
-        undefined, // page
-        undefined, // pageSize
+        undefined,
+        undefined,
         status,
         approvalStatus,
         receiptNumber,
@@ -2152,11 +2150,54 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         throw new Error("No Record Found");
     }
 
-    // Create workbook and worksheet
+    const receiptRows = await Promise.all(
+        receipts.map(async (receipt: any) => {
+            const freightInformation = receipt.receiptId
+                ? await warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId))
+                : [];
+
+            const dims = Array.isArray(freightInformation) && freightInformation.length > 0
+                ? freightInformation
+                : [null];
+
+            return dims.map((dim: any, index: number) => ({
+                receiptNumber: index === 0 ? receipt.receiptNumber ?? "" : "",
+                customerName: index === 0 ? receipt.customerName ?? "" : "",
+                stationName: index === 0 ? receipt.stationName ?? "" : "",
+                carrierName: index === 0 ? receipt.carrierName ?? "" : "",
+                location: index === 0 ? receipt.location ?? "" : "",
+                proNumber: index === 0 ? receipt.proNumber ?? "" : "",
+                destination: index === 0 ? receipt.destination ?? "" : "",
+                createdDate: index === 0 && receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString() : "",
+                status: index === 0 ? receipt.status ?? "" : "",
+                idVerification: index === 0 ? receipt.verificationId ?? "" : "",
+                packageId: index === 0 ? receipt.packageId ?? "" : "",
+                customerRefNumber: index === 0 ? receipt.customerRefNumber ?? "" : "",
+                hazmat: index === 0 ? (() => {
+                    const value = receipt.hazMat ?? receipt.hazmat ?? "";
+                    if (typeof value === "string") {
+                        const normalized = value.trim().toUpperCase();
+                        if (normalized === "Y") return "Yes";
+                        if (normalized === "N") return "No";
+                        return value;
+                    }
+                    return value ?? "";
+                })() : "",
+                pieces: dim?.pieces ?? "",
+                type: dim?.type ?? "",
+                length: dim?.length ?? "",
+                width: dim?.width ?? "",
+                height: dim?.height ?? "",
+                weight: dim?.weight ?? "",
+            }));
+        })
+    );
+
+    const rows = receiptRows.flat();
+
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Warehouse Receipts");
 
-    // Define columns
     worksheet.columns = [
         { header: "Warehouse Receipt ID", key: "receiptNumber", width: 20 },
         { header: "Customer Name", key: "customerName", width: 30 },
@@ -2170,30 +2211,19 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         { header: "ID Verification Number", key: "idVerification", width: 25 },
         { header: "Package ID", key: "packageId", width: 25 },
         { header: "Customer Ref Number", key: "customerRefNumber", width: 25 },
+        { header: "Hazmat", key: "hazmat", width: 15 },
+        { header: "Pieces", key: "pieces", width: 15 },
+        { header: "Type", key: "type", width: 15 },
+        { header: "Length", key: "length", width: 15 },
+        { header: "Width", key: "width", width: 15 },
+        { header: "Height", key: "height", width: 15 },
+        { header: "Weight", key: "weight", width: 15 },
     ];
-
-    // Map receipts into rows
-    const rows = receipts.map((r: any) => ({
-        receiptNumber: r.receiptNumber || "",
-        customerName: r.customerName || "",
-        stationName: r.stationName || "",
-        carrierName: r.carrierName || "",
-        location: r.location || "",
-        proNumber: r.proNumber || "",
-        destination: r.destination || "",
-        createdDate: r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "",
-        status: r.status || "",
-        idVerification: r.verificationId || "",
-        packageId: r.packageId || "",
-        customerRefNumber: r.customerRefNumber || "",
-    }));
 
     worksheet.addRows(rows);
 
-    // Style header row
     worksheet.getRow(1).font = { bold: true };
 
-    // Add borders to all cells
     worksheet.eachRow({ includeEmpty: true }, (row) => {
         row.eachCell({ includeEmpty: true }, (cell) => {
             cell.border = {
@@ -2254,17 +2284,25 @@ export async function sendWarehouseReceiptToCustomEmailService(
         ? receiptWithDetails.status as any
         : undefined;
 
-    const attachments = [pdfFilePath];
+    const imageAttachmentPath = buildReceiptEmailAttachmentPath(receiptWithDetails, tempReceiptOutPath);
+    const attachmentPaths = imageAttachmentPath
+        ? imageAttachmentPath.split(";").map((value) => value.trim()).filter(Boolean)
+        : [];
+
+    if (pdfFilePath && !attachmentPaths.includes(pdfFilePath)) {
+        attachmentPaths.push(pdfFilePath);
+    }
 
     if (Array.isArray(documents) && documents.length > 0) {
         const documentsOutPath = ensureUploadDirExists(process.env.WAREHOUSE_DOC_PATH);
-        const fullDocPaths = documents.map(
-            (doc: any) => path.join(documentsOutPath, doc.filePath)
-        );
-        attachments.push(...fullDocPaths);
+        const fullDocPaths = documents
+            .map((doc: any) => (doc?.filePath ? path.join(documentsOutPath, doc.filePath) : null))
+            .filter((docPath): docPath is string => Boolean(docPath));
+
+        attachmentPaths.push(...fullDocPaths);
     }
 
-    const attachmentString = attachments.join(";");
+    const attachmentString = [...new Set(attachmentPaths)].join(";");
 
     for (const emailRecipient of emails) {
         // emitEmail will queue email notification asynchronously

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Autocomplete, Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
-  DialogContent, useMediaQuery, Alert, CircularProgress, Snackbar, TextField, MenuItem
+  DialogContent, useMediaQuery, Alert, CircularProgress, TextField, MenuItem
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -98,7 +98,6 @@ function ShipmentFormPageContent() {
   const [showOceanFCLForm, setShowOceanFCLForm] = useState(false);
   const [viewShipment, setViewShipment] = useState(null);
   const [viewShipmentError, setViewShipmentError] = useState('');
-  const [comingSoonMessage, setComingSoonMessage] = useState('');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [shipmentFilters, setShipmentFilters] = useState(emptyShipmentFilters);
   const [appliedShipmentFilters, setAppliedShipmentFilters] = useState(emptyShipmentFilters);
@@ -214,6 +213,11 @@ function ShipmentFormPageContent() {
     setShowOceanLCLForm(false);
   };
 
+  const handleOpenOceanLCLForm = () => {
+    setOpenConfirmDialog(false);
+    setShowOceanLCLForm(true);
+  };
+
   const handleCloseOceanFCLForm = () => {
     setSelectedShipmentType('OCEAN_FCL');
     setShowOceanFCLForm(false);
@@ -318,7 +322,7 @@ function ShipmentFormPageContent() {
       >
         {viewShipment?.shipmentType === 'AIR' ? (
           <NewAirShipmentForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
-        ) : viewShipment?.shipmentType === 'LCL' ? (
+        ) : ['OCEAN_LCL', 'LCL'].includes(viewShipment?.shipmentType) ? (
           <OceanLCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
         ) : ['OCEAN_FCL', 'FCL'].includes(viewShipment?.shipmentType) ? (
           <OceanFCLForm handleClose={handleCloseViewShipment} rowData={viewShipment} viewMode />
@@ -397,9 +401,8 @@ function ShipmentFormPageContent() {
                 <Button
                   variant="contained"
                   size="small"
-                  aria-disabled="true"
-                  sx={{ ...btnStyle, opacity: 0.5, cursor: 'not-allowed' }}
-                  onClick={() => setComingSoonMessage('LCL Shipment Form will be available soon.')}
+                  sx={btnStyle}
+                  onClick={handleOpenOceanLCLForm}
                 >
                   LCL Shipment Form
                 </Button>
@@ -415,18 +418,6 @@ function ShipmentFormPageContent() {
               </Stack>
             </DialogContent>
           </Dialog>
-          <Snackbar
-            open={Boolean(comingSoonMessage)}
-            autoHideDuration={4000}
-            onClose={(event, reason) => {
-              if (reason !== 'clickaway') setComingSoonMessage('');
-            }}
-            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-          >
-            <Alert severity="info" variant="filled" onClose={() => setComingSoonMessage('')}>
-              {comingSoonMessage}
-            </Alert>
-          </Snackbar>
           </>
         )}
       </ErrorBoundary>

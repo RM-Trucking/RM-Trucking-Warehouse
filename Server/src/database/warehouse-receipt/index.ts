@@ -123,10 +123,11 @@ export async function createWarehouseReceipt(
                 "receivedBy",
                 "location",
                 "reWeight",
+                "piecesOnReceipt",
                 "approvalStatus",
                 "parentReceipt"
             )
-            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         )
     `;
 
@@ -172,6 +173,7 @@ export async function createWarehouseReceipt(
         receipt.receivedBy ?? '',
         receipt.location ?? '',
         receipt.reWeight ?? 0,
+        receipt.piecesOnReceipt ?? 0,
         receipt.approvalStatus ?? null,
         receipt.parentReceipt !== undefined && receipt.parentReceipt !== null ? Number(receipt.parentReceipt) : null
     ];
@@ -284,7 +286,7 @@ export async function getWarehouseReceiptForShipment(
 ): Promise<{ receiptId: number; receiptNumber: number; proNumber: string; carrierName: string; customerName: string; stationName: string; verificationId: number; customerId: number; stationId: number; carrierId: number; piecesInland: number; reWeight: number; createdAt: Date }[] | null> {
 
     let query = `
-        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesInland", "wh"."reWeight", "wh"."destination", "wh"."hazMat", "wh"."createdAt"
+        SELECT "wh"."receiptId", "wh"."receiptNumber", "wh"."proNumber", "c"."carrierName", "cust"."customerName", "s"."stationName", "wh"."verificationId", "wh"."customerId", "wh"."stationId", "wh"."carrierId", "wh"."piecesOnReceipt", "wh"."reWeight", "wh"."destination", "wh"."hazMat", "wh"."createdAt"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
@@ -636,6 +638,58 @@ export async function listWarehouseReceipts(
     return { data: receipts, total };
 }
 
+export interface EligibleWarehouseReceiptInvoiceRow {
+    receiptId: number | bigint;
+    receiptNumber: number | bigint;
+    status: string;
+    accountOnHold: 'Y' | 'N';
+    sendToTellSystem: 'Y' | 'N';
+}
+
+export async function getEligibleWarehouseReceiptInvoiceRows(
+    conn: Connection,
+    options: {
+        limit?: number;
+        includeReceiptIds?: number[];
+        excludeReceiptIds?: number[];
+    } = {}
+): Promise<EligibleWarehouseReceiptInvoiceRow[]> {
+    const limit = Number(options.limit);
+    const hasLimit = Number.isInteger(limit) && limit > 0;
+    let query = `
+        SELECT DISTINCT wr."receiptId", wr."receiptNumber", wr."status",
+               wr."accountOnHold", wr."sendToTellSystem"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        WHERE wr."status" = 'SHIPPED'
+          AND wr."accountOnHold" = 'N'
+          AND wr."sendToTellSystem" = 'N'
+    `;
+    const params: any[] = [];
+
+    if ((options.includeReceiptIds ?? []).length > 0) {
+        const includeReceiptIds = options.includeReceiptIds ?? [];
+        const placeholders = includeReceiptIds.map(() => '?').join(', ');
+        params.push(...includeReceiptIds);
+        query += ` AND wr."receiptId" IN (${placeholders})`;
+    }
+
+    if ((options.excludeReceiptIds ?? []).length > 0) {
+        const excludeReceiptIds = options.excludeReceiptIds ?? [];
+        const placeholders = excludeReceiptIds.map(() => '?').join(', ');
+        params.push(...excludeReceiptIds);
+        query += ` AND wr."receiptId" NOT IN (${placeholders})`;
+    }
+
+    query += ` ORDER BY wr."receiptId" ASC`;
+
+    if (hasLimit) {
+        query += ` LIMIT ?`;
+        params.push(limit);
+    }
+
+    return await conn.query(query, params) as EligibleWarehouseReceiptInvoiceRow[];
+}
+
 export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number, ready: number, pending: number }> {
     let activeCountQuery = `
     SELECT COUNT(*) as "total" 
@@ -799,6 +853,12 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
         fields.push(`"reWeight" = ?`);
         params.push(updates.reWeight !== null && !isNaN(Number(updates.reWeight)) ? Number(updates.reWeight) : null);
     }
+
+    if (updates.piecesOnReceipt !== undefined) {
+        fields.push(`"piecesOnReceipt" = ?`);
+        params.push(updates.piecesOnReceipt !== null && !isNaN(Number(updates.piecesOnReceipt)) ? Number(updates.piecesOnReceipt) : null);
+    }
+
     if (updates.status !== undefined) {
         fields.push(`"status" = ?`);
         params.push(updates.status);

@@ -296,6 +296,23 @@ export async function countShipments(
     return parseInt(result[0].total, 10);
 }
 
+export async function getCountOfShipments(conn: Connection): Promise<{ air: number; fcl: number; lcl: number }> {
+    const queries = [
+        { key: "air", query: `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE UPPER(COALESCE("shipmentType", '')) = 'AIR'` },
+        { key: "fcl", query: `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE UPPER(COALESCE("shipmentType", '')) = 'OCEAN_FCL'` },
+        { key: "lcl", query: `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE UPPER(COALESCE("shipmentType", '')) = 'OCEAN_LCL'` },
+    ] as const;
+
+    const results = await Promise.all(
+        queries.map(async ({ key, query }) => {
+            const rows = await conn.query(query) as { total: number | bigint }[];
+            return [key, Number(rows[0]?.total ?? 0)] as const;
+        })
+    );
+
+    return Object.fromEntries(results) as { air: number; fcl: number; lcl: number };
+}
+
 export async function replaceContainers(conn: Connection, shipmentId: number, containers: Array<{ container: string }>): Promise<void> {
     await conn.query(`DELETE FROM ${SCHEMA}."Warehouse_Shipment_Containers" WHERE "shipmentId" = ?`, [shipmentId]);
 
@@ -347,7 +364,7 @@ export async function getContainersByShipmentId(conn: Connection, shipmentId: nu
 }
 
 export async function getReceiptsByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
-    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."parentReceipt", wr."status", wr."piecesInland", wr."weightInland", wr."reWeight", wr."location"
+    const query = `SELECT wsr."shipmentReceiptId", wsr."shipmentId", wsr."receiptId" , wr."receiptNumber", wr."parentReceipt", wr."status", wr."piecesOnReceipt", wr."weightInland", wr."reWeight", wr."location", wr."destination"
     FROM ${SCHEMA}."Warehouse_Shipment_Receipts" as wsr 
     LEFT JOIN ${SCHEMA}."Warehouse_Receipt" as wr ON wsr."receiptId" = wr."receiptId"
     WHERE wsr."shipmentId" = ?`;

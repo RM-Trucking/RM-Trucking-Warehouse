@@ -134,7 +134,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         warehouses: rowData?.receipts?.length
             ? rowData.receipts.map((item) => ({
                 warehouseNo: { ...item, receiptNumber: item.receiptNumber || item.receiptId || '' },
-                pieces: item.pieces ?? item.piecesInland ?? '',
+                pieces: item.piecesOnReceipt ?? item.pieces ?? item.piecesInland ?? '',
                 weight: item.weight ?? item.reWeight ?? '',
             }))
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
@@ -278,7 +278,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
     const applyReceiptSelection = (index, receipt) => {
         setValue(`warehouses.${index}.warehouseNo`, receipt, { shouldDirty: true });
-        setValue(`warehouses.${index}.pieces`, receipt?.piecesInland ?? '', { shouldDirty: true });
+        setValue(`warehouses.${index}.pieces`, receipt?.piecesOnReceipt ?? receipt?.piecesInland ?? '', { shouldDirty: true });
         setValue(`warehouses.${index}.weight`, receipt?.reWeight ?? '', { shouldDirty: true });
         if (receipt) setWarehouseReceiptError(false);
     };
@@ -552,7 +552,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         const existingRowsByReceiptId = new Map(existingRows.map((item) => [String(item.warehouseNo?.receiptId), item]));
         const selectedRows = selectedReceipts.map((receipt) => existingRowsByReceiptId.get(String(receipt.receiptId)) || ({
             warehouseNo: receipt,
-            pieces: receipt.piecesInland ?? '',
+            pieces: receipt.piecesOnReceipt ?? receipt.piecesInland ?? '',
             weight: receipt.reWeight ?? '',
         }));
         pendingProRowsRef.current = {
@@ -1457,13 +1457,13 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
                             </TextField>
                             <TextField select variant="standard" label="Warehouse Receipt No" value={warehouseFilter}
                                 onChange={(event) => setWarehouseFilter(event.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 170 }}>
+                                slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }} sx={{ width: 170 }}>
                                 <MenuItem value="">All</MenuItem>
                                 {[...new Set(detailOptions.map((item) => String(item.receiptNumber)))].map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
                             </TextField>
                             <TextField select variant="standard" label="Haz Mat" value={hazmatFilter}
                                 onChange={(event) => setHazmatFilter(event.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }} sx={{ width: 125 }}>
+                                slotProps={{ inputLabel: { shrink: true }, select: { displayEmpty: true } }} sx={{ width: 125 }}>
                                 <MenuItem value="">All</MenuItem>
                                 <MenuItem value="Yes">Hazmat Only</MenuItem>
                                 <MenuItem value="No">No Hazmat</MenuItem>

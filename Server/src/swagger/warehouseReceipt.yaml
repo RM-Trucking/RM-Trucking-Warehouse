@@ -139,6 +139,7 @@ paths:
                     verificationId: 100000033
                     carrierId: 52
                     piecesInland: 50
+                    piecesOnReceipt: 50
                     weightInland: 5000
                     reWeight: null
                     proNumber: "PRO1234511"
@@ -194,6 +195,7 @@ paths:
                     verificationId: 100000033
                     carrierId: 52
                     piecesInland: 40
+                    piecesOnReceipt: 40
                     weightInland: 4200
                     reWeight: null
                     proNumber: "PRO1234511"
@@ -477,6 +479,7 @@ paths:
                 carrierId: 52
                 proNumber: "PRO-2026-001"
                 piecesInland: 50
+                piecesOnReceipt: 50
                 weightInland: 5000
                 status: "INITIATE"
                 entityId: 1
@@ -2251,6 +2254,11 @@ components:
               type: integer
               nullable: true
               example: 50
+            piecesOnReceipt:
+              type: integer
+              nullable: true
+              example: 50
+              description: Number of pieces received on the receipt
             weightInland:
               type: number
               nullable: true
@@ -2384,6 +2392,11 @@ components:
           type: integer
           nullable: true
           example: 50
+        piecesOnReceipt:
+          type: integer
+          nullable: true
+          example: 50
+          description: Number of pieces received on the receipt
         weightInland:
           type: integer
           nullable: true
@@ -2638,6 +2651,11 @@ components:
         piecesInland:
           type: integer
           example: 50
+        piecesOnReceipt:
+          type: integer
+          nullable: true
+          example: 50
+          description: Number of pieces received on the receipt
         weightInland:
           type: integer
           example: 5000
@@ -2914,6 +2932,11 @@ components:
                     type: integer
                     nullable: true
                     example: 50
+                  piecesOnReceipt:
+                    type: integer
+                    nullable: true
+                    example: 50
+                    description: Number of pieces received on the receipt
                   weightInland:
                     type: number
                     nullable: true

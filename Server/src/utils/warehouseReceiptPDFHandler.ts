@@ -605,10 +605,10 @@ export async function createWarehouseReceiptPDF(
         // ✅ DATA ROWS (ROWS 2–6 ✅)
         // =====================================================
         const inlData = [
-            ['CARRIER', data.carrierName, 'PACKAGE ID', data.packageId],
-            ['PRO NUMBER', data.proNumber, 'PIECES (Customer Info)', data.piecesInland],
-            ['INVOICE NUMBER', data.invoiceNumber, 'WEIGHT (Customer Info)', data.weightInland],
-            ['PO NUMBER', data.poNumber, 'RE WEIGHT', data.reWeight],
+            ['CARRIER', data.carrierName, 'PIECES (Customer Info)', data.piecesInland],
+            ['PRO NUMBER', data.proNumber, 'WEIGHT (Customer Info)', data.weightInland],
+            ['INVOICE NUMBER', data.invoiceNumber, 'RE WEIGHT', data.reWeight],
+            ['PACKAGE ID', data.packageId, 'PIECES ON RECEIPT', data.piecesOnReceipt],
             ['CUSTOMER REF NUMBER', data.customerRefNumber, 'CBM (m³)', data.cubicMeter],
         ];
 
@@ -1367,6 +1367,145 @@ export async function createWarehouseReceiptPDF(
 
     }
 
+    if (rating) {
+        const rateInformation = data.rateInformation;
+        if (!rateInformation) {
+            throw new Error('Rating requires rateInformation');
+        }
+
+        let page = pdfDoc.addPage([595, 842]);
+        const { width, height } = page.getSize();
+        page.drawText('Rating Information', { x: 250, y: height - 30, size: 12 });
+
+        const fontSize = 10;
+        const headers = ['Pieces', 'Type', 'Pieces × L × W × H / dimFactor (Dimensional Weight)', 'Actual Weight'];
+        const columnWidths = {
+            pieces: 50,
+            type: 80,
+            dimensions: 300,
+            weight: 80,
+        };
+
+        const startX = 50;
+        let x = startX;
+        let y = height - 50;
+        const rowHeight = 20;
+
+        headers.forEach((header, index) => {
+            const colWidth = Object.values(columnWidths)[index];
+
+            page.drawText(header, {
+                x: x + 5,
+                y: y - 15,
+                size: fontSize,
+            });
+
+            page.drawRectangle({
+                x,
+                y,
+                width: colWidth,
+                height: -rowHeight,
+                borderWidth: 1,
+                borderColor: rgb(169 / 255, 169 / 255, 169 / 255),
+            });
+
+            x += colWidth;
+        });
+
+        const freightRows = data.freightInformation || [];
+        const dimFactor = Number(rateInformation.dimFactor ?? data.dimFactor ?? 0);
+        const totalPieces = freightRows.reduce((sum: number, item: any) => sum + Number(item.pieces || 0), 0);
+        const totalDimWeight = Number(rateInformation.totalDimensionalWeight ?? 0);
+        const totalActualWeight = Number(rateInformation.totalActualWeight ?? 0);
+        const finalRate = Number(rateInformation.finalRate ?? 0);
+        const baseRate = Number(rateInformation.baseRatePerPound ?? (Number(rateInformation.baseRate ?? 0) / 100));
+        const minRate = Number(rateInformation.minRate ?? 0);
+        const maxRate = Number(rateInformation.maxRate ?? 0);
+        const calculationBasis = rateInformation.rateCalculatedBy || (totalDimWeight > totalActualWeight ? 'DIMENSIONAL_WEIGHT' : 'ACTUAL_WEIGHT');
+
+        y -= rowHeight;
+        freightRows.forEach((item: any) => {
+            x = startX;
+            const pieces = Number(item.pieces || 0);
+            const length = Number(item.length || 0);
+            const width = Number(item.width || 0);
+            const height = Number(item.height || 0);
+            const itemWeight = Number(item.weight || 0);
+            const itemDimWeight = dimFactor > 0 ? Math.round((pieces * length * width * height) / dimFactor) : 0;
+            const dimensionsText = `${pieces} × ${length} × ${width} × ${height} / ${dimFactor} = ${itemDimWeight}`;
+            const rowData = [pieces.toString(), item.type || '', dimensionsText, `${itemWeight} lbs`];
+
+            rowData.forEach((text, index) => {
+                const colWidth = Object.values(columnWidths)[index];
+
+                page.drawText(String(text), {
+                    x: x + 5,
+                    y: y - 15,
+                    size: fontSize,
+                });
+
+                page.drawRectangle({
+                    x,
+                    y,
+                    width: colWidth,
+                    height: -rowHeight,
+                    borderWidth: 1,
+                    borderColor: rgb(169 / 255, 169 / 255, 169 / 255),
+                });
+
+                x += colWidth;
+            });
+
+            y -= rowHeight;
+        });
+
+        x = startX;
+        const totalRowData = ['Total', '', `${totalDimWeight} lbs`, `${totalActualWeight} lbs`];
+        totalRowData.forEach((text, index) => {
+            const colWidth = Object.values(columnWidths)[index];
+
+            page.drawText(String(text), {
+                x: x + 5,
+                y: y - 15,
+                size: fontSize,
+            });
+
+            page.drawRectangle({
+                x,
+                y,
+                width: colWidth,
+                height: -rowHeight,
+                borderWidth: 1,
+                borderColor: rgb(169 / 255, 169 / 255, 169 / 255),
+            });
+
+            x += colWidth;
+        });
+
+        y -= rowHeight;
+        const calculationLabel = calculationBasis === 'DIMENSIONAL_WEIGHT' ? 'Dimensional Weight' : 'Actual Weight';
+
+        page.drawText(`Total Estimated Cost - $${finalRate.toFixed(2)} (Calculated based on ${calculationLabel})`, {
+            x: startX,
+            y: y - 30,
+            size: fontSize,
+            color: rgb(0, 0, 0),
+        });
+
+        page.drawLine({
+            start: { x: startX, y: y - 37 },
+            end: { x: startX + 510, y: y - 37 },
+            thickness: 1,
+            color: rgb(0, 0, 0),
+        });
+
+        page.drawText(`Calculated Based on $${baseRate.toFixed(2)} per lb. and minimum and maximum charges are $${minRate.toFixed(2)} and $${maxRate.toFixed(2)} respectively`, {
+            x: startX,
+            y: y - 60,
+            size: fontSize,
+            color: rgb(0, 0, 0),
+        });
+    }
 
     // ---------------------------
     // ✅ SAVE

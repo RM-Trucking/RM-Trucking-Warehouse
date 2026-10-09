@@ -10,6 +10,8 @@ import routes from './routes';
 import cors from 'cors';
 import { initializeDB2Pool, closeDB2Pool, getSchema } from './config/db2';
 import { setupStatusEventHandlers, setupAuditLogEventHandlers, emitEmail } from './utils/email';
+import { runWarehouseReceiptInvoiceBatch } from './utils/warehouseReceiptInvoiceBatch';
+import cron from 'node-cron';
 
 
 // ============================================================================
@@ -200,27 +202,6 @@ app.get('/api', (req: Request, res: Response) => {
     });
 });
 
-
-//Test Api
-
-// app.get('/api/permissions', async (req: Request, res: Response, next: NextFunction) => {
-//     try {
-//         const conn = await db();
-//         const sql = `
-//             SELECT
-//                 "permissionId",
-//                 "moduleName",
-//                 "permissionName"
-//             FROM "Permissions"
-//         `;
-//         const result = await conn.query(sql);
-//         res.json({ success: true, data: result });
-//     } catch (err) {
-//         next(err);
-//     }
-// });
-
-
 // Register all routes via common route handler
 // This automatically mounts all module routes (auth, maintenance, warehouse-form, etc.)
 app.use('/api', routes);
@@ -229,7 +210,6 @@ app.use('/api', routes);
 mountUploadStaticRoute("/api/uploads/warehouse/freight-image", process.env.FREIGHT_IMAGE_PATH);
 mountUploadStaticRoute("/api/uploads/warehouse/bad-freight-image", process.env.BAD_FREIGHT_IMAGE_PATH);
 mountUploadStaticRoute("/api/uploads/warehouse/documents", process.env.WAREHOUSE_DOC_PATH);
-
 
 
 // SERVE REACT/FRONTEND STATIC BUILD
@@ -328,8 +308,33 @@ async function startServer(): Promise<void> {
         // Initialize audit log event handlers
         setupAuditLogEventHandlers();
         console.log('Audit log handlers initialized');
+
+
+        // Schedule warehouse receipt invoice batch job only in the production environment
+        if (process.env.ENVIRONMENT === 'prod') {
+            const cronSchedule = process.env.WAREHOUSE_RECEIPT_INVOICE_CRON || '0 10 * * *';
+            if (!cron.validate(cronSchedule)) {
+                throw new Error(`Invalid WAREHOUSE_RECEIPT_INVOICE_CRON schedule: ${cronSchedule}`);
+            }
+
+            cron.schedule(cronSchedule, async () => {
+                try {
+                    console.log('[Warehouse Receipt Invoice Cron] Starting batch run');
+                    const result = await runWarehouseReceiptInvoiceBatch();
+                    console.log('[Warehouse Receipt Invoice Cron] Batch completed');
+                    console.log(JSON.stringify(result, null, 2));
+                } catch (error) {
+                    console.error('[Warehouse Receipt Invoice Cron] Batch failed:', error);
+                }
+            }, {
+                timezone: process.env.WAREHOUSE_RECEIPT_INVOICE_TIMEZONE || 'America/New_York',
+            });
+            console.log(`[Warehouse Receipt Invoice Cron] Schedule: ${cronSchedule} (${process.env.WAREHOUSE_RECEIPT_INVOICE_TIMEZONE || 'America/New_York'})`);
+        } else {
+            console.log('[Warehouse Receipt Invoice Cron] Disabled: ENVIRONMENT is not prod.');
+        }
     } catch (err) {
-        console.error('❌ Failed to initialize DB2 pool:', err);
+        console.error('❌ Failed to initialize server:', err);
         process.exit(1);
     }
 

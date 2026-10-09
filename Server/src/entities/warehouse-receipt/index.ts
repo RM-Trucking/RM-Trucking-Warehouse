@@ -55,6 +55,7 @@ export interface WarehouseReceipt {
     weightInland?: number;
     cubicMeter?: number;
     reWeight?: number;
+    piecesOnReceipt?: number;
     proNumber?: string;
     invoiceNumber?: string;
     poNumber?: string;
@@ -111,6 +112,7 @@ export interface CreateWarehouseReceipt {
     weightInland?: number;
     cubicMeter?: number;
     reWeight?: number;
+    piecesOnReceipt?: number;
     proNumber?: string;
     invoiceNumber?: string;
     poNumber?: string;
@@ -152,6 +154,7 @@ export interface UpdateWarehouseReceipt {
     weightInland?: number;
     cubicMeter?: number;
     reWeight?: number;
+    piecesOnReceipt?: number;
     status?: "INITIATED" | "ON_HAND" | "PREPARED" | "SCANNED" | "SHIPPED" | "REJECTED" | "ARCHIVED";
     updatedBy?: number;
     updatedAt?: Date;
