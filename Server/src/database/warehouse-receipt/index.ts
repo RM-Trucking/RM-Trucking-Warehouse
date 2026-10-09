@@ -638,6 +638,58 @@ export async function listWarehouseReceipts(
     return { data: receipts, total };
 }
 
+export interface EligibleWarehouseReceiptInvoiceRow {
+    receiptId: number | bigint;
+    receiptNumber: number | bigint;
+    status: string;
+    accountOnHold: 'Y' | 'N';
+    sendToTellSystem: 'Y' | 'N';
+}
+
+export async function getEligibleWarehouseReceiptInvoiceRows(
+    conn: Connection,
+    options: {
+        limit?: number;
+        includeReceiptIds?: number[];
+        excludeReceiptIds?: number[];
+    } = {}
+): Promise<EligibleWarehouseReceiptInvoiceRow[]> {
+    const limit = Number(options.limit);
+    const hasLimit = Number.isInteger(limit) && limit > 0;
+    let query = `
+        SELECT DISTINCT wr."receiptId", wr."receiptNumber", wr."status",
+               wr."accountOnHold", wr."sendToTellSystem"
+        FROM ${SCHEMA}."Warehouse_Receipt" wr
+        WHERE wr."status" = 'SHIPPED'
+          AND wr."accountOnHold" = 'N'
+          AND wr."sendToTellSystem" = 'N'
+    `;
+    const params: any[] = [];
+
+    if ((options.includeReceiptIds ?? []).length > 0) {
+        const includeReceiptIds = options.includeReceiptIds ?? [];
+        const placeholders = includeReceiptIds.map(() => '?').join(', ');
+        params.push(...includeReceiptIds);
+        query += ` AND wr."receiptId" IN (${placeholders})`;
+    }
+
+    if ((options.excludeReceiptIds ?? []).length > 0) {
+        const excludeReceiptIds = options.excludeReceiptIds ?? [];
+        const placeholders = excludeReceiptIds.map(() => '?').join(', ');
+        params.push(...excludeReceiptIds);
+        query += ` AND wr."receiptId" NOT IN (${placeholders})`;
+    }
+
+    query += ` ORDER BY wr."receiptId" ASC`;
+
+    if (hasLimit) {
+        query += ` LIMIT ?`;
+        params.push(limit);
+    }
+
+    return await conn.query(query, params) as EligibleWarehouseReceiptInvoiceRow[];
+}
+
 export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number, ready: number, pending: number }> {
     let activeCountQuery = `
     SELECT COUNT(*) as "total" 
