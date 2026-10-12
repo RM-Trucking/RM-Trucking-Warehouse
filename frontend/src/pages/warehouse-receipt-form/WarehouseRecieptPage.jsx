@@ -783,7 +783,9 @@ export default function WarehouseRecieptPage() {
             )
           : isOnHandStatus(params.row.status)
             ? actionIcons
-            : ['mdi:eye'];
+            : ['SHIPPED', 'SCANNED', 'PREPARED'].includes(String(params.row.status).trim().toUpperCase())
+              ? ['mdi:eye', 'mdi:printer', 'mdi:upload', 'mdi:file-document', 'mdi:send']
+              : ['mdi:eye'];
 
         return (
           <Stack
