@@ -57,7 +57,7 @@ export interface WarehouseReceipt {
     reWeight?: number;
     piecesOnReceipt?: number;
     proNumber?: string;
-    invoiceNumber?: string;
+    invoiceNumber?: string | null;
     poNumber?: string;
     customerRefNumber?: string;
     bandedSkid?: 'Y' | 'N';
@@ -114,7 +114,7 @@ export interface CreateWarehouseReceipt {
     reWeight?: number;
     piecesOnReceipt?: number;
     proNumber?: string;
-    invoiceNumber?: string;
+    invoiceNumber?: string | null;
     poNumber?: string;
     customerRefNumber?: string;
     bandedSkid?: 'Y' | 'N';

@@ -22,7 +22,7 @@ export interface WarehouseShipment {
     isShipped: 'Y' | 'N';
     isScanned: 'Y' | 'N';
     pickupEntry: 'Y' | 'N';
-    pickupEntryNumber: string;
+    pickupEntryNumber: string | null;
     completeStatus: 'IDEAL' | 'REQUESTED' | 'SPLIT_APPROVED' | 'APPROVED';
     requestedBy: number;
     requestedAt: Date;

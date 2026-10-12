@@ -987,6 +987,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/warehouse-receipt/{receiptId}/invoice-number:
+    patch:
+      tags:
+        - Receipts
+      summary: Update warehouse receipt invoice number
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: receiptId
+          schema:
+            type: integer
+          required: true
+          description: Unique warehouse receipt identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - invoiceNumber
+              properties:
+                invoiceNumber:
+                  type: string
+                  minLength: 1
+                  example: INV-12345
+      responses:
+        "200":
+          description: Invoice number updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Invoice number updated successfully
+                  data:
+                    $ref: "#/components/schemas/WarehouseReceipt"
+        "400":
+          description: Invalid receiptId or invoiceNumber
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Warehouse receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database update failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/warehouse-receipt/{receiptId}/location:
     patch:
       tags:

@@ -215,6 +215,15 @@ router.patch("/:receiptId/location", authenticateJWT, async (req: Request, res: 
     if (conn) conn.close();
 });
 
+router.patch("/:receiptId/invoice-number", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.updateWarehouseReceiptInvoiceNumber(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.put("/:receiptId/reject", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     await warehouseReceiptController.rejectWarehouseReceipt(req, res, conn);

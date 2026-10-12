@@ -77,6 +77,15 @@ router.post("/sign-off", authenticateJWT, async (req: Request, res: Response) =>
     }
 });
 
+router.put("/pickup-entry-number", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.updateShipmentPickupEntryNumber(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.put("/:id", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {
@@ -130,6 +139,15 @@ router.post("/revoke-completion", authenticateJWT, async (req: Request, res: Res
         await shipmentController.revokeShipmentCompletion(req, res, conn);
     }
     finally {
+        if (conn) conn.close();
+    }
+});
+
+router.post("/cancel", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.cancelShipment(req, res, conn);
+    } finally {
         if (conn) conn.close();
     }
 });

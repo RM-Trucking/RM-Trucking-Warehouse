@@ -465,7 +465,21 @@ export async function updateWarehouseReceiptService(
         });
     }
 
-    return await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    return await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
+}
+
+export async function updateWarehouseReceiptInvoiceNumberService(
+    conn: Connection,
+    receiptId: number,
+    invoiceNumber: string | null
+) {
+    const currentReceipt = await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
+    if (!currentReceipt) {
+        return null;
+    }
+
+    await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { invoiceNumber });
+    return await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
 }
 
 export async function editWarehouseReceiptService(

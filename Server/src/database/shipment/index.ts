@@ -138,7 +138,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string }
 ): Promise<any[]> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -198,6 +198,14 @@ export async function listShipments(
         }
     }
 
+    const hasOtherStatusFilter = [filters.request, filters.scanned, filters.pickup, filters.shipped]
+        .some((filter) => typeof filter !== "undefined");
+    if (filters.canceled === true) {
+        query += ` AND UPPER(COALESCE("isCanceled", 'N')) = 'Y'`;
+    } else if (filters.canceled === false || hasOtherStatusFilter) {
+        query += ` AND UPPER(COALESCE("isCanceled", 'N')) <> 'Y'`;
+    }
+
     if (filters.shipmentType) {
         query += ` AND UPPER(COALESCE("shipmentType", '')) = ?`;
         params.push(filters.shipmentType.toUpperCase());
@@ -224,7 +232,7 @@ export async function listShipments(
 
 export async function countShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string }
 ): Promise<number> {
     let query = `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE 1 = 1`;
     const params: any[] = [];
@@ -254,6 +262,14 @@ export async function countShipments(
         } else {
             query += ` AND UPPER(COALESCE("isScanned", 'N')) <> 'Y'`;
         }
+    }
+
+    const hasOtherStatusFilter = [filters.request, filters.scanned, filters.pickup, filters.shipped]
+        .some((filter) => typeof filter !== "undefined");
+    if (filters.canceled === true) {
+        query += ` AND UPPER(COALESCE("isCanceled", 'N')) = 'Y'`;
+    } else if (filters.canceled === false || hasOtherStatusFilter) {
+        query += ` AND UPPER(COALESCE("isCanceled", 'N')) <> 'Y'`;
     }
 
     if (typeof filters.pickup !== "undefined") {

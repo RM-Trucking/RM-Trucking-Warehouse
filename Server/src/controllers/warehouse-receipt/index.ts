@@ -1159,6 +1159,43 @@ export async function updateWarehouseReceiptLocation(req: Request, res: Response
     }
 }
 
+export async function updateWarehouseReceiptInvoiceNumber(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
+        const invoiceNumber = req.body?.invoiceNumber;
+        const numericReceiptId = Number(receiptId);
+
+        if (!receiptId || !/^\d+$/.test(receiptId) || !Number.isSafeInteger(numericReceiptId) || numericReceiptId <= 0) {
+            res.status(400).json({ success: false, message: "A valid receiptId is required" });
+            return;
+        }
+        if (invoiceNumber !== null && typeof invoiceNumber !== "string") {
+            res.status(400).json({ success: false, message: "invoiceNumber must be a string or null" });
+            return;
+        }
+
+        const updatedReceipt = await warehouseReceiptService.updateWarehouseReceiptInvoiceNumberService(
+            conn,
+            numericReceiptId,
+            typeof invoiceNumber === "string" ? invoiceNumber.trim() : null
+        );
+
+        if (!updatedReceipt) {
+            res.status(404).json({ success: false, message: "Warehouse receipt not found" });
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Invoice number updated successfully",
+            data: updatedReceipt
+        });
+    } catch (error: any) {
+        logger.error("Error updating warehouse receipt invoice number", error);
+        res.status(500).json({ success: false, message: "Failed to update invoice number" });
+    }
+}
+
 export async function warehouseReceiptAccountHold(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const { receiptIds } = req.body;
