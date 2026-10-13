@@ -3,13 +3,13 @@ import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import {
     Alert, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
-    CircularProgress, FormControlLabel, Snackbar
+    CircularProgress, FormControlLabel, Snackbar, Button, DialogTitle, DialogActions, DialogContentText, TextField
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getShipmentById, getShipmentData, getShipmentForPickup } from '../../redux/slices/shipment';
+import { cancelShipment, getShipmentById, getShipmentData, getShipmentForPickup, updateShipmentPickupEntryNumber } from '../../redux/slices/shipment';
 
 import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
@@ -66,6 +66,7 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     ));
     const [airStatusFilters, setAirStatusFilters] = useState([]);
     const requestFilterEnabled = airStatusFilters.includes('request');
+    const canceledFilterEnabled = airStatusFilters.includes('canceled');
     const scannedFilterEnabled = airStatusFilters.includes('scan');
     const pickupFilterEnabled = airStatusFilters.includes('pickup');
     const shippedFilterEnabled = airStatusFilters.includes('shipment');
@@ -80,6 +81,14 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const [pickupError, setPickupError] = useState('');
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
     const [viewLoadingId, setViewLoadingId] = useState(null);
+    const [cancelShipmentId, setCancelShipmentId] = useState(null);
+    const [cancelRmNumber, setCancelRmNumber] = useState('');
+    const [cancelLoading, setCancelLoading] = useState(false);
+    const [cancelError, setCancelError] = useState('');
+    const cancelPendingRef = useRef(false);
+    const [pickupNumberEdit, setPickupNumberEdit] = useState(null);
+    const [pickupNumberSaving, setPickupNumberSaving] = useState(false);
+    const pickupNumberPendingRef = useRef(false);
     
     const shipmentTypeMap = { active: 'AIR', inactive: 'OCEAN_LCL', incomplete: 'OCEAN_FCL' };
     const shipmentData = apiShipmentData
@@ -191,11 +200,58 @@ const handleClosePickupForm = () => {
             searchTerm: shipmentSearchStrRef.current,
             ...filters,
             request: requestFilterEnabled || filters.request,
+            canceled: canceledFilterEnabled || filters.canceled,
             scanned: scannedFilterEnabled || filters.scanned,
             pickup: pickupFilterEnabled || filters.pickup,
             shipped: shippedFilterEnabled || filters.shipped,
             shipmentType: shipmentTypeMap[currentTab],
         }));
+    };
+
+    const handleSavePickupNumber = async () => {
+        if (!pickupNumberEdit || pickupNumberPendingRef.current) return;
+        pickupNumberPendingRef.current = true;
+        setPickupNumberSaving(true);
+        try {
+            const result = await dispatch(updateShipmentPickupEntryNumber({
+                shipmentId: pickupNumberEdit.shipmentId,
+                pickupEntryNumber: pickupNumberEdit.value,
+            }));
+            if (!result?.success) {
+                setPickupError(result?.error || 'Failed to save pickup number.');
+                return;
+            }
+            setPickupNumberEdit(null);
+            handleCompleteSuccess(result.message || 'Pickup number saved successfully.');
+        } finally {
+            pickupNumberPendingRef.current = false;
+            setPickupNumberSaving(false);
+        }
+    };
+
+    const handleCloseCancelDialog = () => {
+        if (cancelPendingRef.current) return;
+        setCancelShipmentId(null);
+        setCancelError('');
+    };
+
+    const handleConfirmCancel = async () => {
+        if (cancelPendingRef.current || cancelShipmentId === null) return;
+        cancelPendingRef.current = true;
+        setCancelLoading(true);
+        setCancelError('');
+        try {
+            const result = await dispatch(cancelShipment(cancelShipmentId));
+            if (!result?.success) {
+                setCancelError(result?.error || 'Failed to cancel shipment.');
+                return;
+            }
+            setCancelShipmentId(null);
+            handleCompleteSuccess(result.message || 'Shipment canceled successfully.');
+        } finally {
+            cancelPendingRef.current = false;
+            setCancelLoading(false);
+        }
     };
 
     const handleFileDocumentBox = async (rowData) => {
@@ -235,6 +291,7 @@ const handleClosePickupForm = () => {
             searchTerm: shipmentSearchStrRef.current,
             ...filters,
             request: requestFilterEnabled || filters.request,
+            canceled: canceledFilterEnabled || filters.canceled,
             scanned: scannedFilterEnabled || filters.scanned,
             pickup: pickupFilterEnabled || filters.pickup,
             shipped: shippedFilterEnabled || filters.shipped,
@@ -248,6 +305,7 @@ const handleClosePickupForm = () => {
         currentTab,
         pickupFilterEnabled,
         requestFilterEnabled,
+        canceledFilterEnabled,
         scannedFilterEnabled,
         shippedFilterEnabled,
     ]);
@@ -281,11 +339,12 @@ const handleClosePickupForm = () => {
     const statusFilterOptions = [
         ...statusOptions,
         { value: 'request', label: 'Request' },
+        { value: 'canceled', label: 'Canceled' },
     ];
 
     const handleStatusFilterChange = (value) => {
         setAirStatusFilters((current) => current.includes(value) ? [] : [value]);
-        if (['request', 'scan', 'pickup', 'shipment'].includes(value)) {
+        if (['request', 'canceled', 'scan', 'pickup', 'shipment'].includes(value)) {
             setPaginationModel((current) => ({ ...current, page: 0 }));
         }
     };
@@ -338,14 +397,37 @@ const handleClosePickupForm = () => {
             align: 'center',
             headerAlign: 'center',
             sortable: true,
-            renderCell: (params) => renderStatus(Boolean(params.value)),
+            renderCell: (params) => params.row.isCanceled === 'Y' && ['scan', 'shipment', 'pickup'].includes(status.value)
+                ? <Iconify icon="mdi:cancel" width={18} sx={{ color: '#A22' }} aria-label="Canceled" />
+                : renderStatus(Boolean(params.value)),
         }));
 
     const pickupNumberColumn = {
         field: 'pickupNumber',
         headerName: 'Pickup No',
-        minWidth: 130,
+        minWidth: 190,
         flex: 0.8,
+        renderCell: (params) => params.row.pickupStatus && params.row.isCanceled !== 'Y'
+            ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, height: '100%', width: '100%' }}>
+                <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{params.value}</Box>
+                <IconButton
+                    size="small"
+                    aria-label="Edit pickup number"
+                    title="Edit Pickup No"
+                    disabled={Boolean(pickupNumberEdit) || pickupNumberSaving}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        if (pickupNumberPendingRef.current) return;
+                        setPickupNumberEdit({ shipmentId: params.row.shipmentId, value: String(params.value ?? '') });
+                    }}
+                    sx={{ color: '#A22' }}
+                >
+                    <Iconify icon="mdi:pencil" width={16} />
+                </IconButton>
+            </Box>
+        ) : params.value,
     };
 
     const actionColumn = {
@@ -397,7 +479,7 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
-                            disabled={params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y'
+                            disabled={params.row.isCanceled === 'Y' || params.row.pickupEntry === 'Y' || (params.row.isShipped === 'Y'
                                 && (['inactive', 'incomplete'].includes(currentTab) || ['OCEAN_LCL', 'LCL', 'OCEAN_FCL', 'FCL'].includes(params.row.shipmentType) || pickupLoadingId !== null))}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -419,6 +501,26 @@ const handleClosePickupForm = () => {
                             ) : (
                                 <Iconify icon="mdi:file-document-box" width={20} />
                             )}
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            aria-label="Cancel shipment"
+                            title="Cancel shipment"
+                            disabled={params.row.isCanceled === 'Y' || cancelLoading}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                const shipmentId = params.row.shipmentId || params.row.id;
+                                if (!shipmentId) {
+                                    setPickupError('Shipment ID is unavailable.');
+                                    return;
+                                }
+                                setCancelError('');
+                                setCancelRmNumber(params.row.rmNumber || '');
+                                setCancelShipmentId(shipmentId);
+                            }}
+                            sx={{ color: '#A22' }}
+                        >
+                            <Iconify icon="mdi:cancel" width={20} />
                         </IconButton>
                     </Box>
                 );
@@ -518,6 +620,14 @@ const handleClosePickupForm = () => {
                         columns={columns}
                         loading={isLoading}
                         getRowId={(row) => row.shipmentId}
+                        onCellDoubleClick={(params, event) => {
+                            if (params.field !== 'pickupNumber') return;
+                            event.defaultMuiPrevented = true;
+                            if (!params.row.pickupStatus || params.row.isCanceled === 'Y') return;
+                            if (pickupNumberEdit || pickupNumberPendingRef.current) return;
+                            setPickupNumberEdit({ shipmentId: params.row.shipmentId, value: String(params.value ?? '') });
+                        }}
+                        getRowClassName={(params) => params.row.isCanceled === 'Y' ? 'shipment-canceled' : ''}
                         autoHeight
                         disableRowSelectionOnClick
                         rowSelection={false}
@@ -556,10 +666,68 @@ const handleClosePickupForm = () => {
                             '& .MuiDataGrid-row:hover .sticky-action-cell': {
                                 backgroundColor: '#f5f5f5',
                             },
+                            '& .MuiDataGrid-row.shipment-canceled, & .MuiDataGrid-row.shipment-canceled .sticky-action-cell': {
+                                backgroundColor: '#ffdde2',
+                            },
+                            '& .MuiDataGrid-row.shipment-canceled:hover, & .MuiDataGrid-row.shipment-canceled:hover .sticky-action-cell': {
+                                backgroundColor: '#ffc4cc',
+                            },
                         }}
                     />
                 </Box>
             </ErrorBoundary>
+
+            <Dialog
+                open={Boolean(pickupNumberEdit)}
+                onClose={() => { if (!pickupNumberPendingRef.current) setPickupNumberEdit(null); }}
+                maxWidth="xs"
+                fullWidth
+                aria-labelledby="pickup-number-title"
+            >
+                <DialogTitle id="pickup-number-title">Add/Edit Pickup No</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        fullWidth
+                        label="Pickup No"
+                        value={pickupNumberEdit?.value ?? ''}
+                        onChange={(event) => setPickupNumberEdit((current) => ({ ...current, value: event.target.value }))}
+                        disabled={pickupNumberSaving}
+                        sx={{ mt: 1 }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setPickupNumberEdit(null)} disabled={pickupNumberSaving}>Cancel</Button>
+                    <Button variant="contained" onClick={handleSavePickupNumber} disabled={pickupNumberSaving}>
+                        {pickupNumberSaving && <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />}
+                        Update
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={cancelShipmentId !== null}
+                onClose={handleCloseCancelDialog}
+                maxWidth="xs"
+                fullWidth
+                aria-labelledby="cancel-shipment-title"
+                aria-describedby="cancel-shipment-description"
+            >
+                <DialogTitle id="cancel-shipment-title">Cancel shipment - {cancelRmNumber}</DialogTitle>
+                <DialogContent>
+                    <DialogContentText id="cancel-shipment-description">
+                        Are you sure you want to cancel this shipment?
+                    </DialogContentText>
+                    {cancelError && <Alert severity="error" sx={{ mt: 2 }}>{cancelError}</Alert>}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseCancelDialog} disabled={cancelLoading}>No</Button>
+                    <Button onClick={handleConfirmCancel} disabled={cancelLoading} color="error" variant="contained">
+                        {cancelLoading ? <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} /> : null}
+                        Yes
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
          <Dialog
     // Open only if we have a type

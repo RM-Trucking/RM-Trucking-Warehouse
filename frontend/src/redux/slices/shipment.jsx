@@ -314,6 +314,7 @@ export function getShipmentData({
     paginate = true,
     searchTerm = '',
     request = '',
+    canceled = '',
     scanned = '',
     pickup = '',
     shipped = '',
@@ -330,6 +331,7 @@ export function getShipmentData({
             const params = paginate ? { page: pageNo, pageSize } : {};
             if (String(searchTerm).trim()) params.searchTerm = String(searchTerm).trim();
             if (request !== '') params.request = request;
+            if (canceled !== '') params.canceled = canceled;
             if (scanned !== '') params.scanned = scanned;
             if (pickup !== '') params.pickup = pickup;
             if (shipped !== '') params.shipped = shipped;
@@ -355,6 +357,30 @@ export function getShipmentById(shipmentId) {
             return { success: true, data: response.data?.data || response.data };
         } catch (error) {
             const message = error.response?.data?.message || error?.message || error?.error || 'Failed to load shipment details';
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function cancelShipment(shipmentId) {
+    return async () => {
+        try {
+            const response = await axios.post('shipment/cancel', { shipmentId });
+            return { success: true, data: response.data?.data || response.data, message: response.data?.message };
+        } catch (error) {
+            const message = error.response?.data?.message || error?.message || error?.error || 'Failed to cancel shipment';
+            return { success: false, error: message };
+        }
+    };
+}
+
+export function updateShipmentPickupEntryNumber({ shipmentId, pickupEntryNumber }) {
+    return async () => {
+        try {
+            const response = await axios.put('shipment/pickup-entry-number', { shipmentId, pickupEntryNumber });
+            return { success: true, data: response.data?.data || response.data, message: response.data?.message };
+        } catch (error) {
+            const message = error.response?.data?.message || error?.message || error?.error || 'Failed to save pickup number';
             return { success: false, error: message };
         }
     };

@@ -354,6 +354,25 @@ export function exportWarehouseReceiptSpreadsheet({ status = '', approvalStatus 
   };
 }
 
+export function updateWarehouseReceiptInvoiceNumber({ receiptId, invoiceNumber } = {}) {
+  return async () => {
+    if (!receiptId) {
+      return { error: true, message: 'Receipt ID is required to update invoice number' };
+    }
+    try {
+      const response = await axios.patch(`/warehouse-receipt/${encodeURIComponent(receiptId)}/invoice-number`, {
+        invoiceNumber,
+      });
+      return response.data;
+    } catch (error) {
+      return {
+        error: true,
+        message: error.response?.data?.message || error.message || 'Failed to update invoice number',
+      };
+    }
+  };
+}
+
 export function updateWarehouseReceiptLocation({ receiptId, location } = {}) {
   return async () => {
     if (!receiptId) {
