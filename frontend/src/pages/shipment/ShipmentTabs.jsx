@@ -86,7 +86,6 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const [cancelLoading, setCancelLoading] = useState(false);
     const [cancelError, setCancelError] = useState('');
     const cancelPendingRef = useRef(false);
-    const [pickupNumberConfirmation, setPickupNumberConfirmation] = useState(null);
     const [pickupNumberEdit, setPickupNumberEdit] = useState(null);
     const [pickupNumberSaving, setPickupNumberSaving] = useState(false);
     const pickupNumberPendingRef = useRef(false);
@@ -409,30 +408,7 @@ const handleClosePickupForm = () => {
         minWidth: 190,
         flex: 0.8,
         renderCell: (params) => params.row.pickupStatus && params.row.isCanceled !== 'Y'
-            ? pickupNumberEdit?.shipmentId === params.row.shipmentId ? (
-            <Box
-                sx={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%' }}
-                onMouseDown={(event) => event.stopPropagation()}
-                onDoubleClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-            >
-                <TextField
-                    autoFocus
-                    size="small"
-                    value={pickupNumberEdit.value}
-                    onChange={(event) => setPickupNumberEdit((current) => ({ ...current, value: event.target.value }))}
-                    disabled={pickupNumberSaving}
-                    slotProps={{ htmlInput: { 'aria-label': 'Pickup No' } }}
-                    sx={{ flex: 1, minWidth: 0 }}
-                />
-                <IconButton size="small" aria-label="Save pickup number" disabled={pickupNumberSaving} onClick={handleSavePickupNumber} sx={{ color: '#54ad72' }}>
-                    {pickupNumberSaving ? <CircularProgress size={18} color="inherit" /> : <Iconify icon="mdi:check" width={18} />}
-                </IconButton>
-                <IconButton size="small" aria-label="Cancel pickup number edit" disabled={pickupNumberSaving} onClick={() => setPickupNumberEdit(null)} sx={{ color: '#A22' }}>
-                    <Iconify icon="mdi:close" width={18} />
-                </IconButton>
-            </Box>
-        ) : (
+            ? (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, height: '100%', width: '100%' }}>
                 <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{params.value}</Box>
                 <IconButton
@@ -444,7 +420,7 @@ const handleClosePickupForm = () => {
                     onClick={(event) => {
                         event.stopPropagation();
                         if (pickupNumberPendingRef.current) return;
-                        setPickupNumberConfirmation({ shipmentId: params.row.shipmentId, value: String(params.value ?? '') });
+                        setPickupNumberEdit({ shipmentId: params.row.shipmentId, value: String(params.value ?? '') });
                     }}
                     sx={{ color: '#A22' }}
                 >
@@ -649,7 +625,7 @@ const handleClosePickupForm = () => {
                             event.defaultMuiPrevented = true;
                             if (!params.row.pickupStatus || params.row.isCanceled === 'Y') return;
                             if (pickupNumberEdit || pickupNumberPendingRef.current) return;
-                            setPickupNumberConfirmation({ shipmentId: params.row.shipmentId, value: String(params.value ?? '') });
+                            setPickupNumberEdit({ shipmentId: params.row.shipmentId, value: String(params.value ?? '') });
                         }}
                         getRowClassName={(params) => params.row.isCanceled === 'Y' ? 'shipment-canceled' : ''}
                         autoHeight
@@ -702,22 +678,30 @@ const handleClosePickupForm = () => {
             </ErrorBoundary>
 
             <Dialog
-                open={Boolean(pickupNumberConfirmation)}
-                onClose={() => setPickupNumberConfirmation(null)}
+                open={Boolean(pickupNumberEdit)}
+                onClose={() => { if (!pickupNumberPendingRef.current) setPickupNumberEdit(null); }}
                 maxWidth="xs"
                 fullWidth
                 aria-labelledby="pickup-number-title"
             >
                 <DialogTitle id="pickup-number-title">Add/Edit Pickup No</DialogTitle>
                 <DialogContent>
-                    <DialogContentText>Do you want to Add/Edit Pickup No?</DialogContentText>
+                    <TextField
+                        autoFocus
+                        fullWidth
+                        label="Pickup No"
+                        value={pickupNumberEdit?.value ?? ''}
+                        onChange={(event) => setPickupNumberEdit((current) => ({ ...current, value: event.target.value }))}
+                        disabled={pickupNumberSaving}
+                        sx={{ mt: 1 }}
+                    />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setPickupNumberConfirmation(null)}>No</Button>
-                    <Button variant="contained" onClick={() => {
-                        setPickupNumberEdit(pickupNumberConfirmation);
-                        setPickupNumberConfirmation(null);
-                    }}>Yes</Button>
+                    <Button onClick={() => setPickupNumberEdit(null)} disabled={pickupNumberSaving}>Cancel</Button>
+                    <Button variant="contained" onClick={handleSavePickupNumber} disabled={pickupNumberSaving}>
+                        {pickupNumberSaving && <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />}
+                        Update
+                    </Button>
                 </DialogActions>
             </Dialog>
 
