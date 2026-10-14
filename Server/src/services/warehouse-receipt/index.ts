@@ -2302,9 +2302,20 @@ export async function sendWarehouseReceiptToCustomEmailService(
 
     const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
     const pdfFilePath = await createWarehouseReceiptPDF(receiptWithDetails, false, tempReceiptOutPath);
-    const emailStatus = typeof receiptWithDetails.status === "string" && ["INITIATED", "ON_HAND", "SHIPPED", "DISCARDED", "REJECTED", "ACCEPTED"].includes(receiptWithDetails.status)
-        ? receiptWithDetails.status as any
-        : undefined;
+    const normalizedStatus = typeof receiptWithDetails.status === "string"
+        ? receiptWithDetails.status.trim().toUpperCase().replace(/[\s-]+/g, "_")
+        : "";
+    const supportedEmailStatuses = [
+        "INITIATED",
+        "ON_HAND",
+        "SHIPPED",
+        "DISCARDED",
+        "REJECTED",
+        "ACCEPTED",
+        "PREPARED",
+        "SCANNED"
+    ] as const;
+    const emailStatus = supportedEmailStatuses.find((status) => status === normalizedStatus);
 
     const imageAttachmentPath = buildReceiptEmailAttachmentPath(
         receiptWithDetails,
@@ -2331,6 +2342,14 @@ export async function sendWarehouseReceiptToCustomEmailService(
     const attachmentString = [...new Set(attachmentPaths)].join(";");
 
     for (const emailRecipient of emails) {
+
+        console.log(`Queuing email notification for receipt #${receiptWithDetails.receiptNumber} to ${emailRecipient} with status ${emailStatus} and attachments: ${attachmentString}`);
+
+        console.log(`Email details:
+        - Receipt Number: ${receiptWithDetails.receiptNumber}
+        - Recipient: ${emailRecipient}
+        - Status: ${emailStatus}
+        - Attachments: ${attachmentString}`);
         // emitEmail will queue email notification asynchronously
         emitEmail({
             receiptNumber: receiptWithDetails.receiptNumber,
