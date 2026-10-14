@@ -17,6 +17,7 @@ import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
 import AirPickupEntryForm from './AirPickupEntryForm';
 import FCLPickupEntryForm from './FCLPickupEntryForm';
+import ShipmentImageUploadDialog from './ShipmentImageUploadDialog';
 
 // ----------------------------------------------------------------------
 
@@ -78,6 +79,8 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const [printLoadingId, setPrintLoadingId] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
     const [comingSoonMessage, setComingSoonMessage] = useState('');
+    const [imageUploadShipment, setImageUploadShipment] = useState(null);
+    const [shipmentImageDrafts, setShipmentImageDrafts] = useState({});
     const [pickupError, setPickupError] = useState('');
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
     const [viewLoadingId, setViewLoadingId] = useState(null);
@@ -433,8 +436,8 @@ const handleClosePickupForm = () => {
     const actionColumn = {
             field: 'action',
             headerName: 'Action',
-            width: 180,
-            minWidth: 180,
+            width: 210,
+            minWidth: 210,
             headerAlign: 'center',
             align: 'center',
             sortable: false,
@@ -501,6 +504,19 @@ const handleClosePickupForm = () => {
                             ) : (
                                 <Iconify icon="mdi:file-document-box" width={20} />
                             )}
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            aria-label="Upload image"
+                            title="Upload image"
+                            disabled={params.row.isCanceled === 'Y'}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setImageUploadShipment(params.row);
+                            }}
+                            sx={{ p: 0.2, color: '#A22' }}
+                        >
+                            <Iconify icon="mdi:image-plus" width={20} />
                         </IconButton>
                         <IconButton
                             size="small"
@@ -705,6 +721,17 @@ const handleClosePickupForm = () => {
                 </DialogActions>
             </Dialog>
 
+            {imageUploadShipment && (
+                <ShipmentImageUploadDialog
+                    shipment={imageUploadShipment}
+                    initialFiles={shipmentImageDrafts[imageUploadShipment.shipmentId || imageUploadShipment.id] || []}
+                    onClose={() => setImageUploadShipment(null)}
+                    onStage={(shipment, files) => {
+                        setShipmentImageDrafts((previous) => ({ ...previous, [shipment.shipmentId || shipment.id]: files }));
+                        setComingSoonMessage('Images staged locally. Server upload will be available once connected.');
+                    }}
+                />
+            )}
             <Dialog
                 open={cancelShipmentId !== null}
                 onClose={handleCloseCancelDialog}
