@@ -2836,8 +2836,8 @@ export default function WarehouseRecieptPage() {
           {invoiceNumberError && <Alert severity="error" sx={{ mt: 2 }}>{invoiceNumberError}</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseInvoiceNumber} disabled={invoiceNumberSaving}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdateInvoiceNumber} disabled={invoiceNumberSaving}>
+          <Button variant="contained" onClick={handleCloseInvoiceNumber} disabled={invoiceNumberSaving} sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateInvoiceNumber} disabled={invoiceNumberSaving} sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>
             {invoiceNumberSaving && <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />}
             Update
           </Button>
