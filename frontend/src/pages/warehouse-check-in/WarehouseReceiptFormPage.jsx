@@ -1537,19 +1537,19 @@ function WarehouseReceiptFormContent() {
           ...form,
           items: [
             ...(form.items || []),
-            { id: nextId, freightId: 0, freightBarcodeValue: '', pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
+            { id: nextId, freightId: 0, isNewItem: true, freightBarcodeValue: '', pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
           ],
         };
       })
     );
   };
 
-  const updateActiveFreightItemField = (itemId, field, value) => {
+  const updateActiveFreightItemField = (itemId, field, value, formId = activeTab) => {
     const nextValue = DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value;
 
     setReceiptForms((prev) =>
       prev.map((form) =>
-        form.id === activeTab
+        form.id === formId
           ? {
               ...form,
               items: (form.items || []).map((item) =>
@@ -1567,13 +1567,13 @@ function WarehouseReceiptFormContent() {
     if (String(nextValue ?? '').trim()) {
       const errorKey = `${itemId}-${field}`;
       setReceiptInfoErrors((prev) => {
-        const formErrors = prev[activeTab] || {};
+        const formErrors = prev[formId] || {};
         const itemErrors = { ...(formErrors.items || {}) };
         delete itemErrors[errorKey];
 
         return {
           ...prev,
-          [activeTab]: {
+          [formId]: {
             ...formErrors,
             items: itemErrors,
           },
@@ -2033,9 +2033,13 @@ function WarehouseReceiptFormContent() {
     return Array.isArray(images) ? images.filter(Boolean) : [images].filter(Boolean);
   };
 
-  const applySplitCargoDimensions = (formIndex, itemId, dimensionsResponse) => {
+  const applySplitCargoDimensions = (formIndex, itemId, dimensionsResponse, receiptFormId = null) => {
     const dimensions = dimensionsResponse?.data || dimensionsResponse;
-    if (!Number.isInteger(formIndex) || itemId === null || itemId === undefined || !dimensions || dimensionsResponse?.error) return;
+    if ((!Number.isInteger(formIndex) && receiptFormId === null) || itemId === null || itemId === undefined || !dimensions || dimensionsResponse?.error) return;
+
+    const updateField = (field, value) => receiptFormId !== null
+      ? updateActiveFreightItemField(itemId, field, value, receiptFormId)
+      : updateSplitRecalculateItem(formIndex, itemId, field, value);
 
     const fieldMap = {
       length: ['length', 'cargoLength', 'apiLength'],
@@ -2047,19 +2051,19 @@ function WarehouseReceiptFormContent() {
     Object.entries(fieldMap).forEach(([field, fieldNames]) => {
       const value = getDimensionValue(dimensions, fieldNames);
       if (value !== null) {
-        updateSplitRecalculateItem(formIndex, itemId, field, String(value));
+        updateField(field, String(value));
       }
     });
 
     const images = getDimensionImages(dimensions);
     if (images.length > 0) {
-      updateSplitRecalculateItem(formIndex, itemId, 'images', images);
+      updateField('images', images);
     }
   };
 
-  const handleSplitPackageDetailsClick = (event, formIndex, itemId) => {
+  const handleSplitPackageDetailsClick = (event, formIndex, itemId, receiptFormId = null) => {
     setSplitPackageDropdownAnchor(event.currentTarget);
-    setSplitPackageDropdownContext({ formIndex, itemId });
+    setSplitPackageDropdownContext({ formIndex, itemId, receiptFormId });
   };
 
   const handleCloseSplitPackageDropdown = () => {
@@ -2068,20 +2072,20 @@ function WarehouseReceiptFormContent() {
 
   const handleSplitPackageOptionSelect = async (option) => {
     const apiId = option?.apiId || option?.id || option?.value;
-    const { formIndex, itemId } = splitPackageDropdownContext;
+    const { formIndex, itemId, receiptFormId = null } = splitPackageDropdownContext;
 
-    if (!apiId || !Number.isInteger(formIndex) || itemId === null || itemId === undefined) {
+    if (!apiId || (!Number.isInteger(formIndex) && receiptFormId === null) || itemId === null || itemId === undefined) {
       handleCloseSplitPackageDropdown();
       return;
     }
 
-    const loadingKey = getSplitCargoLoadingKey(formIndex, itemId);
+    const loadingKey = getSplitCargoLoadingKey(receiptFormId !== null ? `receipt-${receiptFormId}` : formIndex, itemId);
     handleCloseSplitPackageDropdown();
     setSplitCargoApiLoadingItems((prev) => ({ ...prev, [loadingKey]: true }));
 
     try {
       const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
-      applySplitCargoDimensions(formIndex, itemId, dimensionsResponse);
+      applySplitCargoDimensions(formIndex, itemId, dimensionsResponse, receiptFormId);
 
       if (dimensionsResponse?.message) {
         setSnackbar({
@@ -5501,6 +5505,7 @@ function WarehouseReceiptFormContent() {
                 </TableHead>
                 <TableBody>
                   {activeForm.items.map((item, index) => {
+                    const isCargoApiProcessing = Boolean(splitCargoApiLoadingItems[getSplitCargoLoadingKey(`receipt-${activeForm.id}`, item.id)]);
                     const getItemError = (field) =>
                       receiptInfoErrors[activeForm.id]?.items?.[`${item.id}-${field}`] || '';
                     const scannedRowColor = isWarehouseReceiptView && String(item.isScanned || '').trim().toUpperCase() === 'Y'
@@ -5576,14 +5581,27 @@ function WarehouseReceiptFormContent() {
                           zIndex: 1,
                           bgcolor: scannedRowColor,
                           textAlign: 'center',
-                          width: isWarehouseReceiptEdit ? 116 : 72,
+                          width: isWarehouseReceiptEdit ? 144 : 72,
                         }}
                       >
                         <Stack direction="row" spacing={0.4} justifyContent="center" alignItems="center">
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable && item.isNewItem && (
+                            <IconButton
+                              size="small"
+                              title="Package details"
+                              aria-label="Package details"
+                              disabled={isCargoApiProcessing}
+                              onClick={(event) => handleSplitPackageDetailsClick(event, null, item.id, activeForm.id)}
+                              sx={{ p: 0.2, color: '#111' }}
+                            >
+                              {isCargoApiProcessing ? <CircularProgress size={18} sx={{ color: '#A22' }} /> : <Iconify icon="mdi:cube" width={20} />}
+                            </IconButton>
+                          )}
                           {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
                             <IconButton
                               size="small"
                               title="Upload image"
+                              disabled={isCargoApiProcessing}
                               onClick={() => handleOpenActiveItemUpload(item)}
                               sx={{ p: 0.2, color: '#111' }}
                             >
