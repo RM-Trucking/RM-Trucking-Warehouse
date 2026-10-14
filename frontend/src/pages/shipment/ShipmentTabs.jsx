@@ -697,7 +697,7 @@ const handleClosePickupForm = () => {
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button variant="contained" onClick={() => setPickupNumberEdit(null)} disabled={pickupNumberSaving} sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>Cancel</Button>
+                    <Button variant="outlined" onClick={() => setPickupNumberEdit(null)} disabled={pickupNumberSaving} sx={{ color: '#111', borderColor: '#111', textTransform: 'none' }}>Cancel</Button>
                     <Button variant="contained" onClick={handleSavePickupNumber} disabled={pickupNumberSaving} sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>
                         {pickupNumberSaving && <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />}
                         Update
