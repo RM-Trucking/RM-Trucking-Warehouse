@@ -113,7 +113,13 @@ export default function ShipmentMobileScanPage() {
                                 </TableCell>
                             </TableRow>
                         ) : visibleRows.length ? visibleRows.map((shipment) => (
-                            <TableRow key={shipment.shipmentId || shipment.id}>
+                            <TableRow
+                                key={shipment.shipmentId || shipment.id}
+                                sx={shipment.isCanceled === 'Y' ? {
+                                    bgcolor: '#ffdde2',
+                                    '&:hover, &:hover .shipment-action-cell': { bgcolor: '#ffc4cc' },
+                                } : undefined}
+                            >
                                 <TableCell sx={{ px: 1, py: 0.75, fontSize: 10, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {shipment.barcodeNumber || shipment.rmNumber || '-'}
                                 </TableCell>
@@ -126,14 +132,17 @@ export default function ShipmentMobileScanPage() {
                                 <TableCell sx={{ px: 1, py: 0.75, fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {(shipmentType === 'OCEAN_FCL' ? shipment.destination : shipment.airBillNumber) || '-'}
                                 </TableCell>
-                                <TableCell sx={{ position: 'sticky', right: 0, zIndex: 2, px: 1, py: 0.5, bgcolor: '#fff', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.25)' }}>
+                                <TableCell className="shipment-action-cell" sx={{ position: 'sticky', right: 0, zIndex: 2, px: 1, py: 0.5, bgcolor: shipment.isCanceled === 'Y' ? '#ffdde2' : '#fff', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.25)' }}>
                                     <Stack direction="row" spacing={0.5}>
                                         <Button
                                             sx={{ ...actionButtonSx, '&.Mui-disabled': { bgcolor: '#d0d0d0', color: '#777' } }}
-                                            disabled={shipment.completeStatus !== 'IDEAL'}
-                                            onClick={() => setSelectedShipment(shipment)}
+                                            disabled={shipment.isCanceled === 'Y' || shipment.completeStatus !== 'IDEAL'}
+                                            onClick={() => {
+                                                if (shipment.isCanceled === 'Y') return;
+                                                setSelectedShipment(shipment);
+                                            }}
                                         >
-                                            Scan
+                                            {shipment.isCanceled === 'Y' ? 'Cancelled' : 'Scan'}
                                         </Button>
                                     </Stack>
                                 </TableCell>

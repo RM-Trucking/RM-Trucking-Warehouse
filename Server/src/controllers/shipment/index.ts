@@ -31,6 +31,7 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
         const scanned = req.query.scanned as string | undefined;
         const pickup = req.query.pickup as string | undefined;
         const shipped = req.query.shipped as string | undefined;
+        const canceled = req.query.canceled as string | undefined;
         const request = req.query.request as string | undefined;
         const shipmentType = req.query.shipmentType as string | undefined;
         const customerId = req.query.customerId as string | undefined;
@@ -46,6 +47,7 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
             pickup: pickup === "true" ? true : pickup === "false" ? false : undefined,
             shipped: shipped === "true" ? true : shipped === "false" ? false : undefined,
             request: request === "true" ? true : request === "false" ? false : undefined,
+            canceled: canceled === "true" ? true : canceled === "false" ? false : undefined,
             shipmentType: shipmentType ? shipmentType.toUpperCase() : undefined,
             customerId: customerId ? customerId : undefined,
             stationId: stationId ? stationId : undefined,
@@ -53,7 +55,7 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
             airBillNumber: airBillNumber ? airBillNumber : undefined,
         }
 
-        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber });
+        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber });
         res.status(200).json({
             success: true,
             data: result.data,
@@ -181,6 +183,43 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
         console.error(error);
         const statusCode = error?.name === "ValidationError" || error?.message?.toLowerCase().includes("duplicate") ? 400 : 500;
         res.status(statusCode).json({ success: false, message: error.message || "Failed to update shipment" });
+    }
+}
+
+export async function updateShipmentPickupEntryNumber(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        const payload = req.body as { shipmentId?: unknown; pickupEntryNumber?: unknown };
+        const shipmentId = Number(payload?.shipmentId);
+        const pickupEntryNumber = payload?.pickupEntryNumber === null
+            ? null
+            : typeof payload?.pickupEntryNumber === "string"
+                ? payload.pickupEntryNumber.trim()
+                : undefined;
+
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
+            res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
+            return;
+        }
+        if (pickupEntryNumber === undefined) {
+            res.status(400).json({ success: false, message: "pickupEntryNumber is required and must be a string or null" });
+            return;
+        }
+
+        const shipment = await shipmentService.updateShipmentPickupEntryNumber(conn, shipmentId, pickupEntryNumber, userId);
+        if (!shipment) {
+            res.status(404).json({ success: false, message: `Shipment with id ${shipmentId} was not found` });
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Pickup entry number updated successfully",
+            data: shipment,
+        });
+    } catch (error: any) {
+        console.error(error);
+        res.status(500).json({ success: false, message: error.message || "Failed to update pickup entry number" });
     }
 }
 
@@ -342,5 +381,24 @@ export async function revokeShipmentCompletion(req: Request, res: Response, conn
         console.error(error);
         const statusCode = error?.name === "ValidationError" ? 400 : 500;
         res.status(statusCode).json({ success: false, message: error.message || "Failed to revoke shipment completion" });
+    }
+}
+
+export async function cancelShipment(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentId = Number(req.body.shipmentId);
+        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
+            res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
+            return;
+        }
+
+        const shipment = await shipmentService.cancelShipment(conn, shipmentId, userId);
+        res.status(200).json({ success: true, message: "Shipment canceled successfully", data: shipment });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.statusCode ?? (error?.name === "ValidationError" ? 400 : 500);
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to cancel shipment" });
     }
 }

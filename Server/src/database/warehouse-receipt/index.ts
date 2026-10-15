@@ -871,7 +871,7 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
     // Invoice and PO related fields
     if (updates.invoiceNumber !== undefined) {
         fields.push(`"invoiceNumber" = ?`);
-        params.push(updates.invoiceNumber ? updates.invoiceNumber : '' as string);
+        params.push(updates.invoiceNumber);
     }
     if (updates.poNumber !== undefined) {
         fields.push(`"poNumber" = ?`);
@@ -1265,6 +1265,13 @@ export async function updateFreightInfo(conn: Connection, freightId: number | bi
     params.push(Number(freightId));
 
     await conn.query(query, params as any);
+}
+
+export async function resetFreightScanStatusForReceipt(conn: Connection, receiptId: number | bigint): Promise<void> {
+    await conn.query(
+        `UPDATE ${SCHEMA}."Warehouse_Receipt_Freight_Info" SET "isScanned" = 'N' WHERE "receiptId" = ?`,
+        [Number(receiptId)]
+    );
 }
 
 export async function deleteFreightInfo(conn: Connection, freightId: number | bigint): Promise<void> {

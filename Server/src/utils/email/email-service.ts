@@ -15,7 +15,7 @@ const EMAIL_TEMPLATES: EmailTemplates = {
     INITIATED: {
         subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} Initiated`,
         body: (receiptNumber: number) =>
-            `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} has been initiated and is now in our system. We'll notify you as it progresses.\n\nThank you for choosing us.`
+            `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} has been initiated and is now in our system. We will notify you as it progresses.\n\nThank you for choosing us.`
     },
     ON_HAND: {
         subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - On Hand`,
@@ -25,7 +25,7 @@ const EMAIL_TEMPLATES: EmailTemplates = {
     SHIPPED: {
         subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - Shipped`,
         body: (receiptNumber: number) =>
-            `Dear Customer,\n\nGreat news! Your Warehouse Receipt #${receiptNumber} has been shipped. You'll receive tracking details soon.`
+            `Dear Customer,\n\nGreat news! Your Warehouse Receipt #${receiptNumber} has been shipped. You will receive tracking details soon.`
     },
     DISCARDED: {
         subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - Archived`,
@@ -41,6 +41,14 @@ const EMAIL_TEMPLATES: EmailTemplates = {
         subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - Accepted`,
         body: (receiptNumber: number) =>
             `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} has been accepted. Thank you for your business.`
+    },
+    PREPARED: {
+        subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - Prepared`,
+        body: (receiptNumber: number) => `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} has been prepared and is ready for the next steps.`
+    },
+    SCANNED: {
+        subject: (receiptNumber: number) => `Warehouse Receipt #${receiptNumber} - Scanned`,
+        body: (receiptNumber: number) => `Dear Customer,\n\nYour Warehouse Receipt #${receiptNumber} has been scanned and is now in our system.`
     }
 };
 
@@ -109,7 +117,7 @@ export async function callEmailProcedure(
             ' ' // Additional parameter if needed
         ];
 
-        console.info(`📧 Sending email: from=${from}, to=${to}, subject="${subject}"`);
+        console.info(`📧 Sending email: from=${from}, to=${to}, subject="${subject}", body="${body}", attachmentPath="${attachmentPath || ' '}"`);
 
         const result = await connection.callProcedure(null, SCHEMA, 'SNDMULMAIL', params);
 
@@ -119,6 +127,8 @@ export async function callEmailProcedure(
         console.error('❌ Email delivery failed:', {
             to,
             subject,
+            body,
+            attachmentPath,
             error: error instanceof Error ? error.message : String(error)
         });
         throw error;

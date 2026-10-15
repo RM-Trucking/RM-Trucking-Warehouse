@@ -531,6 +531,34 @@ export async function removeReceiptFromShipment(conn: Connection, shipmentId: nu
     }
 }
 
+export async function updateShipmentPickupEntryNumber(
+    conn: Connection,
+    shipmentId: number,
+    pickupEntryNumber: string | null,
+    userId: number
+): Promise<WarehouseShipmentWithRelations | null> {
+    const existingShipment = await shipmentDB.getShipmentById(conn, shipmentId);
+    if (!existingShipment) {
+        return null;
+    }
+
+    try {
+        await conn.beginTransaction();
+        await shipmentDB.updateShipment(conn, shipmentId, { pickupEntryNumber }, userId);
+
+        const updatedShipment = await getShipmentById(conn, shipmentId);
+        if (!updatedShipment) {
+            throw new Error("Shipment could not be loaded after updating the pickup entry number");
+        }
+
+        await conn.commit();
+        return updatedShipment;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
 export async function getShipmentById(conn: Connection, shipmentId: number): Promise<WarehouseShipmentWithRelations | null> {
     const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
     if (!shipment) {
@@ -638,7 +666,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, canceled?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string }
 ): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number; countList: { air: number; fcl: number; lcl: number } }> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -1330,6 +1358,57 @@ export async function revokeShipmentCompletion(conn: Connection, shipmentId: num
         const updatedShipment = await getShipmentById(conn, shipmentId);
         if (!updatedShipment) {
             throw new Error("Shipment could not be loaded after revoking completion");
+        }
+
+        await conn.commit();
+        return updatedShipment;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
+export async function cancelShipment(conn: Connection, shipmentId: number, userId: number) {
+    try {
+        await conn.beginTransaction();
+
+        const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
+        if (!shipment) {
+            const error = new Error(`Shipment with id ${shipmentId} was not found.`) as Error & { statusCode?: number };
+            error.name = "NotFoundError";
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const receipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+        for (const receipt of receipts) {
+            const receiptId = Number(receipt.receiptId);
+            await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { status: "ON_HAND", updatedBy: userId });
+            await warehouseReceiptDB.resetFreightScanStatusForReceipt(conn, receiptId);
+
+            try {
+                const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+                if (warehouseReceipt) {
+                    emitAuditLog({
+                        receiptNumber: warehouseReceipt.receiptNumber,
+                        receiptId,
+                        proNumber: warehouseReceipt.proNumber || undefined,
+                        userId,
+                        status: "ON_HAND",
+                        description: `Receipt ${warehouseReceipt.receiptNumber} was moved to ON_HAND because shipment ${shipment.barcodeNumber} was canceled. All freight was reset to unscanned.`,
+                        level: "INFO",
+                    });
+                }
+            } catch (err) {
+                console.warn(`Failed to emit cancellation audit log for receipt ${receiptId}:`, err);
+            }
+        }
+
+        await shipmentDB.updateShipment(conn, shipmentId, { isCanceled: "Y" }, userId);
+
+        const updatedShipment = await getShipmentById(conn, shipmentId);
+        if (!updatedShipment) {
+            throw new Error("Shipment could not be loaded after cancellation");
         }
 
         await conn.commit();

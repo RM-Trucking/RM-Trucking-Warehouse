@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
+  Alert,
   Box,
   Button,
   Checkbox,
   Chip,
   CircularProgress,
   Dialog,
+  DialogActions,
+  DialogTitle,
   DialogContent,
   FormControlLabel,
   IconButton,
@@ -28,6 +31,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
+import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
 import Iconify from '../../components/iconify';
 import WarehouseReceiptPrintTemplate from './WarehouseReceiptPrintTemplate';
@@ -46,6 +50,7 @@ import {
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
   updateWarehouseReceiptLocation,
+  updateWarehouseReceiptInvoiceNumber,
   uploadWarehouseReceiptDocuments,
 } from '../../redux/slices/warehouseReceipt';
 import { searchCarriers } from '../../redux/slices/enroute';
@@ -129,6 +134,23 @@ const gridSx = {
     fontSize: '14px !important',
   },
   '& .MuiDataGrid-columnHeaderTitle': { fontWeight: 'bold', fontSize: '14px' },
+  '& .sticky-action-header': {
+    position: 'sticky',
+    right: 0,
+    zIndex: 4,
+    backgroundColor: '#dbdbdb',
+    boxShadow: '-4px 0 6px -4px rgba(0, 0, 0, 0.35)',
+  },
+  '& .sticky-action-cell': {
+    position: 'sticky',
+    right: 0,
+    zIndex: 3,
+    backgroundColor: '#fff',
+    boxShadow: '-4px 0 6px -4px rgba(0, 0, 0, 0.25)',
+  },
+  '& .MuiDataGrid-row:hover .sticky-action-cell': {
+    backgroundColor: '#f5f5f5',
+  },
 };
 
 const isYes = (value) => String(value || '').toUpperCase() === 'Y';
@@ -327,6 +349,11 @@ export default function WarehouseRecieptPage() {
   const [locationSaving, setLocationSaving] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [locationMessageOpen, setLocationMessageOpen] = useState(false);
+  const [invoiceNumberEdit, setInvoiceNumberEdit] = useState(null);
+  const [invoiceNumberSaving, setInvoiceNumberSaving] = useState(false);
+  const [invoiceNumberError, setInvoiceNumberError] = useState('');
+  const [invoiceNumberMessage, setInvoiceNumberMessage] = useState('');
+  const invoiceNumberPendingRef = useRef(false);
   const [copyMessageOpen, setCopyMessageOpen] = useState(false);
   const [documentUploadDialog, setDocumentUploadDialog] = useState({ open: false, receiptId: null, receiptNumber: '', files: [] });
   const [documentUploadDragging, setDocumentUploadDragging] = useState(false);
@@ -763,10 +790,41 @@ export default function WarehouseRecieptPage() {
         );
       },
     },
+    {
+      field: 'invoiceNo', headerName: 'Invoice No', minWidth: 160, flex: 1,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, height: '100%', width: '100%' }}>
+          <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{params.value}</Box>
+          {!['INITIATED', 'REJECTED', 'ARCHIVED', 'ARCHIEVED'].includes(String(params.row.rawData?.status ?? params.row.status ?? '').trim().toUpperCase()) && (
+          <IconButton
+            size="small"
+            aria-label="Edit invoice number"
+            title="Edit Invoice No"
+            disabled={invoiceNumberSaving}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (invoiceNumberPendingRef.current) return;
+              setInvoiceNumberError('');
+              setInvoiceNumberEdit({
+                receiptId: params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id,
+                value: String(params.value ?? ''),
+              });
+            }}
+            sx={{ color: '#A22', flexShrink: 0, width: 28, height: 28 }}
+          >
+            <EditIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+          )}
+        </Box>
+      ),
+    },
     { field: 'createdDate', headerName: 'Created Date', minWidth: 125, flex: 0.9 },
     {
       field: 'actions',
       headerName: 'Actions',
+      headerClassName: 'sticky-action-header',
+      cellClassName: 'sticky-action-cell',
       sortable: false,
       filterable: false,
       minWidth: 190,
@@ -783,7 +841,9 @@ export default function WarehouseRecieptPage() {
             )
           : isOnHandStatus(params.row.status)
             ? actionIcons
-            : ['mdi:eye'];
+            : ['SHIPPED', 'SCANNED', 'PREPARED'].includes(String(params.row.status).trim().toUpperCase())
+              ? ['mdi:eye', 'mdi:printer', 'mdi:upload', 'mdi:file-document', 'mdi:send']
+              : ['mdi:eye'];
 
         return (
           <Stack
@@ -1205,6 +1265,43 @@ export default function WarehouseRecieptPage() {
     if (locationSaving) return;
     setLocationDialog({ open: false, row: null, location: '' });
     setLocationError('');
+  };
+
+  const handleCloseInvoiceNumber = () => {
+    if (invoiceNumberPendingRef.current) return;
+    setInvoiceNumberEdit(null);
+    setInvoiceNumberError('');
+  };
+
+  const handleUpdateInvoiceNumber = async () => {
+    if (!invoiceNumberEdit || invoiceNumberPendingRef.current) return;
+    invoiceNumberPendingRef.current = true;
+    setInvoiceNumberSaving(true);
+    setInvoiceNumberError('');
+    try {
+      const response = await dispatch(updateWarehouseReceiptInvoiceNumber({
+        receiptId: invoiceNumberEdit.receiptId,
+        invoiceNumber: invoiceNumberEdit.value,
+      }));
+      if (response?.error || response?.success === false) {
+        setInvoiceNumberError(response?.message || 'Failed to update invoice number');
+        return;
+      }
+      setInvoiceNumberEdit(null);
+      setInvoiceNumberMessage(response?.message || 'Invoice number updated successfully');
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        approvalStatus: requestApprovalStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: activeTab === 'Accounting',
+        filters: requestFilters,
+      }));
+    } finally {
+      invoiceNumberPendingRef.current = false;
+      setInvoiceNumberSaving(false);
+    }
   };
 
   const handleSubmitLocation = async () => {
@@ -2718,6 +2815,41 @@ export default function WarehouseRecieptPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={Boolean(invoiceNumberEdit)}
+        onClose={handleCloseInvoiceNumber}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="invoice-number-title"
+      >
+        <DialogTitle id="invoice-number-title">Add/Edit Invoice No</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Invoice No"
+            value={invoiceNumberEdit?.value ?? ''}
+            onChange={(event) => setInvoiceNumberEdit((current) => ({ ...current, value: event.target.value }))}
+            disabled={invoiceNumberSaving}
+            sx={{ mt: 1 }}
+          />
+          {invoiceNumberError && <Alert severity="error" sx={{ mt: 2 }}>{invoiceNumberError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={handleCloseInvoiceNumber} disabled={invoiceNumberSaving} sx={{ color: '#111', borderColor: '#111', textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateInvoiceNumber} disabled={invoiceNumberSaving} sx={{ bgcolor: '#A22', color: '#fff', '&:hover': { bgcolor: '#8b1c1c' }, textTransform: 'none' }}>
+            {invoiceNumberSaving && <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />}
+            Update
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={Boolean(invoiceNumberMessage)}
+        autoHideDuration={3000}
+        onClose={() => setInvoiceNumberMessage('')}
+        message={invoiceNumberMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
       <Snackbar
         open={copyMessageOpen}
         autoHideDuration={2000}

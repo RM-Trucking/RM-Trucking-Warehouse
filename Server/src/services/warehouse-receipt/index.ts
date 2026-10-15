@@ -465,7 +465,21 @@ export async function updateWarehouseReceiptService(
         });
     }
 
-    return await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+    return await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
+}
+
+export async function updateWarehouseReceiptInvoiceNumberService(
+    conn: Connection,
+    receiptId: number,
+    invoiceNumber: string | null
+) {
+    const currentReceipt = await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
+    if (!currentReceipt) {
+        return null;
+    }
+
+    await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { invoiceNumber });
+    return await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
 }
 
 export async function editWarehouseReceiptService(
@@ -1120,7 +1134,7 @@ function resolveReceiptAttachmentPath(value: unknown, fallbackBaseDir?: string):
     return path.resolve(process.cwd(), normalizedPath);
 }
 
-function buildReceiptEmailAttachmentPath(receiptData: any, pdfDirectory?: string): string {
+function buildReceiptEmailAttachmentPath(receiptData: any, pdfDirectory?: string, includeImages = true): string {
     const normalizedPdfDirectory = pdfDirectory || ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
     const freightImageBaseDir = process.env.FREIGHT_IMAGE_PATH || process.cwd();
     const badFreightImageBaseDir = process.env.BAD_FREIGHT_IMAGE_PATH || process.cwd();
@@ -1131,7 +1145,7 @@ function buildReceiptEmailAttachmentPath(receiptData: any, pdfDirectory?: string
         attachmentPaths.push(path.join(normalizedPdfDirectory, `${receiptData.receiptNumber}.pdf`));
     }
 
-    const freightImagePaths = Array.isArray(receiptData?.freightInformation)
+    const freightImagePaths = includeImages && Array.isArray(receiptData?.freightInformation)
         ? receiptData.freightInformation.flatMap((freight: any) => {
             if (!Array.isArray(freight?.images)) return [];
             return freight.images
@@ -1140,7 +1154,7 @@ function buildReceiptEmailAttachmentPath(receiptData: any, pdfDirectory?: string
         })
         : [];
 
-    const badFreightImagePaths = Array.isArray(receiptData?.badFreightConditionImages)
+    const badFreightImagePaths = includeImages && Array.isArray(receiptData?.badFreightConditionImages)
         ? receiptData.badFreightConditionImages
             .map((image: any) => resolveReceiptAttachmentPath(image?.imagePath || image?.imageUrl || image?.path, badFreightImageBaseDir))
             .filter((imagePath: string | null): imagePath is string => Boolean(imagePath))
@@ -1363,7 +1377,11 @@ export async function batchProcessWarehouseReceiptsService(
                     console.log("Sending emails for updated receipt with ID:", receiptId, "to recipients:", emails);
 
                     for (const emailRecipient of emails) {
-                        const attachmentPath = buildReceiptEmailAttachmentPath(updatedReceiptData, tempReceiptOutPath);
+                        const attachmentPath = buildReceiptEmailAttachmentPath(
+                            updatedReceiptData,
+                            tempReceiptOutPath,
+                            updatedReceiptData.freightInformation?.length === 1
+                        );
                         emitEmail({
                             receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
                             to: emailRecipient,
@@ -1508,7 +1526,11 @@ export async function batchProcessWarehouseReceiptsService(
                     console.log("Sending emails for created receipt with ID:", receiptId, "to recipients:", emails);
 
                     for (const emailRecipient of emails) {
-                        const attachmentPath = buildReceiptEmailAttachmentPath(createdReceiptData, tempReceiptOutPath);
+                        const attachmentPath = buildReceiptEmailAttachmentPath(
+                            createdReceiptData,
+                            tempReceiptOutPath,
+                            createdReceiptData.freightInformation?.length === 1
+                        );
                         emitEmail({
                             receiptNumber: dataWithUser.receiptNumber,
                             to: emailRecipient,
@@ -2280,11 +2302,26 @@ export async function sendWarehouseReceiptToCustomEmailService(
 
     const tempReceiptOutPath = ensureUploadDirExists(process.env.TEMP_RECEIPT_OUTPUT);
     const pdfFilePath = await createWarehouseReceiptPDF(receiptWithDetails, false, tempReceiptOutPath);
-    const emailStatus = typeof receiptWithDetails.status === "string" && ["INITIATED", "ON_HAND", "SHIPPED", "DISCARDED", "REJECTED", "ACCEPTED"].includes(receiptWithDetails.status)
-        ? receiptWithDetails.status as any
-        : undefined;
+    const normalizedStatus = typeof receiptWithDetails.status === "string"
+        ? receiptWithDetails.status.trim().toUpperCase().replace(/[\s-]+/g, "_")
+        : "";
+    const supportedEmailStatuses = [
+        "INITIATED",
+        "ON_HAND",
+        "SHIPPED",
+        "DISCARDED",
+        "REJECTED",
+        "ACCEPTED",
+        "PREPARED",
+        "SCANNED"
+    ] as const;
+    const emailStatus = supportedEmailStatuses.find((status) => status === normalizedStatus);
 
-    const imageAttachmentPath = buildReceiptEmailAttachmentPath(receiptWithDetails, tempReceiptOutPath);
+    const imageAttachmentPath = buildReceiptEmailAttachmentPath(
+        receiptWithDetails,
+        tempReceiptOutPath,
+        receiptWithDetails.freightInformation?.length === 1
+    );
     const attachmentPaths = imageAttachmentPath
         ? imageAttachmentPath.split(";").map((value) => value.trim()).filter(Boolean)
         : [];
@@ -2305,6 +2342,14 @@ export async function sendWarehouseReceiptToCustomEmailService(
     const attachmentString = [...new Set(attachmentPaths)].join(";");
 
     for (const emailRecipient of emails) {
+
+        console.log(`Queuing email notification for receipt #${receiptWithDetails.receiptNumber} to ${emailRecipient} with status ${emailStatus} and attachments: ${attachmentString}`);
+
+        console.log(`Email details:
+        - Receipt Number: ${receiptWithDetails.receiptNumber}
+        - Recipient: ${emailRecipient}
+        - Status: ${emailStatus}
+        - Attachments: ${attachmentString}`);
         // emitEmail will queue email notification asynchronously
         emitEmail({
             receiptNumber: receiptWithDetails.receiptNumber,

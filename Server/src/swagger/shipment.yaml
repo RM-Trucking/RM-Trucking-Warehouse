@@ -54,6 +54,11 @@ paths:
             type: boolean
           description: Filter shipments with `completeStatus = 'REQUESTED'` when `true`.
         - in: query
+          name: canceled
+          schema:
+            type: boolean
+          description: Filter shipments by cancellation status. `true` returns canceled shipments; `false` excludes them.
+        - in: query
           name: shipmentType
           schema:
             type: string
@@ -293,6 +298,41 @@ paths:
         "500":
           description: Server error
 
+  /api/shipment/cancel:
+    post:
+      tags:
+        - Shipments
+      summary: Cancel shipment
+      description: Returns linked warehouse receipts to `ON_HAND`, resets their freight scan flags to unscanned, and marks the shipment `isCanceled` as `Y`. Receipt mappings are retained for historical reference. All updates are performed in one transaction.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shipmentId
+              properties:
+                shipmentId:
+                  type: integer
+                  minimum: 1
+                  example: 1
+      responses:
+        "200":
+          description: Shipment canceled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Invalid shipment ID
+        "404":
+          description: Shipment not found
+        "500":
+          description: Server error
+
   /api/shipment/scan-freight:
     get:
       tags:
@@ -438,6 +478,44 @@ paths:
           description: Shipment not found
         "500":
           description: Server error
+
+  /api/shipment/pickup-entry-number:
+    put:
+      tags:
+        - Shipments
+      summary: Update shipment pickup entry number
+      description: Updates the pickup entry number for an existing shipment and returns the updated shipment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shipmentId
+                - pickupEntryNumber
+              properties:
+                shipmentId:
+                  type: integer
+                  minimum: 1
+                pickupEntryNumber:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: Pickup entry number updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShipmentResponse"
+        "400":
+          description: Invalid or missing shipmentId or pickupEntryNumber
+        "404":
+          description: Shipment not found
+        "500":
+          description: Database update failed
 
   /api/shipment/{id}:
     get:
