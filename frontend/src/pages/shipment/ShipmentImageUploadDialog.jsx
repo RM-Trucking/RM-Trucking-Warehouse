@@ -106,7 +106,7 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
   };
   return <>      <Dialog open={splitItemUploadDialogOpen} onClose={handleCloseSplitItemUpload} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
-          Image Upload
+          Image Upload - {shipment?.barcodeNumber || shipment?.rmNumber || '-'}
           <IconButton
             onClick={handleCloseSplitItemUpload}
             size="small"

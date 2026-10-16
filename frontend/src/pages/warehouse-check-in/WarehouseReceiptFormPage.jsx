@@ -1089,6 +1089,7 @@ const getCargoApiImageValue = (image) => {
 
 const getFreightDetailImageName = (image) => {
   if (!image) return '';
+  if (image.isCargoApiImage) return '';
   if (image instanceof Blob) return '';
 
   const imageValue = typeof image === 'string'
@@ -1147,7 +1148,13 @@ const getSubmittedImageValue = async (image) => {
   if (cargoImageValue) {
     const cleanValue = String(cargoImageValue).trim();
     if (!cleanValue) return '';
-    if (/^(https?:\/\/|blob:)/i.test(cleanValue)) return cleanValue;
+    if (/^(https?:\/\/|blob:)/i.test(cleanValue)) {
+      if (!image.isCargoApiImage) return cleanValue;
+      const response = await fetch(cleanValue);
+      if (!response.ok) throw new Error('Failed to load Cargo Spec image');
+      const base64Image = await fileToBase64(await response.blob());
+      return base64Image ? `base64,${base64Image}` : '';
+    }
     if (cleanValue.startsWith('data:image/')) {
       const base64Value = cleanValue.includes(',') ? cleanValue.split(',').pop() : cleanValue;
       return base64Value ? `base64,${base64Value}` : '';
@@ -2057,7 +2064,9 @@ function WarehouseReceiptFormContent() {
 
     const images = getDimensionImages(dimensions);
     if (images.length > 0) {
-      updateField('images', images);
+      updateField('images', images.map((image) => image instanceof Blob
+        ? image
+        : { ...(typeof image === 'object' ? image : { image }), isCargoApiImage: true }));
     }
   };
 
@@ -2322,16 +2331,34 @@ function WarehouseReceiptFormContent() {
 
   const buildWarehouseReceiptUpdateFormData = async (form = activeForm) => {
     const payload = buildWarehouseReceiptUpdatePayload(form);
+    const receipt = { ...payload };
+    delete receipt.freightDetails;
+    delete receipt.removeFreightIds;
+    delete receipt.removeBadFreightImagePaths;
     const formData = new FormData();
 
-    formData.append('receipt', JSON.stringify(payload));
+    formData.append('batchData', JSON.stringify({
+      receipts: [{
+        receipt: {
+          ...receipt,
+          receiptId: toNumberOrNull(getRowValue(form.row || {}, 'receiptId', null)),
+          receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(form.row || {}, 'receiptNumber', null)),
+        },
+        freightDetails: payload.freightDetails.map((freight) => {
+          const detail = { ...freight };
+          delete detail.freightId;
+          delete detail.removeImagePaths;
+          return detail;
+        }),
+      }],
+    }));
 
     await Promise.all([
       ...(form.items || []).flatMap((item, freightIndex) =>
         (item.images || [])
           .filter((image) => !isPersistedReceiptImage(image))
           .map(async (image, imageIndex) => {
-            const fieldName = `freight-${freightIndex}-${imageIndex}`;
+            const fieldName = `freight-0-${freightIndex}-${imageIndex}`;
             const imageValue = await getSubmittedImageValue(image);
 
             if (imageValue) {
@@ -2342,7 +2369,7 @@ function WarehouseReceiptFormContent() {
       ...({ ...createFreightInfo(), ...(form.freightInfo || {}) }.freightConditionImages || [])
         .filter((image) => !isPersistedReceiptImage(image))
         .map(async (image, imageIndex) => {
-          const fieldName = `bad-freight-image-${imageIndex}`;
+          const fieldName = `bad-freight-image-0-${imageIndex}`;
           const renamedImage = await toRenamedImageFile(image, fieldName);
 
           if (renamedImage instanceof File || renamedImage instanceof Blob) {
@@ -2468,10 +2495,13 @@ function WarehouseReceiptFormContent() {
 
     if (isWarehouseReceiptEdit) {
       const receiptId = getRowValue(activeForm?.row, 'receiptId', '');
-      const payload = hasNewWarehouseReceiptUpdateImages(activeForm)
+      const hasNewImages = hasNewWarehouseReceiptUpdateImages(activeForm);
+      const payload = hasNewImages
         ? await buildWarehouseReceiptUpdateFormData(activeForm)
         : buildWarehouseReceiptUpdatePayload(activeForm);
-      const response = await dispatch(updateWarehouseReceipt({ receiptId, payload }));
+      const response = await dispatch(hasNewImages
+        ? submitWarehouseReceiptBatch(payload)
+        : updateWarehouseReceipt({ receiptId, payload }));
 
       if (response?.error || response?.success === false) {
         setSnackbar({
@@ -5585,7 +5615,7 @@ function WarehouseReceiptFormContent() {
                         }}
                       >
                         <Stack direction="row" spacing={0.4} justifyContent="center" alignItems="center">
-                          {isWarehouseReceiptEdit && isReceiptDetailsEditable && item.isNewItem && (
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
                             <IconButton
                               size="small"
                               title="Package details"

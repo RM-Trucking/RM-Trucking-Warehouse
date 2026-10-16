@@ -11,7 +11,7 @@ import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../redux/store';
 import { cancelShipment, getShipmentById, getShipmentData, getShipmentForPickup, updateShipmentPickupEntryNumber } from '../../redux/slices/shipment';
 
-import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
+import ErrorFallback from '../../sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';

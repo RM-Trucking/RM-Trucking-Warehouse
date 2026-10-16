@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    Box, Button, CircularProgress, Stack, Tab, Table, TableBody, TableCell,
+    Box, Button, CircularProgress, IconButton, Stack, Tab, Table, TableBody, TableCell,
     TableContainer, TableHead, TableRow, Tabs, Typography,
 } from '@mui/material';
 import { useDispatch, useSelector } from '../../redux/store';
 import { getShipmentData } from '../../redux/slices/shipment';
 import ShipmentScanStatus from './ShipmentScanStatus';
+import ShipmentImageUploadDialog from './ShipmentImageUploadDialog';
+import Iconify from '../../components/iconify';
 
 const actionButtonSx = {
     minWidth: 56,
@@ -33,6 +35,8 @@ export default function ShipmentMobileScanPage() {
     const [shipmentType, setShipmentType] = useState('AIR');
     const [page, setPage] = useState(1);
     const [selectedShipment, setSelectedShipment] = useState(null);
+    const [imageUploadShipment, setImageUploadShipment] = useState(null);
+    const [shipmentImageDrafts, setShipmentImageDrafts] = useState({});
 
     useEffect(() => {
         dispatch(getShipmentData({ shipmentType, pageNo: page, pageSize: PAGE_SIZE }));
@@ -102,7 +106,7 @@ export default function ShipmentMobileScanPage() {
                             <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>
                                 {shipmentType === 'OCEAN_FCL' ? 'Destination' : 'Air Bill No.'}
                             </TableCell>
-                            <TableCell sx={{ position: 'sticky', right: 0, zIndex: 3, width: 90, px: 1, bgcolor: '#d1d1d1', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.35)', fontSize: 11, fontWeight: 700 }}>Actions</TableCell>
+                            <TableCell sx={{ position: 'sticky', right: 0, zIndex: 3, width: 120, px: 1, bgcolor: '#d1d1d1', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.35)', fontSize: 11, fontWeight: 700 }}>Actions</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -133,7 +137,7 @@ export default function ShipmentMobileScanPage() {
                                     {(shipmentType === 'OCEAN_FCL' ? shipment.destination : shipment.airBillNumber) || '-'}
                                 </TableCell>
                                 <TableCell className="shipment-action-cell" sx={{ position: 'sticky', right: 0, zIndex: 2, px: 1, py: 0.5, bgcolor: shipment.isCanceled === 'Y' ? '#ffdde2' : '#fff', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.25)' }}>
-                                    <Stack direction="row" spacing={0.5}>
+                                    <Stack direction="row" spacing={0.5} alignItems="center">
                                         <Button
                                             sx={{ ...actionButtonSx, '&.Mui-disabled': { bgcolor: '#d0d0d0', color: '#777' } }}
                                             disabled={shipment.isCanceled === 'Y' || shipment.completeStatus !== 'IDEAL'}
@@ -144,6 +148,15 @@ export default function ShipmentMobileScanPage() {
                                         >
                                             {shipment.isCanceled === 'Y' ? 'Cancelled' : 'Scan'}
                                         </Button>
+                                        {shipment.isCanceled !== 'Y' && <IconButton
+                                            size="small"
+                                            aria-label="Upload image"
+                                            title="Upload image"
+                                            onClick={() => setImageUploadShipment(shipment)}
+                                            sx={{ p: 0.2, color: '#A22' }}
+                                        >
+                                            <Iconify icon="mdi:image-plus" width={20} />
+                                        </IconButton>}
                                     </Stack>
                                 </TableCell>
                             </TableRow>
@@ -155,6 +168,16 @@ export default function ShipmentMobileScanPage() {
                     </TableBody>
                 </Table>
             </TableContainer>
+            {imageUploadShipment && (
+                <ShipmentImageUploadDialog
+                    shipment={imageUploadShipment}
+                    initialFiles={shipmentImageDrafts[imageUploadShipment.shipmentId || imageUploadShipment.id] || []}
+                    onClose={() => setImageUploadShipment(null)}
+                    onStage={(shipment, files) => {
+                        setShipmentImageDrafts((previous) => ({ ...previous, [shipment.shipmentId || shipment.id]: files }));
+                    }}
+                />
+            )}
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 1.25, py: 2 }}>
                 <Button
                     variant="outlined"
