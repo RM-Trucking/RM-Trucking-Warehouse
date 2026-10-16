@@ -1136,7 +1136,7 @@ export async function getFreightInfosByReceipt(conn: Connection, receiptId: numb
     SELECT * 
     FROM ${SCHEMA}."Warehouse_Receipt_Freight_Info" 
     WHERE "receiptId" = ?
-    ORDER BY "freightBarcodeValue" ASC`;
+    ORDER BY CAST(SUBSTR("freightBarcodeValue", 4) AS BIGINT) ASC, "freightBarcodeValue" ASC`;
 
     const result = await conn.query(query, [Number(receiptId)]) as FreightInfo[];
 
