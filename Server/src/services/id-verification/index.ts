@@ -9,7 +9,7 @@ import { CreateIDVerification, CreateProDetail, Driver, IDVerification, IDVerifi
 import { WarehouseReceiptTemp, WarehouseReceipt } from "../../entities/warehouse-receipt";
 import { create } from "node:domain";
 import { toUtcDate } from "../../utils/dateFormater";
-import { emitEmail, emitAuditLog } from "../../utils/email";
+import { emitAuditLog } from "../../utils/email";
 
 
 
@@ -171,6 +171,8 @@ export async function createVerificationService(
                 });
                 console.log(`📝 Audit log queued for receipt #${receiptNumber}`);
 
+                //Turned off email notifications for now, can be enabled later if needed
+                /*
                 // Step 9: Emit email notifications to multiple recipients (if configured)
                 if (detail.toEmails && detail.toEmails.length > 0) {
                     for (const emailRecipient of detail.toEmails) {
@@ -185,6 +187,7 @@ export async function createVerificationService(
                 } else {
                     console.warn(`⚠️ No email recipients configured for receipt #${receiptNumber}`);
                 }
+                */
             }
         }
 
