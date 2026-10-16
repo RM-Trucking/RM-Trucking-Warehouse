@@ -44,6 +44,7 @@ export async function generatePickupEDI(data: any) {
         };
         const controlNumber = formatControlNumber(finalPickupData.controlNumber).controlNumber;
         const gsControlNumber = formatControlNumber(finalPickupData.controlNumber).gsControlNumber;
+        const isaDate = finalPickupData.date.slice(-6);
         const transactionSetControlNumber = '0001';
         const shipperCountryCode = 'US';
         const hazmatIndicator = finalPickupData.hazmat === 'Y' ? 'HAZ' : '';
@@ -52,7 +53,7 @@ export async function generatePickupEDI(data: any) {
         const segmentBreaker = '~';
 
         const ediOutput = `
-ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${finalPickupData.date}*${finalPickupData.time}*U*00401*${controlNumber}*0*P*>${segmentBreaker}
+ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${isaDate}*${finalPickupData.time}*U*00401*${controlNumber}*0*P*>${segmentBreaker}
 GS*SM*SRINSOFT*RMFT*${finalPickupData.date}*${finalPickupData.time}*${gsControlNumber}*X*004010${segmentBreaker}
 ST*204*${transactionSetControlNumber}${segmentBreaker}
 B2**RMFT**${finalPickupData.referenceNumber}${segmentBreaker}
