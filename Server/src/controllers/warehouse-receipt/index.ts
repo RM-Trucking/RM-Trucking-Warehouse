@@ -88,7 +88,8 @@ export async function listWarehouseReceipts(req: Request, res: Response, conn: C
             verificationId: req.query.verificationId ? parseInt(req.query.verificationId as string) : undefined,
             destination: req.query.destination as string | undefined,
             packageId: req.query.packageId as string | undefined,
-            customerRefNumber: req.query.customerRefNumber as string | undefined
+            customerRefNumber: req.query.customerRefNumber as string | undefined,
+            shipper: req.query.shipper as string | undefined
         };
 
         const result = await warehouseReceiptService.listWarehouseReceiptsService(
@@ -1333,6 +1334,7 @@ export async function exportWarehouseReceiptsToSpreadsheet(
             destination: req.query.destination as string | undefined,
             packageId: req.query.packageId as string | undefined,
             customerRefNumber: req.query.customerRefNumber as string | undefined,
+            shipper: req.query.shipper as string | undefined,
         };
 
         // Call service and stream workbook to response

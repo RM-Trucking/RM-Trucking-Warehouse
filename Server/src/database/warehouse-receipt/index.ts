@@ -462,6 +462,7 @@ export async function listWarehouseReceipts(
         destination?: string;
         packageId?: string;
         customerRefNumber?: string;
+        shipper?: string;
     },
     filterLogic: "AND" | "OR" = "AND"
 ): Promise<{ data: WarehouseReceiptListItem[]; total: number }> {
@@ -555,6 +556,11 @@ export async function listWarehouseReceipts(
     if (filters?.customerRefNumber) {
         specialConditions.push(`"wr"."customerRefNumber" LIKE ?`);
         specialParams.push(`%${filters.customerRefNumber}%`);
+    }
+
+    if (filters?.shipper) {
+        specialConditions.push(`"wr"."shipper" LIKE ?`);
+        specialParams.push(`%${filters.shipper}%`);
     }
 
     if (specialConditions.length > 0) {

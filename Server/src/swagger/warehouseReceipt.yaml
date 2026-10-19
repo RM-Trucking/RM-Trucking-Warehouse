@@ -640,6 +640,11 @@ paths:
           schema:
             type: string
           description: Filter by customer reference number (partial match)
+        - in: query
+          name: shipper
+          schema:
+            type: string
+          description: Filter by shipper name (partial match)
       responses:
         "200":
           description: Receipts retrieved successfully
@@ -784,6 +789,11 @@ paths:
           schema:
             type: string
           description: Filter by customer reference number (partial match, case-insensitive)
+        - in: query
+          name: shipper
+          schema:
+            type: string
+          description: Filter by shipper name (partial match, case-insensitive)
       responses:
         "200":
           description: Excel file with warehouse receipts exported successfully

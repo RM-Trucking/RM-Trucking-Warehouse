@@ -106,6 +106,7 @@ export async function listWarehouseReceiptsService(
         destination?: string;
         packageId?: string;
         customerRefNumber?: string;
+        shipper?: string;
     }
 ) {
     const offset = (page - 1) * pageSize;
@@ -2155,6 +2156,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         destination?: string;
         packageId?: string;
         customerRefNumber?: string;
+        shipper?: string;
     }
 ) {
     const { data: receipts } = await warehouseReceiptDB.listWarehouseReceipts(
