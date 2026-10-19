@@ -58,6 +58,7 @@ const toGridRow = (receipt = {}) => {
     destination: receipt.destination || receipt.finalDestination || '',
     proNumber: receipt.proNumber || '',
     idVerification: receipt.verificationId || '',
+    shipper: receipt.shipper || '',
     location: receipt.location || '',
     rate: rateValue === null || rateValue === undefined ? '' : Number(rateValue).toFixed(2),
     createdDate: formatDate(receipt.createdAt || receipt.receiptDate),

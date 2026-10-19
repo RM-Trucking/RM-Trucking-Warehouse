@@ -33,6 +33,9 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import EditIcon from '@mui/icons-material/Edit';
 import CloseIcon from '@mui/icons-material/Close';
+import CancelIcon from '@mui/icons-material/Cancel';
+import RejectFreightDialog from '../../components/RejectFreightDialog';
+import axios from '../../utils/axios';
 import Iconify from '../../components/iconify';
 import WarehouseReceiptPrintTemplate from './WarehouseReceiptPrintTemplate';
 import { PATH_DASHBOARD } from '../../routes/paths';
@@ -98,7 +101,7 @@ const emptyReceiptFilters = {
   location: '',
   proNumber: '',
   receiptNumber: '',
-  verificationId: '',
+  shipper: '',
   customer: '',
   customerId: '',
   station: '',
@@ -345,6 +348,11 @@ export default function WarehouseRecieptPage() {
   const [searchValue, setSearchValue] = useState(gridState.searchValue || '');
   const [submittedReceiptNumber, setSubmittedReceiptNumber] = useState(gridState.submittedReceiptNumber || '');
   const [locationDialog, setLocationDialog] = useState({ open: false, row: null, location: '' });
+  const [rejectRow, setRejectRow] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectLoading, setRejectLoading] = useState(false);
+  const rejectPendingRef = useRef(false);
+  const [rejectNotice, setRejectNotice] = useState(null);
   const [locationOverrides, setLocationOverrides] = useState({});
   const [locationSaving, setLocationSaving] = useState(false);
   const [locationError, setLocationError] = useState('');
@@ -442,7 +450,7 @@ export default function WarehouseRecieptPage() {
     carrierId: appliedReceiptFilters.carrierId,
     location: appliedReceiptFilters.location,
     proNumber: appliedReceiptFilters.proNumber,
-    verificationId: appliedReceiptFilters.verificationId,
+    shipper: appliedReceiptFilters.shipper,
     customerId: appliedReceiptFilters.customerId,
     stationId: appliedReceiptFilters.stationId,
     destination: appliedReceiptFilters.destination,
@@ -475,7 +483,7 @@ export default function WarehouseRecieptPage() {
     requestFilters.carrierId,
     requestFilters.location,
     requestFilters.proNumber,
-    requestFilters.verificationId,
+    requestFilters.shipper,
     requestFilters.customerId,
     requestFilters.stationId,
     requestFilters.destination,
@@ -699,7 +707,7 @@ export default function WarehouseRecieptPage() {
     { field: 'carrier', headerName: 'Carrier', minWidth: 100, flex: 0.8 },
     { field: 'customer', headerName: 'Customer', minWidth: 155, flex: 1.2 },
     { field: 'proNumber', headerName: 'Pro Number', minWidth: 170, flex: 1.4 },
-    { field: 'idVerification', headerName: 'Id Verification', minWidth: 120, flex: 1 },
+    { field: 'shipper', headerName: 'Shipper', minWidth: 120, flex: 1 },
     { field: 'location', headerName: 'Location', minWidth: 85, flex: 0.6 },
     {
       field: 'rate',
@@ -827,7 +835,7 @@ export default function WarehouseRecieptPage() {
       cellClassName: 'sticky-action-cell',
       sortable: false,
       filterable: false,
-      minWidth: 190,
+      minWidth: 215,
       headerAlign: 'center',
       align: 'center',
       renderCell: (params) => {
@@ -853,9 +861,15 @@ export default function WarehouseRecieptPage() {
             spacing={0.4}
             sx={{ width: '100%', height: '100%' }}
           >
-            {visibleActionIcons.map((icon) => {
+            {[...visibleActionIcons, ...(String(params.row.status ?? params.row.rawData?.status ?? '').trim().toUpperCase() === 'REJECTED' ? [] : ['reject'])].map((icon) => {
               const handleActionClick = (event) => {
                 event.stopPropagation();
+
+                if (icon === 'reject') {
+                  setRejectReason('');
+                  setRejectRow(params.row);
+                  return;
+                }
 
                 if (icon === 'mdi:eye') {
                   handleViewReceipt(params.row);
@@ -914,6 +928,8 @@ export default function WarehouseRecieptPage() {
                 <IconButton
                   key={icon}
                   size="small"
+                  aria-label={icon === 'reject' ? 'Reject receipt' : undefined}
+                  title={icon === 'reject' ? 'Reject receipt' : undefined}
                   onClick={handleActionClick}
                   onMouseDown={handleActionMouseDown}
                   disabled={
@@ -924,12 +940,14 @@ export default function WarehouseRecieptPage() {
                     (icon === 'mdi:check-circle-outline' &&
                       String(rowRateApprovalReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id))
                   }
-                  sx={{ p: 0.25, color: '#050505' }}
+                  sx={{ p: 0.25, color: '#A22' }}
                 >
-                  {icon === 'location-edit' ? (
-                    <EditLocationAltIcon sx={{ color: '#050505', fontSize: 18 }} />
+                  {icon === 'reject' ? (
+                    <CancelIcon sx={{ fontSize: 18 }} />
+                  ) : icon === 'location-edit' ? (
+                    <EditLocationAltIcon sx={{ fontSize: 18 }} />
                   ) : (
-                    <Iconify icon={icon} width={16} sx={{ color: '#050505' }} />
+                    <Iconify icon={icon} width={16} />
                   )}
                 </IconButton>
               );
@@ -1069,6 +1087,45 @@ export default function WarehouseRecieptPage() {
     setReceiptFilters(emptyReceiptFilters);
     setAppliedReceiptFilters(emptyReceiptFilters);
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  };
+
+  const handleRejectClose = () => {
+    if (rejectPendingRef.current) return;
+    setRejectRow(null);
+    setRejectReason('');
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectRow || !rejectReason.trim() || rejectPendingRef.current) return;
+    const receiptId = rejectRow.receiptId ?? rejectRow.rawData?.receiptId ?? rejectRow.id;
+    rejectPendingRef.current = true;
+    setRejectLoading(true);
+    try {
+      const response = await axios.put(`/warehouse-receipt/${receiptId}/reject`, {
+        rejectionReason: rejectReason,
+      });
+      if (!response.data?.success) {
+        setRejectNotice({ severity: 'error', message: response.data?.message || 'Failed to reject receipt' });
+        return;
+      }
+      setRejectRow(null);
+      setRejectReason('');
+      setRejectNotice({ severity: 'success', message: 'Receipt rejected successfully' });
+      dispatch(getWarehouseReceipts({
+        page: paginationModel.page + 1,
+        pageSize: paginationModel.pageSize,
+        status: requestStatus,
+        approvalStatus: requestApprovalStatus,
+        receiptNumber: requestReceiptNumber,
+        accounting: activeTab === 'Accounting',
+        filters: requestFilters,
+      }));
+    } catch (error) {
+      setRejectNotice({ severity: 'error', message: error.response?.data?.message || error.message || 'Error rejecting receipt' });
+    } finally {
+      rejectPendingRef.current = false;
+      setRejectLoading(false);
+    }
   };
 
   const handleOpenMailDialog = (row) => {
@@ -2244,9 +2301,9 @@ export default function WarehouseRecieptPage() {
             />
             <TextField
               size="small"
-              placeholder="Search by ID Verification Number"
-              value={receiptFilters.verificationId}
-              onChange={(event) => handleReceiptFilterChange('verificationId', event.target.value)}
+              placeholder="Search by Shipper"
+              value={receiptFilters.shipper}
+              onChange={(event) => handleReceiptFilterChange('shipper', event.target.value)}
               fullWidth
             />
             <TextField
@@ -2843,6 +2900,24 @@ export default function WarehouseRecieptPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <RejectFreightDialog
+        open={Boolean(rejectRow)}
+        reason={rejectReason}
+        loading={rejectLoading}
+        onClose={handleRejectClose}
+        onReasonChange={setRejectReason}
+        onSubmit={handleRejectSubmit}
+      />
+      <Snackbar
+        open={Boolean(rejectNotice)}
+        autoHideDuration={4000}
+        onClose={() => setRejectNotice(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={rejectNotice?.severity || 'success'} onClose={() => setRejectNotice(null)}>
+          {rejectNotice?.message}
+        </Alert>
+      </Snackbar>
       <Snackbar
         open={Boolean(invoiceNumberMessage)}
         autoHideDuration={3000}
