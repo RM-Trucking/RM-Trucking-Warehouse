@@ -49,6 +49,13 @@ export interface WarehouseShipmentReceipts {
     receiptId: number;
 }
 
+export interface WarehouseShipmentImages {
+    imageId?: number;
+    shipmentId?: number;
+    imagePath: string;
+    uploadedAt: Date;
+}
+
 export interface WarehouseShipmentPickupEntry {
     pickupId: number;
     shipmentId: number;
@@ -95,6 +102,7 @@ export type UpdateWarehouseShipment = Partial<Omit<WarehouseShipment, 'shipmentI
 
 export interface WarehouseShipmentWithRelations extends WarehouseShipment {
     containers: WarehouseShipmentContainers[];
+    images: WarehouseShipmentImages[];
     receipts: WarehouseShipmentReceipts & {
         receiptNumber: string;
         parentReceipt?: number | null;

@@ -565,8 +565,9 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
         return null;
     }
 
-    const [containers, receipts] = await Promise.all([
+    const [containers, images, receipts] = await Promise.all([
         shipmentDB.getContainersByShipmentId(conn, shipmentId),
+        shipmentDB.getShipmentImagesByShipmentId(conn, shipmentId),
         shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
     ]);
 
@@ -620,8 +621,39 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     return {
         ...shipment,
         containers,
+        images,
         receipts: orderedReceipts,
     } as WarehouseShipmentWithRelations;
+}
+
+export async function uploadShipmentImages(
+    conn: Connection,
+    shipmentId: number,
+    imagePaths: string[]
+): Promise<any[]> {
+    const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
+    if (!shipment) {
+        const error = new Error(`Shipment with ID ${shipmentId} not found.`) as Error & { statusCode?: number };
+        error.name = "NotFoundError";
+        error.statusCode = 404;
+        throw error;
+    }
+    if (imagePaths.length === 0) {
+        throwValidationError("At least one image file is required.");
+    }
+
+    await conn.beginTransaction();
+    try {
+        const images = [];
+        for (const imagePath of imagePaths) {
+            images.push(await shipmentDB.createShipmentImage(conn, shipmentId, imagePath));
+        }
+        await conn.commit();
+        return images;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
 }
 
 export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<ShipmentResposeForPickup | null> {

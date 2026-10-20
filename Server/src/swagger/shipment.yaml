@@ -9,6 +9,41 @@ tags:
     description: Warehouse shipment CRUD operations
 
 paths:
+  /api/shipment/image-upload:
+    post:
+      tags:
+        - Shipments
+      summary: Upload images to a warehouse shipment
+      description: Uploads one or more image files and stores their paths with the specified shipment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - shipmentId
+                - images
+              properties:
+                shipmentId:
+                  type: integer
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Shipment images uploaded successfully
+        "400":
+          description: Invalid shipment ID or no image files provided
+        "404":
+          description: Shipment not found
+        "500":
+          description: Image upload failed
+
   /api/shipment:
     get:
       tags:

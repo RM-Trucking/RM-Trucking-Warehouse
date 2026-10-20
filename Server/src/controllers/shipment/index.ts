@@ -23,6 +23,40 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
     }
 }
 
+export async function uploadShipmentImages(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const rawShipmentId = req.body?.shipmentId ?? req.query?.shipmentId;
+        const shipmentId = Number(Array.isArray(rawShipmentId) ? rawShipmentId[0] : rawShipmentId);
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
+            res.status(400).json({ success: false, message: "A valid shipmentId is required" });
+            return;
+        }
+
+        const uploadedFiles = Array.isArray((req as any).files)
+            ? ((req as any).files as Express.Multer.File[])
+            : [];
+        if (!uploadedFiles.length) {
+            res.status(400).json({ success: false, message: "At least one image file is required" });
+            return;
+        }
+
+        const images = await shipmentService.uploadShipmentImages(
+            conn,
+            shipmentId,
+            uploadedFiles.map((file) => `/api/uploads/shipment/images/${encodeURIComponent((file as any).filename)}`)
+        );
+        res.status(201).json({
+            success: true,
+            message: "Shipment images uploaded successfully",
+            data: { shipmentId, images, count: images.length }
+        });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.statusCode || (error?.name === "ValidationError" ? 400 : 500);
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to upload shipment images" });
+    }
+}
+
 export async function listShipments(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const barcodeNumber = req.query.searchTerm as string | undefined;

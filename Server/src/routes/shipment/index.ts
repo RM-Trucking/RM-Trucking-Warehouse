@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { authenticateJWT } from "../../middleware/auth";
 import { db } from "../../config/db2";
 import * as shipmentController from "../../controllers/shipment";
+import { uploaders } from "../../config/multer";
 
 const router = Router();
 
@@ -54,6 +55,15 @@ router.post("/pickup-entry", authenticateJWT, async (req: Request, res: Response
     const conn = await db();
     try {
         await shipmentController.createShipmentPickupEntry(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
+router.post("/image-upload", authenticateJWT, uploaders.shipment.images.any(), async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.uploadShipmentImages(req, res, conn);
     } finally {
         if (conn) conn.close();
     }

@@ -2,10 +2,13 @@ import { config } from 'dotenv';
 config();
 
 // Module upload paths - configurable via .env
-export const UPLOAD_PATHS = {
+export const UPLOAD_PATHS: Record<string, { images?: string; documents?: string }> = {
     warehouse: {
         images: process.env.WAREHOUSE_IMAGE_PATH,
         documents: process.env.WAREHOUSE_DOC_PATH
+    },
+    shipment: {
+        images: process.env.SHIPMENT_IMAGE_PATH
     }
 };
 
