@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import {
-    Alert, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
+    Alert, Badge, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
     CircularProgress, FormControlLabel, Snackbar, Button, DialogTitle, DialogActions, DialogContentText, TextField
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -18,6 +18,7 @@ import ShipmentScanStatus from './ShipmentScanStatus';
 import AirPickupEntryForm from './AirPickupEntryForm';
 import FCLPickupEntryForm from './FCLPickupEntryForm';
 import ShipmentImageUploadDialog from './ShipmentImageUploadDialog';
+import ShipmentImageGalleryDialog from './ShipmentImageGalleryDialog';
 
 // ----------------------------------------------------------------------
 
@@ -80,7 +81,7 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const [successMessage, setSuccessMessage] = useState('');
     const [comingSoonMessage, setComingSoonMessage] = useState('');
     const [imageUploadShipment, setImageUploadShipment] = useState(null);
-    const [shipmentImageDrafts, setShipmentImageDrafts] = useState({});
+    const [imageGalleryShipment, setImageGalleryShipment] = useState(null);
     const [pickupError, setPickupError] = useState('');
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
     const [viewLoadingId, setViewLoadingId] = useState(null);
@@ -436,8 +437,8 @@ const handleClosePickupForm = () => {
     const actionColumn = {
             field: 'action',
             headerName: 'Action',
-            width: 210,
-            minWidth: 210,
+            width: 240,
+            minWidth: 240,
             headerAlign: 'center',
             align: 'center',
             sortable: false,
@@ -446,6 +447,7 @@ const handleClosePickupForm = () => {
             headerClassName: 'sticky-action-header',
             cellClassName: 'sticky-action-cell',
             renderCell: (params) => {
+                const imageCount = Array.isArray(params.row.images) ? params.row.images.length : 0;
                 return (
                     <Box
                         onMouseDown={(event) => event.stopPropagation()}
@@ -454,6 +456,7 @@ const handleClosePickupForm = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             width: '100%',
+                            height: '100%',
                         }}
                     >
                         <IconButton
@@ -517,6 +520,21 @@ const handleClosePickupForm = () => {
                             sx={{ p: 0.2, color: '#A22' }}
                         >
                             <Iconify icon="mdi:image-plus" width={20} />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            disabled={imageCount === 0}
+                            aria-label={`View shipment images (${imageCount})`}
+                            title={`View shipment images (${imageCount})`}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setImageGalleryShipment(params.row);
+                            }}
+                            sx={{ color: '#A22', mx: 0.5 }}
+                        >
+                            <Badge badgeContent={imageCount} max={9999} sx={{ '& .MuiBadge-badge': { bgcolor: '#A22', color: '#fff', fontSize: 9, minWidth: 15, height: 15, px: 0.4 } }}>
+                                <Iconify icon="mdi:image-multiple" width={20} />
+                            </Badge>
                         </IconButton>
                         <IconButton
                             size="small"
@@ -721,14 +739,27 @@ const handleClosePickupForm = () => {
                 </DialogActions>
             </Dialog>
 
+            {imageGalleryShipment && (
+                <ShipmentImageGalleryDialog shipment={imageGalleryShipment} onClose={() => setImageGalleryShipment(null)} />
+            )}
             {imageUploadShipment && (
                 <ShipmentImageUploadDialog
                     shipment={imageUploadShipment}
-                    initialFiles={shipmentImageDrafts[imageUploadShipment.shipmentId || imageUploadShipment.id] || []}
                     onClose={() => setImageUploadShipment(null)}
-                    onStage={(shipment, files) => {
-                        setShipmentImageDrafts((previous) => ({ ...previous, [shipment.shipmentId || shipment.id]: files }));
-                        setComingSoonMessage('Images staged locally. Server upload will be available once connected.');
+                    onUploaded={() => {
+                        setSuccessMessage('Shipment images uploaded successfully.');
+                        dispatch(getShipmentData({
+                            pageNo: paginationModel.page + 1,
+                            pageSize: paginationModel.pageSize,
+                            searchTerm: shipmentSearchStrRef.current,
+                            ...filters,
+                            request: requestFilterEnabled || filters.request,
+                            canceled: canceledFilterEnabled || filters.canceled,
+                            scanned: scannedFilterEnabled || filters.scanned,
+                            pickup: pickupFilterEnabled || filters.pickup,
+                            shipped: shippedFilterEnabled || filters.shipped,
+                            shipmentType: shipmentTypeMap[currentTab],
+                        }));
                     }}
                 />
             )}

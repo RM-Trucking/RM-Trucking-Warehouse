@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, Typography } from '@mui/material';
 import Iconify from '../../components/iconify';
+import { useDispatch } from '../../redux/store';
+import { uploadShipmentImages } from '../../redux/slices/shipment';
 const ImageFileItem = ({ filename, onRemove, onView }) => (
   <Box
     sx={{
@@ -33,7 +35,10 @@ const ImageFileItem = ({ filename, onRemove, onView }) => (
 const actionBtnSx = { bgcolor: '#A22', color: '#fff', textTransform: 'none', '&:hover': { bgcolor: '#8b1c1c' } };
 const getImageName = (file) => file.name;
 
-export default function ShipmentImageUploadDialog({ shipment, initialFiles = [], onClose, onStage }) {
+export default function ShipmentImageUploadDialog({ shipment, initialFiles = [], onClose, onUploaded }) {
+  const dispatch = useDispatch();
+  const [uploading, setUploading] = useState(false);
+  const uploadPendingRef = useRef(false);
   const splitItemUploadDialogOpen = Boolean(shipment);
   const [splitItemStagedFiles, setSplitItemStagedFiles] = useState(initialFiles);
   const [splitItemDraggingFiles, setSplitItemDraggingFiles] = useState(false);
@@ -58,8 +63,13 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
     splitItemCameraStreamRef.current = null;
     setSplitItemCameraOpen(false);
   };
-  const handleCloseSplitItemUpload = () => { handleCloseSplitItemCamera(); onClose(); };
+  const handleCloseSplitItemUpload = () => {
+    if (uploadPendingRef.current) return;
+    handleCloseSplitItemCamera();
+    onClose();
+  };
   const addSplitItemFilesToStage = (files) => {
+    if (uploadPendingRef.current) return;
     const selected = Array.from(files || []);
     const valid = selected.filter((file) => file.type.startsWith('image/') || /\.jif$/i.test(file.name));
     setError(valid.length !== selected.length ? 'Please select image files only.' : '');
@@ -75,7 +85,9 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
     setSplitItemDraggingFiles(false);
     addSplitItemFilesToStage(event.dataTransfer.files);
   };
-  const handleRemoveSplitItemStagedFile = (index) => setSplitItemStagedFiles((previous) => previous.filter((_, i) => i !== index));
+  const handleRemoveSplitItemStagedFile = (index) => {
+    if (!uploadPendingRef.current) setSplitItemStagedFiles((previous) => previous.filter((_, i) => i !== index));
+  };
   const handleViewSplitItemStagedFile = (file) => setPreview({ url: URL.createObjectURL(file), name: file.name });
   const handleCaptureSplitItemImage = async () => {
     if (!navigator.mediaDevices?.getUserMedia) { splitItemCameraInputRef.current?.click(); return; }
@@ -99,16 +111,37 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
       handleCloseSplitItemCamera();
     }, 'image/jpeg', 0.92);
   };
-  const handleUploadSplitItemImages = () => {
+  const handleUploadSplitItemImages = async () => {
+    if (uploadPendingRef.current) return;
     if (!splitItemStagedFiles.length) { setError('Please select at least one image.'); return; }
-    onStage(shipment, splitItemStagedFiles);
-    handleCloseSplitItemUpload();
+    uploadPendingRef.current = true;
+    setUploading(true);
+    setError('');
+    try {
+      const response = await dispatch(uploadShipmentImages({
+        shipmentId: shipment?.shipmentId ?? shipment?.id,
+        images: splitItemStagedFiles,
+      }));
+      if (response?.error || response?.success === false) {
+        setError(response?.message || 'Failed to upload shipment images');
+        return;
+      }
+      onUploaded?.(shipment, response);
+      handleCloseSplitItemCamera();
+      onClose();
+    } catch (error) {
+      setError(error.message || 'Failed to upload shipment images');
+    } finally {
+      uploadPendingRef.current = false;
+      if (mountedRef.current) setUploading(false);
+    }
   };
   return <>      <Dialog open={splitItemUploadDialogOpen} onClose={handleCloseSplitItemUpload} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
           Image Upload - {shipment?.barcodeNumber || shipment?.rmNumber || '-'}
           <IconButton
             onClick={handleCloseSplitItemUpload}
+            disabled={uploading}
             size="small"
             sx={{ position: 'absolute', right: 12, top: 12 }}
           >
@@ -134,7 +167,8 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
           />
 
           <Stack spacing={2}>
-            <Alert severity="info">Images are staged locally for this shipment. Server upload will be enabled once connected.</Alert>{error && <Alert severity="error">{error}</Alert>}<Typography sx={{ fontSize: 14, fontWeight: 600 }}>File Upload</Typography>
+            {error && <Alert severity="error">{error}</Alert>}
+            <Typography sx={{ fontSize: 14, fontWeight: 600 }}>File Upload</Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} sx={{ border: '1px dashed #a0a0a0', borderRadius: 2, p: 2 }}>
               <Stack
                 sx={{
@@ -174,6 +208,7 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
                   <IconButton
                     size="small"
                     onClick={handleCaptureSplitItemImage}
+                    disabled={uploading}
                     title="Capture image"
                     sx={{
                       bgcolor: '#A22',
@@ -190,6 +225,7 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
                     variant="contained"
                     size="small"
                     onClick={handleBrowseSplitItemFiles}
+                    disabled={uploading}
                     sx={{ ...actionBtnSx, height: 32 }}
                   >
                     Browse Files
@@ -230,6 +266,7 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
             variant="outlined"
             size="small"
             onClick={handleCloseSplitItemUpload}
+            disabled={uploading}
             sx={{ textTransform: 'none', color: '#333', borderColor: '#aaa' }}
           >
             Cancel
@@ -238,9 +275,11 @@ export default function ShipmentImageUploadDialog({ shipment, initialFiles = [],
             variant="contained"
             size="small"
             onClick={handleUploadSplitItemImages}
+            disabled={uploading || !splitItemStagedFiles.length}
             sx={{ ...actionBtnSx, height: 32 }}
           >
-            Upload
+            {uploading && <CircularProgress size={16} color="inherit" sx={{ mr: 1 }} />}
+            {uploading ? 'Uploading...' : 'Upload'}
           </Button>
         </DialogActions>
       </Dialog>

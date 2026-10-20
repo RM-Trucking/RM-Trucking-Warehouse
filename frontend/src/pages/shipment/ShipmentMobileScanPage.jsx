@@ -36,7 +36,6 @@ export default function ShipmentMobileScanPage() {
     const [page, setPage] = useState(1);
     const [selectedShipment, setSelectedShipment] = useState(null);
     const [imageUploadShipment, setImageUploadShipment] = useState(null);
-    const [shipmentImageDrafts, setShipmentImageDrafts] = useState({});
 
     useEffect(() => {
         dispatch(getShipmentData({ shipmentType, pageNo: page, pageSize: PAGE_SIZE }));
@@ -171,11 +170,7 @@ export default function ShipmentMobileScanPage() {
             {imageUploadShipment && (
                 <ShipmentImageUploadDialog
                     shipment={imageUploadShipment}
-                    initialFiles={shipmentImageDrafts[imageUploadShipment.shipmentId || imageUploadShipment.id] || []}
                     onClose={() => setImageUploadShipment(null)}
-                    onStage={(shipment, files) => {
-                        setShipmentImageDrafts((previous) => ({ ...previous, [shipment.shipmentId || shipment.id]: files }));
-                    }}
                 />
             )}
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 1.25, py: 2 }}>
