@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    Box, Button, CircularProgress, IconButton, Stack, Tab, Table, TableBody, TableCell,
+    Alert, Badge, Box, Button, CircularProgress, IconButton, Snackbar, Stack, Tab, Table, TableBody, TableCell,
     TableContainer, TableHead, TableRow, Tabs, Typography,
 } from '@mui/material';
 import { useDispatch, useSelector } from '../../redux/store';
 import { getShipmentData } from '../../redux/slices/shipment';
 import ShipmentScanStatus from './ShipmentScanStatus';
 import ShipmentImageUploadDialog from './ShipmentImageUploadDialog';
+import ShipmentImageGalleryDialog from './ShipmentImageGalleryDialog';
 import Iconify from '../../components/iconify';
 
 const actionButtonSx = {
@@ -36,6 +37,8 @@ export default function ShipmentMobileScanPage() {
     const [page, setPage] = useState(1);
     const [selectedShipment, setSelectedShipment] = useState(null);
     const [imageUploadShipment, setImageUploadShipment] = useState(null);
+    const [imageGalleryShipment, setImageGalleryShipment] = useState(null);
+    const [uploadSuccess, setUploadSuccess] = useState(false);
 
     useEffect(() => {
         dispatch(getShipmentData({ shipmentType, pageNo: page, pageSize: PAGE_SIZE }));
@@ -96,22 +99,22 @@ export default function ShipmentMobileScanPage() {
             </Tabs>
 
             <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
-                <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 650 }}>
+                <Table size="small" sx={{ tableLayout: 'fixed', minWidth: shipmentType === 'OCEAN_LCL' ? 520 : 650 }}>
                     <TableHead>
                         <TableRow sx={{ bgcolor: '#d1d1d1' }}>
                             <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>RM Pro No</TableCell>
                             <TableCell sx={{ width: 145, px: 1, fontSize: 11, fontWeight: 700 }}>Customer</TableCell>
                             <TableCell sx={{ width: 120, px: 1, fontSize: 11, fontWeight: 700 }}>Station</TableCell>
-                            <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>
+                            {shipmentType !== 'OCEAN_LCL' && <TableCell sx={{ width: 130, px: 1, fontSize: 11, fontWeight: 700 }}>
                                 {shipmentType === 'OCEAN_FCL' ? 'Destination' : 'Air Bill No.'}
-                            </TableCell>
-                            <TableCell sx={{ position: 'sticky', right: 0, zIndex: 3, width: 120, px: 1, bgcolor: '#d1d1d1', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.35)', fontSize: 11, fontWeight: 700 }}>Actions</TableCell>
+                            </TableCell>}
+                            <TableCell align="center" sx={{ position: 'sticky', right: 0, zIndex: 3, width: 135, px: 1, bgcolor: '#d1d1d1', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.35)', fontSize: 11, fontWeight: 700 }}>Actions</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={5} align="center" sx={{ py: 5 }}>
+                                <TableCell colSpan={shipmentType === 'OCEAN_LCL' ? 4 : 5} align="center" sx={{ py: 5 }}>
                                     <CircularProgress size={24} />
                                 </TableCell>
                             </TableRow>
@@ -132,9 +135,9 @@ export default function ShipmentMobileScanPage() {
                                 <TableCell sx={{ px: 1, py: 0.75, fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {shipment.stationName || shipment.station || '-'}
                                 </TableCell>
-                                <TableCell sx={{ px: 1, py: 0.75, fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {shipmentType !== 'OCEAN_LCL' && <TableCell sx={{ px: 1, py: 0.75, fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {(shipmentType === 'OCEAN_FCL' ? shipment.destination : shipment.airBillNumber) || '-'}
-                                </TableCell>
+                                </TableCell>}
                                 <TableCell className="shipment-action-cell" sx={{ position: 'sticky', right: 0, zIndex: 2, px: 1, py: 0.5, bgcolor: shipment.isCanceled === 'Y' ? '#ffdde2' : '#fff', boxShadow: '-4px 0 6px -4px rgba(0,0,0,0.25)' }}>
                                     <Stack direction="row" spacing={0.5} alignItems="center">
                                         <Button
@@ -156,12 +159,24 @@ export default function ShipmentMobileScanPage() {
                                         >
                                             <Iconify icon="mdi:image-plus" width={20} />
                                         </IconButton>}
+                                        <IconButton
+                                            size="small"
+                                            disabled={!Array.isArray(shipment.images) || shipment.images.length === 0}
+                                            aria-label={`View shipment images (${shipment.images?.length || 0})`}
+                                            title={`View shipment images (${shipment.images?.length || 0})`}
+                                            onClick={() => setImageGalleryShipment(shipment)}
+                                            sx={{ color: '#A22', mx: 0.5 }}
+                                        >
+                                            <Badge badgeContent={Array.isArray(shipment.images) ? shipment.images.length : 0} max={9999} sx={{ '& .MuiBadge-badge': { bgcolor: '#A22', color: '#fff', fontSize: 9, minWidth: 15, height: 15, px: 0.4 } }}>
+                                                <Iconify icon="mdi:image-multiple" width={20} />
+                                            </Badge>
+                                        </IconButton>
                                     </Stack>
                                 </TableCell>
                             </TableRow>
                         )) : (
                             <TableRow>
-                                <TableCell colSpan={5} align="center" sx={{ py: 5, fontSize: 12 }}>No shipments found</TableCell>
+                                <TableCell colSpan={shipmentType === 'OCEAN_LCL' ? 4 : 5} align="center" sx={{ py: 5, fontSize: 12 }}>No shipments found</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -171,8 +186,20 @@ export default function ShipmentMobileScanPage() {
                 <ShipmentImageUploadDialog
                     shipment={imageUploadShipment}
                     onClose={() => setImageUploadShipment(null)}
+                    onUploaded={() => {
+                        setUploadSuccess(true);
+                        dispatch(getShipmentData({ shipmentType, pageNo: page, pageSize: PAGE_SIZE }));
+                    }}
                 />
             )}
+            {imageGalleryShipment && (
+                <ShipmentImageGalleryDialog shipment={imageGalleryShipment} onClose={() => setImageGalleryShipment(null)} />
+            )}
+            <Snackbar open={uploadSuccess} autoHideDuration={4000} onClose={() => setUploadSuccess(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+                <Alert severity="success" onClose={() => setUploadSuccess(false)}>
+                    Shipment images uploaded successfully.
+                </Alert>
+            </Snackbar>
             <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 1.25, py: 2 }}>
                 <Button
                     variant="outlined"
