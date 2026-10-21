@@ -1,8 +1,13 @@
-import { createContext, useContext, useEffect, useId, useState } from 'react';
-import { useBlocker } from 'react-router-dom';
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import { useBlocker, useNavigate } from 'react-router-dom';
 import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material';
 
 const UnsavedChangesContext = createContext(null);
+const MenuNavigationContext = createContext(null);
+
+export function useMenuNavigate() {
+  return useContext(MenuNavigationContext);
+}
 
 export function useUnsavedChanges(dirty) {
   const register = useContext(UnsavedChangesContext);
@@ -14,6 +19,8 @@ export function useUnsavedChanges(dirty) {
 }
 
 export default function UnsavedChangesProvider({ children }) {
+  const navigate = useNavigate();
+  const menuNavigationRef = useRef(false);
   const [guards, setGuards] = useState({});
   const [register] = useState(() => (id, dirty) => {
     setGuards((previous) => {
@@ -25,9 +32,15 @@ export default function UnsavedChangesProvider({ children }) {
     });
   });
   const dirty = Object.values(guards).some(Boolean);
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && (
-    currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search
-  ));
+  const blocker = useBlocker(() => dirty && menuNavigationRef.current);
+  const menuNavigate = (to, options) => {
+    menuNavigationRef.current = true;
+    try {
+      navigate(to, options);
+    } finally {
+      menuNavigationRef.current = false;
+    }
+  };
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -41,6 +54,7 @@ export default function UnsavedChangesProvider({ children }) {
 
   const stay = () => { if (blocker.state === 'blocked') blocker.reset(); };
   return <UnsavedChangesContext.Provider value={register}>
+    <MenuNavigationContext.Provider value={menuNavigate}>
     {children}
     <Dialog open={blocker.state === 'blocked'} onClose={stay} maxWidth="xs" fullWidth>
       <DialogTitle>Discard unsaved changes?</DialogTitle>
@@ -54,5 +68,6 @@ export default function UnsavedChangesProvider({ children }) {
         }}>Discard</Button>
       </DialogActions>
     </Dialog>
+    </MenuNavigationContext.Provider>
   </UnsavedChangesContext.Provider>;
 }
