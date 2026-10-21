@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from '../../components/UnsavedChangesProvider';
 import PropTypes from 'prop-types';
 import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
@@ -143,7 +144,8 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
         toDate: rowData?.endDate ? dayjs(rowData.endDate) : null,
     };
 
-    const { control, handleSubmit, watch, setValue, clearErrors, setError, getValues, reset } = useForm({ defaultValues });
+    const { control, handleSubmit, watch, setValue, clearErrors, setError, getValues, reset, formState: { isDirty } } = useForm({ defaultValues });
+    useUnsavedChanges(isDirty);
     const [isEditing, setIsEditing] = useState(!viewMode);
     const readOnly = viewMode && !isEditing;
     const savedFormValuesRef = useRef(defaultValues);
@@ -199,7 +201,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            dispatch(searchWarehouseReceiptCustomers(customerSearchValue));
+            dispatch(searchWarehouseReceiptCustomers(customerSearchValue, { getAll: false }));
         }, 500);
 
         return () => clearTimeout(timer);
@@ -210,7 +212,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            dispatch(searchWarehouseReceiptStations(selectedCustomerId, stationSearchTerm));
+            dispatch(searchWarehouseReceiptStations(selectedCustomerId, stationSearchTerm, { getAll: false }));
         }, 500);
 
         return () => clearTimeout(timer);
@@ -571,7 +573,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
     };
 
     const handleEdit = () => {
-        if (rowData?.completeStatus === 'APPROVED') return;
+        if (rowData?.isCanceled === 'Y' || rowData?.completeStatus === 'APPROVED') return;
         setSavedWarehouseRows(new Set(warehouseFields.map((item) => item.id)));
         setReceiptInputValues(Object.fromEntries(warehouseFields.map((item) => [item.id, getShipmentReceiptOptionLabel(item.warehouseNo)])));
         setIsEditing(true);
@@ -788,11 +790,12 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             stickyHeader
             topInfoPanel={
                 <TopInfoPanel 
+                    status={viewMode && rowData?.isCanceled === 'Y' ? 'Cancelled' : 'At Warehouse'}
                     showBarcodeGraphic={false}
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     showEdit={viewMode && !isEditing}
-                    editDisabled={rowData?.completeStatus === 'APPROVED'}
+                    editDisabled={rowData?.isCanceled === 'Y' || rowData?.completeStatus === 'APPROVED'}
                     onEdit={handleEdit}
                     showNotes={viewMode && !isEditing}
                     onNotes={handleOpenNotes}

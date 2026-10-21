@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from '../../components/UnsavedChangesProvider';
 import PropTypes from 'prop-types';
 import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useFieldArray, useWatch } from 'react-hook-form';
@@ -142,7 +143,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             : [{ warehouseNo: null, pieces: rowData?.pieces || '', weight: rowData?.weight || '' }],
     };
 
-    const { control, handleSubmit, setValue, clearErrors, reset } = useForm({ defaultValues });
+    const { control, handleSubmit, setValue, clearErrors, reset, formState: { isDirty } } = useForm({ defaultValues });
+    useUnsavedChanges(isDirty);
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? String(rowData?.barcodeNumber || '').replace(/\s/g, '') : '');
     const [customerSearchValue, setCustomerSearchValue] = useState(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
@@ -279,7 +281,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            dispatch(searchWarehouseReceiptCustomers(customerSearchValue));
+            dispatch(searchWarehouseReceiptCustomers(customerSearchValue, { getAll: false }));
         }, 500);
 
         return () => clearTimeout(timer);
@@ -287,7 +289,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            dispatch(searchWarehouseReceiptStations(selectedCustomerId, stationSearchValue));
+            dispatch(searchWarehouseReceiptStations(selectedCustomerId, stationSearchValue, { getAll: false }));
         }, 500);
 
         return () => clearTimeout(timer);
@@ -342,6 +344,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     };
 
     const handleEdit = () => {
+        if (rowData?.isCanceled === 'Y' || rowData?.completeStatus === 'APPROVED') return;
         setSavedContainerRows(new Set(containerFields.map((item) => item.id)));
         setSavedWarehouseRows(new Set(warehouseFields.map((item) => item.id)));
         setIsEditing(true);
@@ -476,7 +479,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}
                     showEdit={viewMode && !isEditing}
-                    editDisabled={rowData?.completeStatus === 'APPROVED'}
+                    editDisabled={rowData?.isCanceled === 'Y' || rowData?.completeStatus === 'APPROVED'}
                     onEdit={handleEdit}
                     showNotes={viewMode && !isEditing}
                     onNotes={handleOpenNotes}

@@ -4,6 +4,26 @@ import axios from '../../utils/axios';
 //
 import { dispatch } from '../store';
 
+export function uploadShipmentImages({ shipmentId, images = [] } = {}) {
+    return async () => {
+        if (shipmentId === null || shipmentId === undefined || shipmentId === '') {
+            return { error: true, message: 'Shipment ID is required to upload images' };
+        }
+        if (!images.length) {
+            return { error: true, message: 'Select at least one image to upload' };
+        }
+        const formData = new FormData();
+        formData.append('shipmentId', shipmentId);
+        images.forEach((image) => formData.append('images', image));
+        try {
+            const response = await axios.post('/shipment/image-upload', formData);
+            return response.data;
+        } catch (error) {
+            return { error: true, message: error.response?.data?.message || error.message || 'Failed to upload shipment images' };
+        }
+    };
+}
+
 // ----------------------------------------------------------------------
 
 const initialState = {
