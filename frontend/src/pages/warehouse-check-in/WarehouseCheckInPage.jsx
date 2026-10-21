@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from '../../components/UnsavedChangesProvider';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BrowserMultiFormatReader } from "@zxing/browser";
@@ -1045,6 +1046,8 @@ export default function WarehouseCheckInPage({
     Boolean(searchValue.trim()) ||
     proceededReceipts.length > 0 ||
     Object.values(parcelForm).some((value) => Boolean(value));
+
+  useUnsavedChanges(hasUnsavedCheckInData);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {

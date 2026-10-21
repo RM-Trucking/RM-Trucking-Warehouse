@@ -629,7 +629,7 @@ export function updateWarehouseReceipt({ receiptId, payload } = {}) {
   };
 }
 
-export function searchWarehouseReceiptCustomers(searchTerm) {
+export function searchWarehouseReceiptCustomers(searchTerm, { getAll = true } = {}) {
   return async () => {
     const cleanSearchTerm = String(searchTerm || '').trim();
 
@@ -642,7 +642,7 @@ export function searchWarehouseReceiptCustomers(searchTerm) {
 
     try {
       const response = await axios.get(
-        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}&getAll=true`
+        `/maintenance/customer/customer-dropdown?search=${encodeURIComponent(cleanSearchTerm)}&getAll=${getAll}`
       );
       const customers = Array.isArray(response.data?.data) ? response.data.data : [];
 
@@ -653,7 +653,7 @@ export function searchWarehouseReceiptCustomers(searchTerm) {
   };
 }
 
-export function searchWarehouseReceiptStations(customerId, searchTerm) {
+export function searchWarehouseReceiptStations(customerId, searchTerm, { getAll = true } = {}) {
   return async () => {
     const cleanCustomerId = String(customerId || '').trim();
     const cleanSearchTerm = String(searchTerm || '').trim();
@@ -674,7 +674,7 @@ export function searchWarehouseReceiptStations(customerId, searchTerm) {
         params.set('search', cleanSearchTerm);
       }
 
-      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}&getAll=true`);
+      const response = await axios.get(`/maintenance/customer/station-dropdown?${params.toString()}&getAll=${getAll}`);
       const stations = Array.isArray(response.data?.data) ? response.data.data : [];
 
       dispatch(slice.actions.getStationOptionsSuccess(stations));
