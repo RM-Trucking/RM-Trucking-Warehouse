@@ -35,6 +35,7 @@ export interface WarehouseShipment {
     manifestType: 'DIRECT' | 'PRO_SEARCH' | 'DATE_RANGE';
     startDate?: Date;
     endDate?: Date;
+    canceledReason?: string;
 }
 
 export interface WarehouseShipmentContainers {

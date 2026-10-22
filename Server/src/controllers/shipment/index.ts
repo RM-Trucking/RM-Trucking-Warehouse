@@ -421,14 +421,19 @@ export async function revokeShipmentCompletion(req: Request, res: Response, conn
 export async function cancelShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const shipmentId = Number(req.body.shipmentId);
+        const canceledReason = typeof req.body?.canceledReason === "string" ? req.body.canceledReason.trim() : "";
         const userId = (req as any).user?.userId || (req as any).user?.id || 0;
 
         if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
             res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
             return;
         }
+        if (!canceledReason) {
+            res.status(400).json({ success: false, message: "canceledReason is required" });
+            return;
+        }
 
-        const shipment = await shipmentService.cancelShipment(conn, shipmentId, userId);
+        const shipment = await shipmentService.cancelShipment(conn, shipmentId, userId, canceledReason);
         res.status(200).json({ success: true, message: "Shipment canceled successfully", data: shipment });
     } catch (error: any) {
         console.error(error);

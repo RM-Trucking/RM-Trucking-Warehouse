@@ -338,7 +338,7 @@ paths:
       tags:
         - Shipments
       summary: Cancel shipment
-      description: Returns linked warehouse receipts to `ON_HAND`, resets their freight scan flags to unscanned, and marks the shipment `isCanceled` as `Y`. Receipt mappings are retained for historical reference. All updates are performed in one transaction.
+      description: Returns linked warehouse receipts to `ON_HAND`, resets their freight scan flags to unscanned, marks the shipment `isCanceled` as `Y`, and stores the supplied cancellation reason in `canceledReason`. Receipt mappings are retained for historical reference. All updates are performed in one transaction.
       security:
         - bearerAuth: []
       requestBody:
@@ -349,11 +349,17 @@ paths:
               type: object
               required:
                 - shipmentId
+                - canceledReason
               properties:
                 shipmentId:
                   type: integer
                   minimum: 1
                   example: 1
+                canceledReason:
+                  type: string
+                  minLength: 1
+                  description: Reason for canceling the shipment.
+                  example: "Customer requested cancellation"
       responses:
         "200":
           description: Shipment canceled successfully
@@ -838,6 +844,9 @@ components:
         isCanceled:
           type: string
           enum: [Y, N]
+        canceledReason:
+          type: string
+          description: Reason recorded when the shipment was canceled.
         isShipped:
           type: string
           enum: [Y, N]

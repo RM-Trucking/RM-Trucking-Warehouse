@@ -9,7 +9,7 @@ export async function getCustomerWithStationDropdown(
     SELECT s."stationId", s."stationName", c."customerId", c."customerName"
     FROM ${SCHEMA}."Station" s
     JOIN ${SCHEMA}."Customer" c ON s."customerId" = c."customerId"
-    WHERE c."activeStatus" = 'Y'
+    WHERE c."activeStatus" = 'Y' AND s."activeStatus" = 'Y'
   `;
     const params: any[] = [];
 
