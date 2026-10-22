@@ -791,6 +791,7 @@ export default function NewOceanFCLShipmentForm({ handleClose, rowData = null, v
             topInfoPanel={
                 <TopInfoPanel 
                     status={viewMode && rowData?.isCanceled === 'Y' ? 'Cancelled' : 'At Warehouse'}
+                    canceledReason={rowData?.canceledReason}
                     showBarcodeGraphic={false}
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}

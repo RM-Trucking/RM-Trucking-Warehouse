@@ -382,10 +382,12 @@ export function getShipmentById(shipmentId) {
     };
 }
 
-export function cancelShipment(shipmentId) {
+export function cancelShipment({ shipmentId, canceledReason } = {}) {
     return async () => {
+        const reason = String(canceledReason ?? '').trim();
+        if (!reason) return { success: false, error: 'Please enter a cancellation reason.' };
         try {
-            const response = await axios.post('shipment/cancel', { shipmentId });
+            const response = await axios.post('shipment/cancel', { shipmentId, canceledReason: reason });
             return { success: true, data: response.data?.data || response.data, message: response.data?.message };
         } catch (error) {
             const message = error.response?.data?.message || error?.message || error?.error || 'Failed to cancel shipment';

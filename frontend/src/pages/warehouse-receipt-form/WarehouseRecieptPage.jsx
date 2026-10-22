@@ -2902,6 +2902,7 @@ export default function WarehouseRecieptPage() {
       </Dialog>
       <RejectFreightDialog
         open={Boolean(rejectRow)}
+        receiptNumber={rejectRow?.receiptNumber || rejectRow?.rawData?.receiptNumber}
         reason={rejectReason}
         loading={rejectLoading}
         onClose={handleRejectClose}
