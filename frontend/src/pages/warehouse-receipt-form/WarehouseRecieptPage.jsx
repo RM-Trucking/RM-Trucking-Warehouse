@@ -842,7 +842,7 @@ export default function WarehouseRecieptPage() {
         const approvalStatus = String(
           params.row.approvalStatus ?? params.row.rawData?.approvalStatus ?? ''
         ).trim().toUpperCase();
-        const visibleActionIcons = activeTab === 'Accounting'
+        const enabledActionIcons = activeTab === 'Accounting'
           ? accountingActionIcons.filter((icon) =>
               (icon !== 'material-symbols:keyboard-return-rounded' || approvalStatus === 'PENDING') &&
               (icon !== 'mdi:check-circle-outline' || approvalStatus === 'READY')
@@ -852,6 +852,10 @@ export default function WarehouseRecieptPage() {
             : ['SHIPPED', 'SCANNED', 'PREPARED'].includes(String(params.row.status).trim().toUpperCase())
               ? ['mdi:eye', 'mdi:printer', 'mdi:upload', 'mdi:file-document', 'mdi:send']
               : ['mdi:eye'];
+        const canReject = ['INITIATED', 'ON-HAND'].includes(
+          String(params.row.rawData?.status ?? params.row.status ?? '').trim().toUpperCase().replace('_', '-')
+        );
+        const visibleActionIcons = [...(activeTab === 'Accounting' ? accountingActionIcons : actionIcons), 'reject'];
 
         return (
           <Stack
@@ -861,7 +865,7 @@ export default function WarehouseRecieptPage() {
             spacing={0.4}
             sx={{ width: '100%', height: '100%' }}
           >
-            {[...visibleActionIcons, ...(String(params.row.status ?? params.row.rawData?.status ?? '').trim().toUpperCase() === 'REJECTED' ? [] : ['reject'])].map((icon) => {
+            {visibleActionIcons.map((icon) => {
               const handleActionClick = (event) => {
                 event.stopPropagation();
 
@@ -933,6 +937,7 @@ export default function WarehouseRecieptPage() {
                   onClick={handleActionClick}
                   onMouseDown={handleActionMouseDown}
                   disabled={
+                    (icon === 'reject' ? !canReject : !enabledActionIcons.includes(icon)) ||
                     (icon === 'mdi:hourglass' &&
                       String(accountHoldReceiptId) === String(params.row.receiptId ?? params.row.rawData?.receiptId ?? params.row.id)) ||
                     (icon === 'material-symbols:keyboard-return-rounded' &&
