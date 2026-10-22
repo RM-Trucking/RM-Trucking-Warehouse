@@ -475,6 +475,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             topInfoPanel={
                 <TopInfoPanel 
                     status={viewMode && rowData?.isCanceled === 'Y' ? 'Cancelled' : 'At Warehouse'}
+                    canceledReason={rowData?.canceledReason}
                     showBarcodeGraphic={false} // Hides the barcode to match the Air mockup
                     barcodeValue={barcodeValue}
                     onBarcodeGenerate={() => setBarcodeValue(rmProValue)}

@@ -138,6 +138,7 @@ export function TopInfoPanel({
     showBarcodeGraphic, 
     rmProInputNode, 
     status = "At Warehouse",
+    canceledReason,
     barcodeValue,
     onBarcodeGenerate,
     showEdit = false,
@@ -180,9 +181,14 @@ export function TopInfoPanel({
 
                 </Box>
 
-                <Stack direction="row" alignItems="center" spacing={1}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
                     <Typography sx={{ width: '100px', fontSize: '14px' }}>Status :</Typography>
                     <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{status}</Typography>
+                    {status === 'Cancelled' && canceledReason && (
+                        <Typography sx={{ fontSize: '14px', overflowWrap: 'anywhere', minWidth: 0 }}>
+                            | Reason: {canceledReason}
+                        </Typography>
+                    )}
                 </Stack>
             </Stack>
             
@@ -215,6 +221,7 @@ TopInfoPanel.propTypes = {
     showBarcodeGraphic: PropTypes.bool,
     rmProInputNode: PropTypes.node.isRequired,
     status: PropTypes.string,
+    canceledReason: PropTypes.string,
     barcodeValue: PropTypes.string,
     onBarcodeGenerate: PropTypes.func,
     showEdit: PropTypes.bool,

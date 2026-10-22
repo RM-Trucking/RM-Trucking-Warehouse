@@ -87,6 +87,7 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const [viewLoadingId, setViewLoadingId] = useState(null);
     const [cancelShipmentId, setCancelShipmentId] = useState(null);
     const [cancelRmNumber, setCancelRmNumber] = useState('');
+    const [cancelReason, setCancelReason] = useState('');
     const [cancelLoading, setCancelLoading] = useState(false);
     const [cancelError, setCancelError] = useState('');
     const cancelPendingRef = useRef(false);
@@ -237,15 +238,20 @@ const handleClosePickupForm = () => {
         if (cancelPendingRef.current) return;
         setCancelShipmentId(null);
         setCancelError('');
+        setCancelReason('');
     };
 
     const handleConfirmCancel = async () => {
         if (cancelPendingRef.current || cancelShipmentId === null) return;
+        if (!cancelReason.trim()) {
+            setCancelError('Please enter a cancellation reason.');
+            return;
+        }
         cancelPendingRef.current = true;
         setCancelLoading(true);
         setCancelError('');
         try {
-            const result = await dispatch(cancelShipment(cancelShipmentId));
+            const result = await dispatch(cancelShipment({ shipmentId: cancelShipmentId, canceledReason: cancelReason.trim() }));
             if (!result?.success) {
                 setCancelError(result?.error || 'Failed to cancel shipment.');
                 return;
@@ -550,6 +556,7 @@ const handleClosePickupForm = () => {
                                 }
                                 setCancelError('');
                                 setCancelRmNumber(params.row.rmNumber || '');
+                                setCancelReason('');
                                 setCancelShipmentId(shipmentId);
                             }}
                             sx={{ color: '#A22' }}
@@ -776,11 +783,24 @@ const handleClosePickupForm = () => {
                     <DialogContentText id="cancel-shipment-description">
                         Are you sure you want to cancel this shipment?
                     </DialogContentText>
+                    <TextField
+                        label="Reason for cancellation"
+                        placeholder="Enter reason for cancellation"
+                        required
+                        multiline
+                        rows={3}
+                        fullWidth
+                        size="small"
+                        value={cancelReason}
+                        onChange={(event) => setCancelReason(event.target.value)}
+                        disabled={cancelLoading}
+                        sx={{ mt: 2 }}
+                    />
                     {cancelError && <Alert severity="error" sx={{ mt: 2 }}>{cancelError}</Alert>}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={handleCloseCancelDialog} disabled={cancelLoading}>No</Button>
-                    <Button onClick={handleConfirmCancel} disabled={cancelLoading} color="error" variant="contained">
+                    <Button onClick={handleConfirmCancel} disabled={cancelLoading || !cancelReason.trim()} color="error" variant="contained">
                         {cancelLoading ? <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} /> : null}
                         Yes
                     </Button>

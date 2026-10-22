@@ -1,7 +1,7 @@
 import { Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, TextField, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 
-export default function RejectFreightDialog({ open, reason, loading, onClose, onReasonChange, onSubmit }) {
+export default function RejectFreightDialog({ open, receiptNumber, reason, loading, onClose, onReasonChange, onSubmit }) {
   return (
       <Dialog
         open={open}
@@ -10,7 +10,7 @@ export default function RejectFreightDialog({ open, reason, loading, onClose, on
         fullWidth
       >
         <DialogTitle sx={{ fontWeight: 700, fontSize: 16, pr: 5 }}>
-          Reject Freight
+          Reject Freight{receiptNumber ? ` - ${receiptNumber}` : ''}
           <IconButton
             disabled={loading} onClick={onClose}
             size="small"
