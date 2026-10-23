@@ -63,23 +63,29 @@ export function toWarehouseReceiptEDI(form: any) {
     const minRate = toNumber(rateInformation.minRate ?? form.minRate, 0);
     const maxRate = toNumber(rateInformation.maxRate ?? form.maxRate, 0);
     const reWeight = form.reWeight ?? Math.max(totalActualWeight, totalDimensionalWeight);
+    const piecesOnReceipt = form.piecesOnReceipt ?? totalPieces;
     const weight = totalActualWeight;
 
     const now = new Date();
     const date = toDateCode(form.receiptDate ?? now);
     const time = toTimeCode(form.receiptDate ?? now);
     const referenceNumber = toString(form.receiptNumber || form.referenceNumber || form.verificationId || '000000000');
+    const poNumber = toString(form.poNumber || form.purchaseOrderNumber || '');
+    const customerRefNumber = toString(form.customerRefNumber || form.customerReferenceNumber || '');
 
     return {
         date,
         time,
         referenceNumber,
         billToName: form.customerName || form.billToName || '',
-        billTo: form.customerId || form.billTo || '',
+        billTo: form.stationRMAccountNumber || '',
         shipperName: form.shipper || form.shipperName || '',
         carrierName: form.carrierName || '',
         weight,
         pieces: totalPieces,
+        piecesOnReceipt,
+        poNumber,
+        customerRefNumber,
         reWeight,
         dimFactor,
         baseRate,
@@ -100,24 +106,26 @@ export async function generateEDIForWarehouseReceipt(
         if (!data.referenceNumber || !data.date || !data.time) {
             throw new Error('Warehouse receipt data is missing required EDI fields');
         }
-
         const hazmatIndicator = data.hazmat === 'Y' ? 'HAZ' : '';
         const numberOfSegments = 12;
         const transactionSetControlNumber = '0001';
         const numberOfTransactionSetsInGS = '1';
+        const isaDate = data.date.slice(-6);
 
-        const ediOutput = `ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${data.date}*${data.time}*U*00401*${data.referenceNumber}*0*P*>
+        const ediOutput = `ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${isaDate}*${data.time}*U*00401*${data.referenceNumber}*0*P*>
 GS*SM*SRINSOFT*RMFT*${data.date}*${data.time}*${data.referenceNumber}*X*004010${segmentBreaker}
 ST*204*${transactionSetControlNumber}${segmentBreaker}
 B2**RMFT**${data.referenceNumber}${segmentBreaker}
 B2A*00${segmentBreaker}
 L11*${data.referenceNumber}*ZZ${segmentBreaker}
+L11*${data.poNumber}*PO${segmentBreaker}
+L11*${data.customerRefNumber}*CO${segmentBreaker}
 N1*BT*${data.billToName}* *${data.billTo}*${segmentBreaker}
 N1*SF*${data.shipperName}* * *${segmentBreaker}
 N1*CA*${data.carrierName}* * *${segmentBreaker}
 AT8*G*L*${data.weight}*${data.pieces}*${data.reWeight}${segmentBreaker}
 L508*${hazmatIndicator}${segmentBreaker}
-L3*${data.dimFactor}*${data.baseRate}*${data.totalRate}${segmentBreaker}
+L3*${data.reWeight}*G* * *${data.totalRate}* * * * * *${data.piecesOnReceipt}*L*${segmentBreaker}
 SE*${numberOfSegments}*${transactionSetControlNumber}${segmentBreaker}
 GE*${numberOfTransactionSetsInGS}*${data.referenceNumber}${segmentBreaker}
 IEA*1*${data.referenceNumber}${segmentBreaker}`;

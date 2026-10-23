@@ -192,7 +192,7 @@ export async function getWarehouseReceiptById(
     console.log("Fetching warehouse receipt by ID:", receiptId);
 
     const query = `
-        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
+        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName", "s"."rmAccountNumber" as "stationRMAccountNumber"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
