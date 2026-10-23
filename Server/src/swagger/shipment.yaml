@@ -36,13 +36,42 @@ paths:
                     format: binary
       responses:
         "201":
-          description: Shipment images uploaded successfully
+          description: Shipment images uploaded successfully; the images array contains filenames only
         "400":
           description: Invalid shipment ID or no image files provided
         "404":
           description: Shipment not found
         "500":
           description: Image upload failed
+
+  /api/shipment/{shipmentId}/images/{imageId}:
+    delete:
+      tags:
+        - Shipments
+      summary: Delete a shipment image
+      description: Removes an image associated with the shipment from the database and configured image storage directory.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: shipmentId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: imageId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Shipment image deleted successfully
+        "400":
+          description: Invalid shipment or image ID
+        "404":
+          description: Image not found for the shipment
+        "500":
+          description: Image deletion failed
 
   /api/shipment:
     get:

@@ -135,6 +135,24 @@ export async function getShipmentImagesByShipmentId(conn: Connection, shipmentId
     return await conn.query(query, [shipmentId]) as any[];
 }
 
+export async function getShipmentImageById(conn: Connection, shipmentId: number, imageId: number): Promise<any | null> {
+    const query = `
+        SELECT "imageId", "shipmentId", "imagePath"
+        FROM ${SCHEMA}."Warehouse_Shipment_Images"
+        WHERE "shipmentId" = ? AND "imageId" = ?
+    `;
+    const result = await conn.query(query, [shipmentId, imageId]) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
+export async function deleteShipmentImage(conn: Connection, shipmentId: number, imageId: number): Promise<void> {
+    const query = `
+        DELETE FROM ${SCHEMA}."Warehouse_Shipment_Images"
+        WHERE "shipmentId" = ? AND "imageId" = ?
+    `;
+    await conn.query(query, [shipmentId, imageId]);
+}
+
 export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<any | null> {
     const query = `
          SELECT ws.*, cus."customerName", st."stationName",

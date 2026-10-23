@@ -106,7 +106,7 @@ export async function generateEDIForWarehouseReceipt(
         const transactionSetControlNumber = '0001';
         const numberOfTransactionSetsInGS = '1';
 
-        const ediOutput = `ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${data.date}*${data.time}*U*00401*${data.referenceNumber}*0*P*>${segmentBreaker}
+        const ediOutput = `ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${data.date}*${data.time}*U*00401*${data.referenceNumber}*0*P*>
 GS*SM*SRINSOFT*RMFT*${data.date}*${data.time}*${data.referenceNumber}*X*004010${segmentBreaker}
 ST*204*${transactionSetControlNumber}${segmentBreaker}
 B2**RMFT**${data.referenceNumber}${segmentBreaker}

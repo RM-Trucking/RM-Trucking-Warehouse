@@ -166,13 +166,15 @@ export async function sendStatusUpdateEmail(
         const receiptNumber = typeof task.receiptNumber === 'bigint' ? Number(task.receiptNumber) : task.receiptNumber;
 
         // Generate email template
-        const { subject, body } = generateEmailTemplate(
+        const { subject: generatedSubject, body } = generateEmailTemplate(
             receiptNumber,
             task.status || undefined,
             task.message,
             emailOverrides?.subject || task.subject,
             emailOverrides?.body || task.body
         );
+        const shipper = task.shipper?.trim();
+        const subject = shipper ? `${generatedSubject} - Shipper: ${shipper}` : generatedSubject;
 
         // Check attachment
         if (task.hasAttachment && !task.attachmentPath) {

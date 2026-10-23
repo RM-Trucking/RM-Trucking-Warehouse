@@ -69,6 +69,15 @@ router.post("/image-upload", authenticateJWT, uploaders.shipment.images.any(), a
     }
 });
 
+router.delete("/:shipmentId/images/:imageId", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.deleteShipmentImage(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.post("/", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {

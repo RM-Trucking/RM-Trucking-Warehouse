@@ -1,4 +1,8 @@
 import { Connection } from "odbc";
+import fs from "fs";
+import path from "path";
+import { UPLOAD_PATHS } from "../../config/env";
+import { ensureUploadDirExists } from "../../config/multer";
 import * as shipmentDB from "../../database/shipment";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
@@ -713,6 +717,65 @@ export async function uploadShipmentImages(
         await conn.rollback();
         throw error;
     }
+}
+
+export async function deleteShipmentImage(
+    conn: Connection,
+    shipmentId: number,
+    imageId: number
+): Promise<WarehouseShipmentWithRelations> {
+    const image = await shipmentDB.getShipmentImageById(conn, shipmentId, imageId);
+    if (!image) {
+        const error = new Error(`Image ${imageId} was not found for shipment ${shipmentId}.`) as Error & { statusCode?: number };
+        error.name = "NotFoundError";
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const imagePath = String(image.imagePath ?? "");
+    const prefix = "/api/uploads/shipment/images/";
+    let filename: string;
+    if (imagePath.startsWith(prefix)) {
+        try {
+            filename = decodeURIComponent(imagePath.slice(prefix.length));
+        } catch {
+            throw new Error("Stored shipment image path is invalid.");
+        }
+    } else {
+        filename = imagePath;
+    }
+    if (!filename || filename !== path.basename(filename) || filename.includes("/") || filename.includes("\\")) {
+        throw new Error("Stored shipment image path is invalid.");
+    }
+
+    const imageDirectory = ensureUploadDirExists(UPLOAD_PATHS.shipment.images);
+    const filePath = path.resolve(imageDirectory, filename);
+    if (path.dirname(filePath) !== path.resolve(imageDirectory)) {
+        throw new Error("Stored shipment image path is invalid.");
+    }
+
+    await conn.beginTransaction();
+    try {
+        await shipmentDB.deleteShipmentImage(conn, shipmentId, imageId);
+        await conn.commit();
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+
+    try {
+        await fs.promises.unlink(filePath);
+    } catch (error: any) {
+        if (error.code !== "ENOENT") {
+            throw error;
+        }
+    }
+
+    const shipment = await getShipmentById(conn, shipmentId);
+    if (!shipment) {
+        throw new Error(`Shipment with ID ${shipmentId} could not be loaded after deleting the image.`);
+    }
+    return shipment;
 }
 
 export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<ShipmentResposeForPickup | null> {
@@ -1503,6 +1566,7 @@ export async function cancelShipment(conn: Connection, shipmentId: number, userI
             }
         }
 
+        await shipmentDB.replaceReceipts(conn, shipmentId, []);
         await shipmentDB.updateShipment(conn, shipmentId, { isCanceled: "Y", canceledReason }, userId);
 
         const updatedShipment = await getShipmentById(conn, shipmentId);
