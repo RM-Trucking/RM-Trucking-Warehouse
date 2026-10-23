@@ -53,7 +53,7 @@ export async function generatePickupEDI(data: any) {
         const segmentBreaker = '~';
 
         const ediOutput = `
-ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${isaDate}*${finalPickupData.time}*U*00401*${controlNumber}*0*P*>${segmentBreaker}
+ISA*00*          *00*          *ZZ*SRINSOFT       *02*RMFT           *${isaDate}*${finalPickupData.time}*U*00401*${controlNumber}*0*P*>
 GS*SM*SRINSOFT*RMFT*${finalPickupData.date}*${finalPickupData.time}*${gsControlNumber}*X*004010${segmentBreaker}
 ST*204*${transactionSetControlNumber}${segmentBreaker}
 B2**RMFT**${finalPickupData.referenceNumber}${segmentBreaker}

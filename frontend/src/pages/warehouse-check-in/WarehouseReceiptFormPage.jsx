@@ -1089,6 +1089,7 @@ const getCargoApiImageValue = (image) => {
 
 const getFreightDetailImageName = (image) => {
   if (!image) return '';
+  if (image.isCargoApiImage) return '';
   if (image instanceof Blob) return '';
 
   const imageValue = typeof image === 'string'
@@ -1147,7 +1148,13 @@ const getSubmittedImageValue = async (image) => {
   if (cargoImageValue) {
     const cleanValue = String(cargoImageValue).trim();
     if (!cleanValue) return '';
-    if (/^(https?:\/\/|blob:)/i.test(cleanValue)) return cleanValue;
+    if (/^(https?:\/\/|blob:)/i.test(cleanValue)) {
+      if (!image.isCargoApiImage) return cleanValue;
+      const response = await fetch(cleanValue);
+      if (!response.ok) throw new Error('Failed to load Cargo Spec image');
+      const base64Image = await fileToBase64(await response.blob());
+      return base64Image ? `base64,${base64Image}` : '';
+    }
     if (cleanValue.startsWith('data:image/')) {
       const base64Value = cleanValue.includes(',') ? cleanValue.split(',').pop() : cleanValue;
       return base64Value ? `base64,${base64Value}` : '';
@@ -1537,19 +1544,19 @@ function WarehouseReceiptFormContent() {
           ...form,
           items: [
             ...(form.items || []),
-            { id: nextId, freightId: 0, freightBarcodeValue: '', pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
+            { id: nextId, freightId: 0, isNewItem: true, freightBarcodeValue: '', pieces: '', type: '', length: '', width: '', height: '', weight: '', images: [] },
           ],
         };
       })
     );
   };
 
-  const updateActiveFreightItemField = (itemId, field, value) => {
+  const updateActiveFreightItemField = (itemId, field, value, formId = activeTab) => {
     const nextValue = DECIMAL_ITEM_FIELDS.has(field) ? formatDecimal10_2Input(value) : value;
 
     setReceiptForms((prev) =>
       prev.map((form) =>
-        form.id === activeTab
+        form.id === formId
           ? {
               ...form,
               items: (form.items || []).map((item) =>
@@ -1567,13 +1574,13 @@ function WarehouseReceiptFormContent() {
     if (String(nextValue ?? '').trim()) {
       const errorKey = `${itemId}-${field}`;
       setReceiptInfoErrors((prev) => {
-        const formErrors = prev[activeTab] || {};
+        const formErrors = prev[formId] || {};
         const itemErrors = { ...(formErrors.items || {}) };
         delete itemErrors[errorKey];
 
         return {
           ...prev,
-          [activeTab]: {
+          [formId]: {
             ...formErrors,
             items: itemErrors,
           },
@@ -2033,9 +2040,13 @@ function WarehouseReceiptFormContent() {
     return Array.isArray(images) ? images.filter(Boolean) : [images].filter(Boolean);
   };
 
-  const applySplitCargoDimensions = (formIndex, itemId, dimensionsResponse) => {
+  const applySplitCargoDimensions = (formIndex, itemId, dimensionsResponse, receiptFormId = null) => {
     const dimensions = dimensionsResponse?.data || dimensionsResponse;
-    if (!Number.isInteger(formIndex) || itemId === null || itemId === undefined || !dimensions || dimensionsResponse?.error) return;
+    if ((!Number.isInteger(formIndex) && receiptFormId === null) || itemId === null || itemId === undefined || !dimensions || dimensionsResponse?.error) return;
+
+    const updateField = (field, value) => receiptFormId !== null
+      ? updateActiveFreightItemField(itemId, field, value, receiptFormId)
+      : updateSplitRecalculateItem(formIndex, itemId, field, value);
 
     const fieldMap = {
       length: ['length', 'cargoLength', 'apiLength'],
@@ -2047,19 +2058,21 @@ function WarehouseReceiptFormContent() {
     Object.entries(fieldMap).forEach(([field, fieldNames]) => {
       const value = getDimensionValue(dimensions, fieldNames);
       if (value !== null) {
-        updateSplitRecalculateItem(formIndex, itemId, field, String(value));
+        updateField(field, String(value));
       }
     });
 
     const images = getDimensionImages(dimensions);
     if (images.length > 0) {
-      updateSplitRecalculateItem(formIndex, itemId, 'images', images);
+      updateField('images', images.map((image) => image instanceof Blob
+        ? image
+        : { ...(typeof image === 'object' ? image : { image }), isCargoApiImage: true }));
     }
   };
 
-  const handleSplitPackageDetailsClick = (event, formIndex, itemId) => {
+  const handleSplitPackageDetailsClick = (event, formIndex, itemId, receiptFormId = null) => {
     setSplitPackageDropdownAnchor(event.currentTarget);
-    setSplitPackageDropdownContext({ formIndex, itemId });
+    setSplitPackageDropdownContext({ formIndex, itemId, receiptFormId });
   };
 
   const handleCloseSplitPackageDropdown = () => {
@@ -2068,20 +2081,20 @@ function WarehouseReceiptFormContent() {
 
   const handleSplitPackageOptionSelect = async (option) => {
     const apiId = option?.apiId || option?.id || option?.value;
-    const { formIndex, itemId } = splitPackageDropdownContext;
+    const { formIndex, itemId, receiptFormId = null } = splitPackageDropdownContext;
 
-    if (!apiId || !Number.isInteger(formIndex) || itemId === null || itemId === undefined) {
+    if (!apiId || (!Number.isInteger(formIndex) && receiptFormId === null) || itemId === null || itemId === undefined) {
       handleCloseSplitPackageDropdown();
       return;
     }
 
-    const loadingKey = getSplitCargoLoadingKey(formIndex, itemId);
+    const loadingKey = getSplitCargoLoadingKey(receiptFormId !== null ? `receipt-${receiptFormId}` : formIndex, itemId);
     handleCloseSplitPackageDropdown();
     setSplitCargoApiLoadingItems((prev) => ({ ...prev, [loadingKey]: true }));
 
     try {
       const dimensionsResponse = await dispatch(fetchCargoApiDimensions(apiId));
-      applySplitCargoDimensions(formIndex, itemId, dimensionsResponse);
+      applySplitCargoDimensions(formIndex, itemId, dimensionsResponse, receiptFormId);
 
       if (dimensionsResponse?.message) {
         setSnackbar({
@@ -2318,16 +2331,34 @@ function WarehouseReceiptFormContent() {
 
   const buildWarehouseReceiptUpdateFormData = async (form = activeForm) => {
     const payload = buildWarehouseReceiptUpdatePayload(form);
+    const receipt = { ...payload };
+    delete receipt.freightDetails;
+    delete receipt.removeFreightIds;
+    delete receipt.removeBadFreightImagePaths;
     const formData = new FormData();
 
-    formData.append('receipt', JSON.stringify(payload));
+    formData.append('batchData', JSON.stringify({
+      receipts: [{
+        receipt: {
+          ...receipt,
+          receiptId: toNumberOrNull(getRowValue(form.row || {}, 'receiptId', null)),
+          receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(form.row || {}, 'receiptNumber', null)),
+        },
+        freightDetails: payload.freightDetails.map((freight) => {
+          const detail = { ...freight };
+          delete detail.freightId;
+          delete detail.removeImagePaths;
+          return detail;
+        }),
+      }],
+    }));
 
     await Promise.all([
       ...(form.items || []).flatMap((item, freightIndex) =>
         (item.images || [])
           .filter((image) => !isPersistedReceiptImage(image))
           .map(async (image, imageIndex) => {
-            const fieldName = `freight-${freightIndex}-${imageIndex}`;
+            const fieldName = `freight-0-${freightIndex}-${imageIndex}`;
             const imageValue = await getSubmittedImageValue(image);
 
             if (imageValue) {
@@ -2338,7 +2369,7 @@ function WarehouseReceiptFormContent() {
       ...({ ...createFreightInfo(), ...(form.freightInfo || {}) }.freightConditionImages || [])
         .filter((image) => !isPersistedReceiptImage(image))
         .map(async (image, imageIndex) => {
-          const fieldName = `bad-freight-image-${imageIndex}`;
+          const fieldName = `bad-freight-image-0-${imageIndex}`;
           const renamedImage = await toRenamedImageFile(image, fieldName);
 
           if (renamedImage instanceof File || renamedImage instanceof Blob) {
@@ -2464,10 +2495,13 @@ function WarehouseReceiptFormContent() {
 
     if (isWarehouseReceiptEdit) {
       const receiptId = getRowValue(activeForm?.row, 'receiptId', '');
-      const payload = hasNewWarehouseReceiptUpdateImages(activeForm)
+      const hasNewImages = hasNewWarehouseReceiptUpdateImages(activeForm);
+      const payload = hasNewImages
         ? await buildWarehouseReceiptUpdateFormData(activeForm)
         : buildWarehouseReceiptUpdatePayload(activeForm);
-      const response = await dispatch(updateWarehouseReceipt({ receiptId, payload }));
+      const response = await dispatch(hasNewImages
+        ? submitWarehouseReceiptBatch(payload)
+        : updateWarehouseReceipt({ receiptId, payload }));
 
       if (response?.error || response?.success === false) {
         setSnackbar({
@@ -5501,6 +5535,7 @@ function WarehouseReceiptFormContent() {
                 </TableHead>
                 <TableBody>
                   {activeForm.items.map((item, index) => {
+                    const isCargoApiProcessing = Boolean(splitCargoApiLoadingItems[getSplitCargoLoadingKey(`receipt-${activeForm.id}`, item.id)]);
                     const getItemError = (field) =>
                       receiptInfoErrors[activeForm.id]?.items?.[`${item.id}-${field}`] || '';
                     const scannedRowColor = isWarehouseReceiptView && String(item.isScanned || '').trim().toUpperCase() === 'Y'
@@ -5576,14 +5611,27 @@ function WarehouseReceiptFormContent() {
                           zIndex: 1,
                           bgcolor: scannedRowColor,
                           textAlign: 'center',
-                          width: isWarehouseReceiptEdit ? 116 : 72,
+                          width: isWarehouseReceiptEdit ? 144 : 72,
                         }}
                       >
                         <Stack direction="row" spacing={0.4} justifyContent="center" alignItems="center">
                           {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
                             <IconButton
                               size="small"
+                              title="Package details"
+                              aria-label="Package details"
+                              disabled={isCargoApiProcessing}
+                              onClick={(event) => handleSplitPackageDetailsClick(event, null, item.id, activeForm.id)}
+                              sx={{ p: 0.2, color: '#111' }}
+                            >
+                              {isCargoApiProcessing ? <CircularProgress size={18} sx={{ color: '#A22' }} /> : <Iconify icon="mdi:cube" width={20} />}
+                            </IconButton>
+                          )}
+                          {isWarehouseReceiptEdit && isReceiptDetailsEditable && (
+                            <IconButton
+                              size="small"
                               title="Upload image"
+                              disabled={isCargoApiProcessing}
                               onClick={() => handleOpenActiveItemUpload(item)}
                               sx={{ p: 0.2, color: '#111' }}
                             >

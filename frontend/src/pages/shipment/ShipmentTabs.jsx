@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import {
-    Alert, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
+    Alert, Badge, Box, Divider, Tabs, Tab, IconButton, Dialog, DialogContent, Checkbox,
     CircularProgress, FormControlLabel, Snackbar, Button, DialogTitle, DialogActions, DialogContentText, TextField
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -11,12 +11,14 @@ import { useReactToPrint } from 'react-to-print';
 import { useDispatch, useSelector } from '../../redux/store';
 import { cancelShipment, getShipmentById, getShipmentData, getShipmentForPickup, updateShipmentPickupEntryNumber } from '../../redux/slices/shipment';
 
-import ErrorFallback from '../../../../../RM-Trucking/frontend/src/sections/shared/ErrorBoundary';
+import ErrorFallback from '../../sections/shared/ErrorBoundary';
 import Iconify from '../../components/iconify';
 import ShipmentPrintTemplate from './ShipmentPrintTemplate';
 import ShipmentScanStatus from './ShipmentScanStatus';
 import AirPickupEntryForm from './AirPickupEntryForm';
 import FCLPickupEntryForm from './FCLPickupEntryForm';
+import ShipmentImageUploadDialog from './ShipmentImageUploadDialog';
+import ShipmentImageGalleryDialog from './ShipmentImageGalleryDialog';
 
 // ----------------------------------------------------------------------
 
@@ -78,11 +80,14 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const [printLoadingId, setPrintLoadingId] = useState(null);
     const [successMessage, setSuccessMessage] = useState('');
     const [comingSoonMessage, setComingSoonMessage] = useState('');
+    const [imageUploadShipment, setImageUploadShipment] = useState(null);
+    const [imageGalleryShipment, setImageGalleryShipment] = useState(null);
     const [pickupError, setPickupError] = useState('');
     const [pickupLoadingId, setPickupLoadingId] = useState(null);
     const [viewLoadingId, setViewLoadingId] = useState(null);
     const [cancelShipmentId, setCancelShipmentId] = useState(null);
     const [cancelRmNumber, setCancelRmNumber] = useState('');
+    const [cancelReason, setCancelReason] = useState('');
     const [cancelLoading, setCancelLoading] = useState(false);
     const [cancelError, setCancelError] = useState('');
     const cancelPendingRef = useRef(false);
@@ -233,15 +238,20 @@ const handleClosePickupForm = () => {
         if (cancelPendingRef.current) return;
         setCancelShipmentId(null);
         setCancelError('');
+        setCancelReason('');
     };
 
     const handleConfirmCancel = async () => {
         if (cancelPendingRef.current || cancelShipmentId === null) return;
+        if (!cancelReason.trim()) {
+            setCancelError('Please enter a cancellation reason.');
+            return;
+        }
         cancelPendingRef.current = true;
         setCancelLoading(true);
         setCancelError('');
         try {
-            const result = await dispatch(cancelShipment(cancelShipmentId));
+            const result = await dispatch(cancelShipment({ shipmentId: cancelShipmentId, canceledReason: cancelReason.trim() }));
             if (!result?.success) {
                 setCancelError(result?.error || 'Failed to cancel shipment.');
                 return;
@@ -433,8 +443,8 @@ const handleClosePickupForm = () => {
     const actionColumn = {
             field: 'action',
             headerName: 'Action',
-            width: 180,
-            minWidth: 180,
+            width: 240,
+            minWidth: 240,
             headerAlign: 'center',
             align: 'center',
             sortable: false,
@@ -443,6 +453,7 @@ const handleClosePickupForm = () => {
             headerClassName: 'sticky-action-header',
             cellClassName: 'sticky-action-cell',
             renderCell: (params) => {
+                const imageCount = Array.isArray(params.row.images) ? params.row.images.length : 0;
                 return (
                     <Box
                         onMouseDown={(event) => event.stopPropagation()}
@@ -451,6 +462,7 @@ const handleClosePickupForm = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             width: '100%',
+                            height: '100%',
                         }}
                     >
                         <IconButton
@@ -504,6 +516,34 @@ const handleClosePickupForm = () => {
                         </IconButton>
                         <IconButton
                             size="small"
+                            aria-label="Upload image"
+                            title="Upload image"
+                            disabled={params.row.isCanceled === 'Y'}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setImageUploadShipment(params.row);
+                            }}
+                            sx={{ p: 0.2, color: '#A22' }}
+                        >
+                            <Iconify icon="mdi:image-plus" width={20} />
+                        </IconButton>
+                        <IconButton
+                            size="small"
+                            disabled={imageCount === 0}
+                            aria-label={`View shipment images (${imageCount})`}
+                            title={`View shipment images (${imageCount})`}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setImageGalleryShipment(params.row);
+                            }}
+                            sx={{ color: '#A22', mx: 0.5 }}
+                        >
+                            <Badge badgeContent={imageCount} max={9999} sx={{ '& .MuiBadge-badge': { bgcolor: '#A22', color: '#fff', fontSize: 9, minWidth: 15, height: 15, px: 0.4 } }}>
+                                <Iconify icon="mdi:image-multiple" width={20} />
+                            </Badge>
+                        </IconButton>
+                        <IconButton
+                            size="small"
                             aria-label="Cancel shipment"
                             title="Cancel shipment"
                             disabled={params.row.isCanceled === 'Y' || cancelLoading}
@@ -516,6 +556,7 @@ const handleClosePickupForm = () => {
                                 }
                                 setCancelError('');
                                 setCancelRmNumber(params.row.rmNumber || '');
+                                setCancelReason('');
                                 setCancelShipmentId(shipmentId);
                             }}
                             sx={{ color: '#A22' }}
@@ -705,6 +746,30 @@ const handleClosePickupForm = () => {
                 </DialogActions>
             </Dialog>
 
+            {imageGalleryShipment && (
+                <ShipmentImageGalleryDialog shipment={imageGalleryShipment} onClose={() => setImageGalleryShipment(null)} />
+            )}
+            {imageUploadShipment && (
+                <ShipmentImageUploadDialog
+                    shipment={imageUploadShipment}
+                    onClose={() => setImageUploadShipment(null)}
+                    onUploaded={() => {
+                        setSuccessMessage('Shipment images uploaded successfully.');
+                        dispatch(getShipmentData({
+                            pageNo: paginationModel.page + 1,
+                            pageSize: paginationModel.pageSize,
+                            searchTerm: shipmentSearchStrRef.current,
+                            ...filters,
+                            request: requestFilterEnabled || filters.request,
+                            canceled: canceledFilterEnabled || filters.canceled,
+                            scanned: scannedFilterEnabled || filters.scanned,
+                            pickup: pickupFilterEnabled || filters.pickup,
+                            shipped: shippedFilterEnabled || filters.shipped,
+                            shipmentType: shipmentTypeMap[currentTab],
+                        }));
+                    }}
+                />
+            )}
             <Dialog
                 open={cancelShipmentId !== null}
                 onClose={handleCloseCancelDialog}
@@ -718,11 +783,24 @@ const handleClosePickupForm = () => {
                     <DialogContentText id="cancel-shipment-description">
                         Are you sure you want to cancel this shipment?
                     </DialogContentText>
+                    <TextField
+                        label="Reason for cancellation"
+                        placeholder="Enter reason for cancellation"
+                        required
+                        multiline
+                        rows={3}
+                        fullWidth
+                        size="small"
+                        value={cancelReason}
+                        onChange={(event) => setCancelReason(event.target.value)}
+                        disabled={cancelLoading}
+                        sx={{ mt: 2 }}
+                    />
                     {cancelError && <Alert severity="error" sx={{ mt: 2 }}>{cancelError}</Alert>}
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={handleCloseCancelDialog} disabled={cancelLoading}>No</Button>
-                    <Button onClick={handleConfirmCancel} disabled={cancelLoading} color="error" variant="contained">
+                    <Button onClick={handleConfirmCancel} disabled={cancelLoading || !cancelReason.trim()} color="error" variant="contained">
                         {cancelLoading ? <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} /> : null}
                         Yes
                     </Button>

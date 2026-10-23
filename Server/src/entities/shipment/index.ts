@@ -35,6 +35,7 @@ export interface WarehouseShipment {
     manifestType: 'DIRECT' | 'PRO_SEARCH' | 'DATE_RANGE';
     startDate?: Date;
     endDate?: Date;
+    canceledReason?: string;
 }
 
 export interface WarehouseShipmentContainers {
@@ -47,6 +48,13 @@ export interface WarehouseShipmentReceipts {
     shipmentReceiptId?: number;
     shipmentId?: number;
     receiptId: number;
+}
+
+export interface WarehouseShipmentImages {
+    imageId?: number;
+    shipmentId?: number;
+    imagePath: string;
+    uploadedAt: Date;
 }
 
 export interface WarehouseShipmentPickupEntry {
@@ -95,6 +103,7 @@ export type UpdateWarehouseShipment = Partial<Omit<WarehouseShipment, 'shipmentI
 
 export interface WarehouseShipmentWithRelations extends WarehouseShipment {
     containers: WarehouseShipmentContainers[];
+    images: WarehouseShipmentImages[];
     receipts: WarehouseShipmentReceipts & {
         receiptNumber: string;
         parentReceipt?: number | null;

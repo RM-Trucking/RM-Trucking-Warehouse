@@ -176,7 +176,7 @@ async function processWarehouseReceiptInvoice(
         }
 
         await storeRateInformation(conn, receiptId, rateInformation);
-        // await updateWarehouseReceipt(conn, receiptId, { sendToTellSystem: 'Y' });
+        await updateWarehouseReceipt(conn, receiptId, { sendToTellSystem: 'Y' });
 
         const ediFilename = `${receiptNumber ?? receiptId ?? 'receipt'}.txt`;
         result.ediPath = `${ediOutputDirectory}/${ediFilename}`;

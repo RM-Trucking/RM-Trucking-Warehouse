@@ -7,6 +7,7 @@ import { UPLOAD_PATHS, WAREHOUSE_IMAGE_CATEGORIES } from './env';
 // Module and file type constants
 export const UPLOAD_MODULES = {
     WAREHOUSE: 'warehouse',
+    SHIPMENT: 'shipment',
 };
 
 export const FILE_TYPES = {
@@ -91,7 +92,7 @@ Object.entries(UPLOAD_PATHS).forEach(([module, config]) => {
         } catch (err: any) {
             console.warn(`Upload images path for module '${module}' could not be created: ${err.message}`);
         }
-    } else {
+    } else if (module === UPLOAD_MODULES.WAREHOUSE) {
         console.warn(`Upload images path for module '${module}' not configured`);
     }
 
@@ -101,7 +102,7 @@ Object.entries(UPLOAD_PATHS).forEach(([module, config]) => {
         } catch (err: any) {
             console.warn(`Upload documents path for module '${module}' could not be created: ${err.message}`);
         }
-    } else {
+    } else if (module === UPLOAD_MODULES.WAREHOUSE) {
         console.warn(`Upload documents path for module '${module}' not configured`);
     }
 });
@@ -201,6 +202,9 @@ export function createModuleUploader(module: string, fileType: string) {
 
 // Pre-created uploaders for warehouse with image categories
 export const uploaders = {
+    shipment: {
+        images: createModuleUploader(UPLOAD_MODULES.SHIPMENT, FILE_TYPES.IMAGES)
+    },
     warehouse: {
         // Combined uploader for both freight and bad freight (use different field names)
         combinedImages: createCombinedWarehouseImageUploader(),

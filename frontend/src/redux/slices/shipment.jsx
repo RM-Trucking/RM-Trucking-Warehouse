@@ -4,6 +4,44 @@ import axios from '../../utils/axios';
 //
 import { dispatch } from '../store';
 
+export function removeShipmentImage({ shipmentId, imageId } = {}) {
+    return async () => {
+        if (shipmentId == null || shipmentId === '' || imageId == null || imageId === '') {
+            return { error: true, message: 'Shipment ID and image ID are required' };
+        }
+        try {
+            const response = await axios.delete(`/shipment/${encodeURIComponent(shipmentId)}/images/${encodeURIComponent(imageId)}`);
+            if (response.data?.success === false || response.data?.error) {
+                return { error: true, message: response.data?.message || 'Failed to remove shipment image' };
+            }
+            dispatch(slice.actions.removeShipmentImageSuccess({ shipmentId, imageId }));
+            return { success: true };
+        } catch (error) {
+            return { error: true, message: error.response?.data?.message || error.message || 'Failed to remove shipment image' };
+        }
+    };
+}
+
+export function uploadShipmentImages({ shipmentId, images = [] } = {}) {
+    return async () => {
+        if (shipmentId === null || shipmentId === undefined || shipmentId === '') {
+            return { error: true, message: 'Shipment ID is required to upload images' };
+        }
+        if (!images.length) {
+            return { error: true, message: 'Select at least one image to upload' };
+        }
+        const formData = new FormData();
+        formData.append('shipmentId', shipmentId);
+        images.forEach((image) => formData.append('images', image));
+        try {
+            const response = await axios.post('/shipment/image-upload', formData);
+            return response.data;
+        } catch (error) {
+            return { error: true, message: error.response?.data?.message || error.message || 'Failed to upload shipment images' };
+        }
+    };
+}
+
 // ----------------------------------------------------------------------
 
 const initialState = {
@@ -44,6 +82,12 @@ const slice = createSlice({
     name: 'shipment',
     initialState,
     reducers: {
+        removeShipmentImageSuccess(state, { payload: { shipmentId, imageId } }) {
+            const shipment = state.shipmentData.find((item) => String(item.shipmentId ?? item.id) === String(shipmentId));
+            if (shipment && Array.isArray(shipment.images)) {
+                shipment.images = shipment.images.filter((image) => String(image.imageId) !== String(imageId));
+            }
+        },
         hasError(state, action) {
             state.isLoading = false;
             state.error = action.payload || action.payload.error;
@@ -362,10 +406,12 @@ export function getShipmentById(shipmentId) {
     };
 }
 
-export function cancelShipment(shipmentId) {
+export function cancelShipment({ shipmentId, canceledReason } = {}) {
     return async () => {
+        const reason = String(canceledReason ?? '').trim();
+        if (!reason) return { success: false, error: 'Please enter a cancellation reason.' };
         try {
-            const response = await axios.post('shipment/cancel', { shipmentId });
+            const response = await axios.post('shipment/cancel', { shipmentId, canceledReason: reason });
             return { success: true, data: response.data?.data || response.data, message: response.data?.message };
         } catch (error) {
             const message = error.response?.data?.message || error?.message || error?.error || 'Failed to cancel shipment';

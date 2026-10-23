@@ -9,6 +9,70 @@ tags:
     description: Warehouse shipment CRUD operations
 
 paths:
+  /api/shipment/image-upload:
+    post:
+      tags:
+        - Shipments
+      summary: Upload images to a warehouse shipment
+      description: Uploads one or more image files and stores their paths with the specified shipment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - shipmentId
+                - images
+              properties:
+                shipmentId:
+                  type: integer
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "201":
+          description: Shipment images uploaded successfully; the images array contains filenames only
+        "400":
+          description: Invalid shipment ID or no image files provided
+        "404":
+          description: Shipment not found
+        "500":
+          description: Image upload failed
+
+  /api/shipment/{shipmentId}/images/{imageId}:
+    delete:
+      tags:
+        - Shipments
+      summary: Delete a shipment image
+      description: Removes an image associated with the shipment from the database and configured image storage directory.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: shipmentId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: imageId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Shipment image deleted successfully
+        "400":
+          description: Invalid shipment or image ID
+        "404":
+          description: Image not found for the shipment
+        "500":
+          description: Image deletion failed
+
   /api/shipment:
     get:
       tags:
@@ -303,7 +367,7 @@ paths:
       tags:
         - Shipments
       summary: Cancel shipment
-      description: Returns linked warehouse receipts to `ON_HAND`, resets their freight scan flags to unscanned, and marks the shipment `isCanceled` as `Y`. Receipt mappings are retained for historical reference. All updates are performed in one transaction.
+      description: Returns linked warehouse receipts to `ON_HAND`, resets their freight scan flags to unscanned, marks the shipment `isCanceled` as `Y`, and stores the supplied cancellation reason in `canceledReason`. Receipt mappings are retained for historical reference. All updates are performed in one transaction.
       security:
         - bearerAuth: []
       requestBody:
@@ -314,11 +378,17 @@ paths:
               type: object
               required:
                 - shipmentId
+                - canceledReason
               properties:
                 shipmentId:
                   type: integer
                   minimum: 1
                   example: 1
+                canceledReason:
+                  type: string
+                  minLength: 1
+                  description: Reason for canceling the shipment.
+                  example: "Customer requested cancellation"
       responses:
         "200":
           description: Shipment canceled successfully
@@ -803,6 +873,9 @@ components:
         isCanceled:
           type: string
           enum: [Y, N]
+        canceledReason:
+          type: string
+          description: Reason recorded when the shipment was canceled.
         isShipped:
           type: string
           enum: [Y, N]

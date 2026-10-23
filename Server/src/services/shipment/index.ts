@@ -1,4 +1,8 @@
 import { Connection } from "odbc";
+import fs from "fs";
+import path from "path";
+import { UPLOAD_PATHS } from "../../config/env";
+import { ensureUploadDirExists } from "../../config/multer";
 import * as shipmentDB from "../../database/shipment";
 import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
@@ -202,21 +206,45 @@ export async function createShipmentWithRelations(
     payload: CreateWarehouseShipment,
     userId: number
 ): Promise<WarehouseShipmentWithRelations> {
+    const logPrefix = "[createShipmentWithRelations]";
+    console.log(`${logPrefix} Started`, {
+        userId,
+        shipmentType: payload.shipmentType,
+        receiptCount: payload.receipts?.length ?? 0,
+        containerCount: payload.containers?.length ?? 0,
+    });
+
     const normalizedPayload = normalizeShipmentPayload(payload, userId);
+    console.log(`${logPrefix} Payload normalized`, {
+        shipmentType: normalizedPayload.shipmentType,
+        stationScope: normalizedPayload.stationScope,
+        customerId: normalizedPayload.customerId,
+        stationId: normalizedPayload.stationId,
+        barcodePresent: Boolean(normalizedPayload.barcodeNumber),
+    });
 
     if (normalizedPayload.stationScope !== "ALL" && normalizedPayload.stationScope !== "SPECIFIC") {
+        console.warn(`${logPrefix} Validation failed: invalid stationScope`, normalizedPayload.stationScope);
         throwValidationError("stationScope must be ALL or SPECIFIC.");
     }
     if (normalizedPayload.stationScope === "SPECIFIC" && (!normalizedPayload.stationId || !Number.isInteger(normalizedPayload.stationId))) {
+        console.warn(`${logPrefix} Validation failed: invalid stationId`, normalizedPayload.stationId);
         throwValidationError("stationId is required for SPECIFIC station scope.");
     }
     if (normalizedPayload.shipmentType === "OCEAN_FCL" && !normalizedPayload.destination) {
+        console.warn(`${logPrefix} Validation failed: missing destination for OCEAN_FCL`);
         throwValidationError("destination is required for OCEAN_FCL shipments.");
     }
 
     if (payload.receipts !== undefined) {
         for (const receipt of payload.receipts) {
+            console.log(`${logPrefix} Loading receipt for pre-insert validation`, { receiptId: receipt.receiptId });
             const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
+            console.log(`${logPrefix} Receipt validation lookup completed`, {
+                receiptId: receipt.receiptId,
+                found: Boolean(warehouseReceipt),
+                status: warehouseReceipt?.status,
+            });
 
             if (!warehouseReceipt) {
                 throwValidationError(`Warehouse receipt with id ${receipt.receiptId} was not found.`);
@@ -233,47 +261,69 @@ export async function createShipmentWithRelations(
     }
 
     if (normalizedPayload.barcodeNumber) {
+        console.log(`${logPrefix} Checking duplicate barcode`);
         const duplicateBarcode = await shipmentDB.checkShipmentUniqueFields(conn, { barcodeNumber: normalizedPayload.barcodeNumber });
+        console.log(`${logPrefix} Duplicate barcode check completed`, { duplicate: Boolean(duplicateBarcode) });
         if (duplicateBarcode) {
             throwValidationError(`Duplicate barcode number "${normalizedPayload.barcodeNumber}" already exists in another shipment record.`);
         }
     }
 
     try {
+        console.log(`${logPrefix} Beginning transaction`);
         await conn.beginTransaction();
+        console.log(`${logPrefix} Transaction started`);
 
+        console.log(`${logPrefix} Creating shipment entity`);
         const entityId = await entityDB.createWarehouseEntity(conn, 'SHIPMENT', normalizedPayload.barcodeNumber ?? "");
+        console.log(`${logPrefix} Shipment entity created`, { entityId });
+
+        console.log(`${logPrefix} Creating note thread`, { entityId, userId });
         const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
+        console.log(`${logPrefix} Note thread creation completed`, { entityId, noteThreadId });
 
         normalizedPayload.entityId = entityId;
         normalizedPayload.noteThreadId = noteThreadId;
 
+        console.log(`${logPrefix} Inserting shipment`, {
+            entityId: normalizedPayload.entityId,
+            noteThreadId: normalizedPayload.noteThreadId,
+            shipmentType: normalizedPayload.shipmentType,
+        });
         const shipmentId = await shipmentDB.createShipment(conn, normalizedPayload as any, userId);
+        console.log(`${logPrefix} Shipment inserted`, { shipmentId });
 
         if (normalizedPayload.shipmentType === "OCEAN_FCL" && payload.receipts !== undefined) {
             for (const receipt of payload.receipts) {
+                console.log(`${logPrefix} Loading receipt before destination sync`, { shipmentId, receiptId: receipt.receiptId });
                 const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
                 if (!warehouseReceipt) {
                     throwValidationError(`Warehouse receipt with id ${receipt.receiptId} was not found.`);
                 }
 
+                console.log(`${logPrefix} Synchronizing receipt destination`, { shipmentId, receiptId: receipt.receiptId });
                 await syncReceiptDestinationForShipment(conn, {
                     ...normalizedPayload,
                     shipmentId,
                 }, warehouseReceipt, userId);
+                console.log(`${logPrefix} Receipt destination sync completed`, { shipmentId, receiptId: receipt.receiptId });
             }
         }
 
         if (payload.containers !== undefined) {
-            console.log(`Creating shipment with ${payload.containers.length} containers`);
+            console.log(`${logPrefix} Replacing shipment containers`, { shipmentId, count: payload.containers.length });
             await shipmentDB.replaceContainers(conn, shipmentId, payload.containers ?? []);
+            console.log(`${logPrefix} Shipment containers replaced`, { shipmentId });
         }
         if (payload.receipts !== undefined) {
-            console.log(`Creating shipment with ${payload.receipts.length} receipts`);
+            console.log(`${logPrefix} Replacing shipment receipts`, { shipmentId, count: payload.receipts.length });
             await shipmentDB.replaceReceipts(conn, shipmentId, payload.receipts ?? []);
+            console.log(`${logPrefix} Shipment receipts replaced`, { shipmentId });
 
             await Promise.all(payload.receipts.map(async (receipt) => {
+                console.log(`${logPrefix} Loading receipt for status update`, { shipmentId, receiptId: receipt.receiptId });
                 const warehouseReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receipt.receiptId);
+                console.log(`${logPrefix} Loading freight info for receipt`, { shipmentId, receiptId: receipt.receiptId });
                 const freightInfo = await warehouseReceiptDB.getFreightInfosByReceipt(conn, receipt.receiptId);
                 const scannedItems = freightInfo.filter(f => f.isScanned === 'Y');
                 const unscannedItems = freightInfo.filter(f => f.isScanned === 'N' || f.isScanned === null || f.isScanned === undefined);
@@ -284,9 +334,12 @@ export async function createShipmentWithRelations(
                     scannedItems: scannedItems,
                     unscannedItems: unscannedItems,
                 };
+                console.log(`${logPrefix} Updating receipt status to PREPARED`, { shipmentId, receiptId: receipt.receiptId });
                 await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, { status: "PREPARED", updatedBy: userId });
+                console.log(`${logPrefix} Receipt status updated`, { shipmentId, receiptId: receipt.receiptId });
 
                 if (warehouseReceipt) {
+                    console.log(`${logPrefix} Emitting receipt PREPARED audit log`, { shipmentId, receiptId: receipt.receiptId });
                     emitAuditLog({
                         receiptNumber: warehouseReceipt.receiptNumber,
                         receiptId: Number(receipt.receiptId),
@@ -300,16 +353,26 @@ export async function createShipmentWithRelations(
             }));
         }
 
+        console.log(`${logPrefix} Committing transaction`, { shipmentId });
         await conn.commit();
+        console.log(`${logPrefix} Transaction committed`, { shipmentId });
 
+        console.log(`${logPrefix} Loading created shipment`, { shipmentId });
         const shipment = await getShipmentById(conn, shipmentId);
         if (!shipment) {
             throw new Error("Shipment could not be loaded after creation");
         }
+        console.log(`${logPrefix} Created shipment loaded successfully`, { shipmentId });
 
         return shipment;
     } catch (error) {
+        console.error(`${logPrefix} Operation failed; rolling back transaction`, {
+            error,
+            entityId: normalizedPayload.entityId,
+            noteThreadId: normalizedPayload.noteThreadId,
+        });
         await conn.rollback();
+        console.log(`${logPrefix} Transaction rollback completed`);
         throw error;
     }
 }
@@ -565,8 +628,9 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
         return null;
     }
 
-    const [containers, receipts] = await Promise.all([
+    const [containers, images, receipts] = await Promise.all([
         shipmentDB.getContainersByShipmentId(conn, shipmentId),
+        shipmentDB.getShipmentImagesByShipmentId(conn, shipmentId),
         shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
     ]);
 
@@ -620,8 +684,98 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     return {
         ...shipment,
         containers,
+        images,
         receipts: orderedReceipts,
     } as WarehouseShipmentWithRelations;
+}
+
+export async function uploadShipmentImages(
+    conn: Connection,
+    shipmentId: number,
+    imagePaths: string[]
+): Promise<any[]> {
+    const shipment = await shipmentDB.getShipmentById(conn, shipmentId);
+    if (!shipment) {
+        const error = new Error(`Shipment with ID ${shipmentId} not found.`) as Error & { statusCode?: number };
+        error.name = "NotFoundError";
+        error.statusCode = 404;
+        throw error;
+    }
+    if (imagePaths.length === 0) {
+        throwValidationError("At least one image file is required.");
+    }
+
+    await conn.beginTransaction();
+    try {
+        const images = [];
+        for (const imagePath of imagePaths) {
+            images.push(await shipmentDB.createShipmentImage(conn, shipmentId, imagePath));
+        }
+        await conn.commit();
+        return images;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
+export async function deleteShipmentImage(
+    conn: Connection,
+    shipmentId: number,
+    imageId: number
+): Promise<WarehouseShipmentWithRelations> {
+    const image = await shipmentDB.getShipmentImageById(conn, shipmentId, imageId);
+    if (!image) {
+        const error = new Error(`Image ${imageId} was not found for shipment ${shipmentId}.`) as Error & { statusCode?: number };
+        error.name = "NotFoundError";
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const imagePath = String(image.imagePath ?? "");
+    const prefix = "/api/uploads/shipment/images/";
+    let filename: string;
+    if (imagePath.startsWith(prefix)) {
+        try {
+            filename = decodeURIComponent(imagePath.slice(prefix.length));
+        } catch {
+            throw new Error("Stored shipment image path is invalid.");
+        }
+    } else {
+        filename = imagePath;
+    }
+    if (!filename || filename !== path.basename(filename) || filename.includes("/") || filename.includes("\\")) {
+        throw new Error("Stored shipment image path is invalid.");
+    }
+
+    const imageDirectory = ensureUploadDirExists(UPLOAD_PATHS.shipment.images);
+    const filePath = path.resolve(imageDirectory, filename);
+    if (path.dirname(filePath) !== path.resolve(imageDirectory)) {
+        throw new Error("Stored shipment image path is invalid.");
+    }
+
+    await conn.beginTransaction();
+    try {
+        await shipmentDB.deleteShipmentImage(conn, shipmentId, imageId);
+        await conn.commit();
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+
+    try {
+        await fs.promises.unlink(filePath);
+    } catch (error: any) {
+        if (error.code !== "ENOENT") {
+            throw error;
+        }
+    }
+
+    const shipment = await getShipmentById(conn, shipmentId);
+    if (!shipment) {
+        throw new Error(`Shipment with ID ${shipmentId} could not be loaded after deleting the image.`);
+    }
+    return shipment;
 }
 
 export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<ShipmentResposeForPickup | null> {
@@ -1029,7 +1183,11 @@ export async function signOffShipment(conn: Connection, shipmentId: number, user
 
         // If all remaining receipts are scanned (or none remain), mark shipment scanned+shipped and approve completion
         if (allRemainingScanned) {
-            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: 'Y', isShipped: 'Y' }, userId);
+            await shipmentDB.updateShipment(conn, shipmentId, {
+                isScanned: 'Y',
+                isShipped: 'Y',
+                ...(String(existingShipment.shipmentType).toUpperCase() === 'OCEAN_LCL' ? { pickupEntry: 'Y' } : {}),
+            }, userId);
             await shipmentDB.approveShipmentCompletion(conn, shipmentId, userId, 'APPROVED');
         }
 
@@ -1368,7 +1526,11 @@ export async function revokeShipmentCompletion(conn: Connection, shipmentId: num
     }
 }
 
-export async function cancelShipment(conn: Connection, shipmentId: number, userId: number) {
+export async function cancelShipment(conn: Connection, shipmentId: number, userId: number, canceledReason: string) {
+    if (!canceledReason.trim()) {
+        throwValidationError("canceledReason is required");
+    }
+
     try {
         await conn.beginTransaction();
 
@@ -1404,7 +1566,8 @@ export async function cancelShipment(conn: Connection, shipmentId: number, userI
             }
         }
 
-        await shipmentDB.updateShipment(conn, shipmentId, { isCanceled: "Y" }, userId);
+        await shipmentDB.replaceReceipts(conn, shipmentId, []);
+        await shipmentDB.updateShipment(conn, shipmentId, { isCanceled: "Y", canceledReason }, userId);
 
         const updatedShipment = await getShipmentById(conn, shipmentId);
         if (!updatedShipment) {

@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from '../../components/UnsavedChangesProvider';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, IconButton, Paper, Snackbar, Stack, TextField, Typography,
@@ -84,7 +85,9 @@ export default function LocationScanPage() {
     setSelectedReceipt(receipt);
     setFreightWarning('');
     setLocation(receipt.location || '');
-    const requiredFreightBarcodes = getRequiredFreightBarcodes(receipt);
+    useUnsavedChanges(Boolean(selectedReceipt));
+
+  const requiredFreightBarcodes = getRequiredFreightBarcodes(receipt);
     const scannedFreightBarcode = String(response.scannedFreightBarcodeValue || '').toUpperCase();
     if (scannedFreightBarcode && !requiredFreightBarcodes.includes(scannedFreightBarcode)) {
       setMessage({ severity: 'error', text: `${scannedFreightBarcode} is not available on this warehouse receipt.` });

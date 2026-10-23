@@ -112,6 +112,47 @@ export async function getShipmentById(conn: Connection, shipmentId: number): Pro
     return result.length > 0 ? result[0] : null;
 }
 
+export async function createShipmentImage(conn: Connection, shipmentId: number, imagePath: string): Promise<any> {
+    const query = `
+        SELECT "imageId", "shipmentId", "imagePath", "uploadedAt"
+        FROM FINAL TABLE (
+            INSERT INTO ${SCHEMA}."Warehouse_Shipment_Images"
+                ("shipmentId", "imagePath", "uploadedAt")
+            VALUES (?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
+        )
+    `;
+    const result = await conn.query(query, [shipmentId, imagePath] as any[]) as any[];
+    return result[0];
+}
+
+export async function getShipmentImagesByShipmentId(conn: Connection, shipmentId: number): Promise<any[]> {
+    const query = `
+        SELECT "imageId", "shipmentId", "imagePath", "uploadedAt"
+        FROM ${SCHEMA}."Warehouse_Shipment_Images"
+        WHERE "shipmentId" = ?
+        ORDER BY "uploadedAt", "imageId"
+    `;
+    return await conn.query(query, [shipmentId]) as any[];
+}
+
+export async function getShipmentImageById(conn: Connection, shipmentId: number, imageId: number): Promise<any | null> {
+    const query = `
+        SELECT "imageId", "shipmentId", "imagePath"
+        FROM ${SCHEMA}."Warehouse_Shipment_Images"
+        WHERE "shipmentId" = ? AND "imageId" = ?
+    `;
+    const result = await conn.query(query, [shipmentId, imageId]) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
+export async function deleteShipmentImage(conn: Connection, shipmentId: number, imageId: number): Promise<void> {
+    const query = `
+        DELETE FROM ${SCHEMA}."Warehouse_Shipment_Images"
+        WHERE "shipmentId" = ? AND "imageId" = ?
+    `;
+    await conn.query(query, [shipmentId, imageId]);
+}
+
 export async function getShipmentByIdForPickup(conn: Connection, shipmentId: number): Promise<any | null> {
     const query = `
          SELECT ws.*, cus."customerName", st."stationName",

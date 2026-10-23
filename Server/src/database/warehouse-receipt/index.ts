@@ -192,7 +192,7 @@ export async function getWarehouseReceiptById(
     console.log("Fetching warehouse receipt by ID:", receiptId);
 
     const query = `
-        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName"
+        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName", "s"."rmAccountNumber" as "stationRMAccountNumber"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"
@@ -462,6 +462,7 @@ export async function listWarehouseReceipts(
         destination?: string;
         packageId?: string;
         customerRefNumber?: string;
+        shipper?: string;
     },
     filterLogic: "AND" | "OR" = "AND"
 ): Promise<{ data: WarehouseReceiptListItem[]; total: number }> {
@@ -555,6 +556,11 @@ export async function listWarehouseReceipts(
     if (filters?.customerRefNumber) {
         specialConditions.push(`"wr"."customerRefNumber" LIKE ?`);
         specialParams.push(`%${filters.customerRefNumber}%`);
+    }
+
+    if (filters?.shipper) {
+        specialConditions.push(`"wr"."shipper" LIKE ?`);
+        specialParams.push(`%${filters.shipper}%`);
     }
 
     if (specialConditions.length > 0) {

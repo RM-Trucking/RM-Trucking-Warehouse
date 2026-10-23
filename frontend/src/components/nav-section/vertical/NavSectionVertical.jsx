@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { useMenuNavigate } from '../../UnsavedChangesProvider';
 import { List, Stack, Button, Collapse, Box } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
@@ -11,7 +12,7 @@ import { useDispatch } from '../../../redux/store';
 // 1. Recursive Item Component
 function NavItem({ item, depth = 0, onItemClick }) {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
+  const navigate = useMenuNavigate();
   const dispatch = useDispatch();
 
   const hasActiveChild = (node) => {

@@ -32,6 +32,7 @@ export interface AuditLogTask {
 export interface EmailTask {
     to: string;
     receiptNumber: number | bigint;
+    shipper?: string | null;
     status?: ReceiptStatusType | null;
     subject?: string;
     body?: string;

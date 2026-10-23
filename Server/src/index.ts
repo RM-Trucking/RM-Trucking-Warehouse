@@ -210,6 +210,7 @@ app.use('/api', routes);
 mountUploadStaticRoute("/api/uploads/warehouse/freight-image", process.env.FREIGHT_IMAGE_PATH);
 mountUploadStaticRoute("/api/uploads/warehouse/bad-freight-image", process.env.BAD_FREIGHT_IMAGE_PATH);
 mountUploadStaticRoute("/api/uploads/warehouse/documents", process.env.WAREHOUSE_DOC_PATH);
+mountUploadStaticRoute("/api/uploads/shipment/images", process.env.SHIPMENT_IMAGE_PATH);
 
 
 // SERVE REACT/FRONTEND STATIC BUILD

@@ -106,6 +106,7 @@ export async function listWarehouseReceiptsService(
         destination?: string;
         packageId?: string;
         customerRefNumber?: string;
+        shipper?: string;
     }
 ) {
     const offset = (page - 1) * pageSize;
@@ -1385,6 +1386,7 @@ export async function batchProcessWarehouseReceiptsService(
                         emitEmail({
                             receiptNumber: updatedReceiptData.receiptNumber ? updatedReceiptData.receiptNumber : 0,
                             to: emailRecipient,
+                            shipper: updatedReceiptData.shipper,
                             status: updateData.status,
                             hasAttachment: true,
                             attachmentPath
@@ -1534,6 +1536,7 @@ export async function batchProcessWarehouseReceiptsService(
                         emitEmail({
                             receiptNumber: dataWithUser.receiptNumber,
                             to: emailRecipient,
+                            shipper: createdReceiptData.shipper,
                             status: dataWithUser.status,
                             hasAttachment: true,
                             attachmentPath
@@ -1616,6 +1619,61 @@ export async function rejectWarehouseReceiptService(conn: Connection, receiptId:
             level: "INFO"
         });
         console.log(`📝 Audit log queued for receipt #${receipt.receiptNumber}`);
+
+        if (String(receipt.status).toUpperCase() === "ON_HAND") {
+            const initiatedAt = new Date();
+            const newReceiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn, {
+                verificationId: receipt.verificationId,
+                receiptDate: initiatedAt,
+                shipper: receipt.shipper,
+                customerId: receipt.customerId,
+                stationId: receipt.stationId,
+                carrierId: receipt.carrierId,
+                createdBy: userId,
+                status: "INITIATED",
+                destination: null,
+                proNumber: receipt.proNumber,
+                packageId: null,
+                receivedBy: null,
+                location: null,
+            });
+            const entityId = await entityDB.createWarehouseEntity(conn, "WAREHOUSE_RECEIPT", newReceiptNumber.toString());
+            const noteThreadId = await noteDB.createWarehouseNoteThread(conn, entityId, userId);
+            const newReceipt: Omit<WarehouseReceipt, "receiptId"> = {
+                receiptNumber: newReceiptNumber,
+                receiptDate: initiatedAt,
+                shipper: receipt.shipper,
+                customerId: receipt.customerId,
+                stationId: receipt.stationId,
+                verificationId: receipt.verificationId,
+                createdAt: initiatedAt,
+                createdBy: userId,
+                carrierId: receipt.carrierId,
+                piecesInland: receipt.piecesInland,
+                weightInland: receipt.weightInland,
+                proNumber: receipt.proNumber,
+                status: "INITIATED",
+                entityId,
+                noteThreadId,
+                toEmails: receipt.toEmails,
+                accountOnHold: "N",
+                sendToTellSystem: "N",
+                hasFlatRate: "N",
+                location: "",
+                receivedBy: "",
+            };
+            const newReceiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, newReceipt);
+
+            emitAuditLog({
+                receiptNumber: newReceiptNumber,
+                receiptId: newReceiptId,
+                proNumber: receipt.proNumber,
+                userId,
+                status: "INITIATED",
+                description: `New initiated receipt created after rejecting ON_HAND receipt ${receipt.receiptNumber}.`,
+                level: "INFO",
+            });
+        }
 
         await conn.commit();
     } catch (err) {
@@ -2155,6 +2213,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         destination?: string;
         packageId?: string;
         customerRefNumber?: string;
+        shipper?: string;
     }
 ) {
     const { data: receipts } = await warehouseReceiptDB.listWarehouseReceipts(
@@ -2193,6 +2252,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
                 createdDate: index === 0 && receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString() : "",
                 status: index === 0 ? receipt.status ?? "" : "",
                 idVerification: index === 0 ? receipt.verificationId ?? "" : "",
+                shipper: index === 0 ? receipt.shipper ?? "" : "",
                 packageId: index === 0 ? receipt.packageId ?? "" : "",
                 customerRefNumber: index === 0 ? receipt.customerRefNumber ?? "" : "",
                 hazmat: index === 0 ? (() => {
@@ -2231,6 +2291,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         { header: "Created Date", key: "createdDate", width: 20 },
         { header: "Status", key: "status", width: 15 },
         { header: "ID Verification Number", key: "idVerification", width: 25 },
+        { header: "Shipper", key: "shipper", width: 25 },
         { header: "Package ID", key: "packageId", width: 25 },
         { header: "Customer Ref Number", key: "customerRefNumber", width: 25 },
         { header: "Hazmat", key: "hazmat", width: 15 },
@@ -2354,6 +2415,7 @@ export async function sendWarehouseReceiptToCustomEmailService(
         emitEmail({
             receiptNumber: receiptWithDetails.receiptNumber,
             to: emailRecipient,
+            shipper: receiptWithDetails.shipper,
             status: emailStatus,
             hasAttachment: true,
             attachmentPath: attachmentString

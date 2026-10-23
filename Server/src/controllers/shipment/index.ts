@@ -23,6 +23,58 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
     }
 }
 
+export async function uploadShipmentImages(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const rawShipmentId = req.body?.shipmentId ?? req.query?.shipmentId;
+        const shipmentId = Number(Array.isArray(rawShipmentId) ? rawShipmentId[0] : rawShipmentId);
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
+            res.status(400).json({ success: false, message: "A valid shipmentId is required" });
+            return;
+        }
+
+        const uploadedFiles = Array.isArray((req as any).files)
+            ? ((req as any).files as Express.Multer.File[])
+            : [];
+        if (!uploadedFiles.length) {
+            res.status(400).json({ success: false, message: "At least one image file is required" });
+            return;
+        }
+
+        const images = await shipmentService.uploadShipmentImages(
+            conn,
+            shipmentId,
+            uploadedFiles.map((file) => (file as any).filename)
+        );
+        res.status(201).json({
+            success: true,
+            message: "Shipment images uploaded successfully",
+            data: { shipmentId, images: images.map((image) => image.imagePath), count: images.length }
+        });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.statusCode || (error?.name === "ValidationError" ? 400 : 500);
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to upload shipment images" });
+    }
+}
+
+export async function deleteShipmentImage(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const shipmentId = Number(req.params.shipmentId);
+        const imageId = Number(req.params.imageId);
+        if (!Number.isInteger(shipmentId) || shipmentId <= 0 || !Number.isInteger(imageId) || imageId <= 0) {
+            res.status(400).json({ success: false, message: "Valid shipmentId and imageId are required" });
+            return;
+        }
+
+        const result = await shipmentService.deleteShipmentImage(conn, shipmentId, imageId);
+        res.status(200).json({ success: true, message: "Shipment image deleted successfully", data: result });
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error?.statusCode || 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to delete shipment image" });
+    }
+}
+
 export async function listShipments(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const barcodeNumber = req.query.searchTerm as string | undefined;
@@ -387,14 +439,19 @@ export async function revokeShipmentCompletion(req: Request, res: Response, conn
 export async function cancelShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const shipmentId = Number(req.body.shipmentId);
+        const canceledReason = typeof req.body?.canceledReason === "string" ? req.body.canceledReason.trim() : "";
         const userId = (req as any).user?.userId || (req as any).user?.id || 0;
 
         if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
             res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
             return;
         }
+        if (!canceledReason) {
+            res.status(400).json({ success: false, message: "canceledReason is required" });
+            return;
+        }
 
-        const shipment = await shipmentService.cancelShipment(conn, shipmentId, userId);
+        const shipment = await shipmentService.cancelShipment(conn, shipmentId, userId, canceledReason);
         res.status(200).json({ success: true, message: "Shipment canceled successfully", data: shipment });
     } catch (error: any) {
         console.error(error);
