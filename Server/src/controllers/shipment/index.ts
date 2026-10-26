@@ -8,9 +8,13 @@ export async function createShipment(req: Request, res: Response, conn: Connecti
         const payload = req.body as CreateWarehouseShipment;
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
+        const isAirShipment = payload.shipmentType === "AIR";
+        const isOceanShipment = payload.shipmentType === "OCEAN_LCL" || payload.shipmentType === "OCEAN_FCL";
         const destinationRequired = payload.shipmentType === "OCEAN_FCL";
-        if (!payload.shipmentType || !payload.barcodeNumber || !payload.customerId || !payload.consigneeId || payload.pieces === undefined || payload.weight === undefined || !payload.stationScope || (destinationRequired && !payload.destination) || (payload.stationScope === "SPECIFIC" && !payload.stationId)) {
-            res.status(400).json({ success: false, message: "shipmentType, barcodeNumber, customerId, stationScope, consigneeId, pieces and weight are required; destination is required for OCEAN_FCL; stationId is required for SPECIFIC station scope" });
+        const validAirConsignee = Number.isInteger(Number(payload.consigneeId)) && Number(payload.consigneeId) > 0;
+        const validOceanConsignee = typeof payload.consigneeForOcean === "string" && Boolean(payload.consigneeForOcean.trim());
+        if ((!isAirShipment && !isOceanShipment) || !payload.barcodeNumber || !payload.customerId || (isAirShipment && !validAirConsignee) || (isOceanShipment && !validOceanConsignee) || payload.pieces === undefined || payload.weight === undefined || !payload.stationScope || (destinationRequired && !payload.destination) || (payload.stationScope === "SPECIFIC" && !payload.stationId)) {
+            res.status(400).json({ success: false, message: "shipmentType must be AIR, OCEAN_LCL or OCEAN_FCL; barcodeNumber, customerId, stationScope, pieces and weight are required; consigneeId is required for AIR; consigneeForOcean is required for ocean shipments; destination is required for OCEAN_FCL; stationId is required for SPECIFIC station scope" });
             return;
         }
 
@@ -214,6 +218,10 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
             return;
         }
 
+        if (payload.shipmentType && !["AIR", "OCEAN_LCL", "OCEAN_FCL"].includes(payload.shipmentType)) {
+            res.status(400).json({ success: false, message: "shipmentType must be AIR, OCEAN_LCL or OCEAN_FCL" });
+            return;
+        }
         if (payload.stationScope && payload.stationScope !== "ALL" && payload.stationScope !== "SPECIFIC") {
             res.status(400).json({ success: false, message: "stationScope must be ALL or SPECIFIC" });
             return;
@@ -224,11 +232,6 @@ export async function updateShipment(req: Request, res: Response, conn: Connecti
             res.status(400).json({ success: false, message: "stationId is required for SPECIFIC station scope" });
             return;
         }
-        if (payload.shipmentType === "OCEAN_FCL" && !String(payload.destination || "").trim()) {
-            res.status(400).json({ success: false, message: "destination is required for OCEAN_FCL shipments" });
-            return;
-        }
-
         const shipment = await shipmentService.updateShipmentWithRelations(conn, shipmentId, payload, userId);
         res.status(200).json({ success: true, message: "Shipment updated successfully", data: shipment });
     } catch (error: any) {

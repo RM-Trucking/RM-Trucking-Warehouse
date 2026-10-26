@@ -13,6 +13,7 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "stationScope",
                 "destination",
                 "consigneeId",
+                "consigneeForOcean",
                 "airBillNumber",
                 "booking",
                 "customerRefNumber",
@@ -35,7 +36,7 @@ export async function createShipment(conn: Connection, payload: any, userId: num
                 "startDate",
                 "endDate"
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         )
     `;
 
@@ -47,6 +48,7 @@ export async function createShipment(conn: Connection, payload: any, userId: num
         payload.stationScope,
         payload.destination,
         payload.consigneeId,
+        payload.consigneeForOcean,
         payload.airBillNumber,
         payload.booking,
         payload.customerRefNumber,

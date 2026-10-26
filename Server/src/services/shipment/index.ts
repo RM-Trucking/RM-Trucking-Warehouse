@@ -159,11 +159,19 @@ async function syncReceiptDestinationForShipment(
 
 function normalizeShipmentPayload(payload: CreateWarehouseShipment | UpdateWarehouseShipment, userId: number) {
     const isUpdate = "shipmentId" in payload;
+    const hasConsigneeId = Object.prototype.hasOwnProperty.call(payload, "consigneeId");
+    const hasOceanConsignee = Object.prototype.hasOwnProperty.call(payload, "consigneeForOcean");
+    const shipmentType = payload.shipmentType;
     const normalized = {
         ...payload,
         customerId: Number((payload as any).customerId),
         stationId: (payload as any).stationId === null ? null : Number((payload as any).stationId),
-        consigneeId: Number((payload as any).consigneeId),
+        consigneeId: shipmentType
+            ? shipmentType === "AIR" ? (payload.consigneeId == null ? null : Number(payload.consigneeId)) : null
+            : hasConsigneeId ? ((payload as any).consigneeId == null ? null : Number((payload as any).consigneeId)) : undefined,
+        consigneeForOcean: shipmentType
+            ? shipmentType === "OCEAN_LCL" || shipmentType === "OCEAN_FCL" ? String(payload.consigneeForOcean ?? "").trim() || null : null
+            : hasOceanConsignee ? (typeof payload.consigneeForOcean === "string" ? payload.consigneeForOcean.trim() || null : null) : undefined,
         pieces: Number((payload as any).pieces),
         weight: Number((payload as any).weight),
         earlyReturnDate: (payload as any).earlyReturnDate ? normalizeDateOnly((payload as any).earlyReturnDate) : null,
@@ -230,6 +238,17 @@ export async function createShipmentWithRelations(
     if (normalizedPayload.stationScope === "SPECIFIC" && (!normalizedPayload.stationId || !Number.isInteger(normalizedPayload.stationId))) {
         console.warn(`${logPrefix} Validation failed: invalid stationId`, normalizedPayload.stationId);
         throwValidationError("stationId is required for SPECIFIC station scope.");
+    }
+    if (normalizedPayload.shipmentType === "AIR") {
+        if (!Number.isInteger(normalizedPayload.consigneeId) || Number(normalizedPayload.consigneeId) <= 0) {
+            throwValidationError("consigneeId is required for AIR shipments.");
+        }
+    } else if (normalizedPayload.shipmentType === "OCEAN_LCL" || normalizedPayload.shipmentType === "OCEAN_FCL") {
+        if (!normalizedPayload.consigneeForOcean) {
+            throwValidationError("consigneeForOcean is required for ocean shipments.");
+        }
+    } else {
+        throwValidationError("shipmentType must be AIR, OCEAN_LCL or OCEAN_FCL.");
     }
     if (normalizedPayload.shipmentType === "OCEAN_FCL" && !normalizedPayload.destination) {
         console.warn(`${logPrefix} Validation failed: missing destination for OCEAN_FCL`);
@@ -391,6 +410,27 @@ export async function updateShipmentWithRelations(
     }
 
     const effectiveShipmentType = payload.shipmentType ?? existingShipment.shipmentType;
+    const effectiveConsigneeId = Object.prototype.hasOwnProperty.call(payload, "consigneeId")
+        ? normalizedPayload.consigneeId
+        : Number(existingShipment.consigneeId);
+    const effectiveOceanConsignee = Object.prototype.hasOwnProperty.call(payload, "consigneeForOcean")
+        ? normalizedPayload.consigneeForOcean
+        : String(existingShipment.consigneeForOcean ?? "").trim() || null;
+    if (effectiveShipmentType === "AIR") {
+        if (!Number.isInteger(effectiveConsigneeId) || Number(effectiveConsigneeId) <= 0) {
+            throwValidationError("consigneeId is required for AIR shipments.");
+        }
+        normalizedPayload.consigneeId = effectiveConsigneeId;
+        normalizedPayload.consigneeForOcean = null;
+    } else if (effectiveShipmentType === "OCEAN_LCL" || effectiveShipmentType === "OCEAN_FCL") {
+        if (!effectiveOceanConsignee) {
+            throwValidationError("consigneeForOcean is required for ocean shipments.");
+        }
+        normalizedPayload.consigneeId = null;
+        normalizedPayload.consigneeForOcean = effectiveOceanConsignee;
+    } else {
+        throwValidationError("shipmentType must be AIR, OCEAN_LCL or OCEAN_FCL.");
+    }
     if (effectiveShipmentType === "OCEAN_FCL") {
         const effectiveDestination = Object.prototype.hasOwnProperty.call(payload, "destination")
             ? normalizedPayload.destination
