@@ -1120,6 +1120,38 @@ export async function getProHeaderDetails(req: Request, res: Response, conn: Con
     }
 }
 
+export async function resolveProHeaderCustomerMatch(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        const { customerId: rawCustomerId, stationId: rawStationId, ...csvData } = req.body || {};
+        const customerId = Number(rawCustomerId);
+        const stationId = Number(rawStationId);
+
+        if (!csvData.proNumber || !Number.isInteger(customerId) || customerId <= 0 || !Number.isInteger(stationId) || stationId <= 0) {
+            res.status(400).json({ success: false, message: "PRO data, customerId, and stationId are required" });
+            return;
+        }
+
+        const data = await warehouseReceiptService.resolveProHeaderCustomerMatchService(
+            conn,
+            csvData,
+            customerId,
+            stationId,
+            userId
+        );
+        res.status(200).json({ success: true, data });
+    } catch (error: any) {
+        logger.error("Error resolving PRO header customer match", error);
+        if (error.message.includes("Duplicate")) {
+            res.status(409).json({ success: false, message: error.message });
+        } else if (error.message.includes("Invalid PRO data") || error.message.includes("station")) {
+            res.status(400).json({ success: false, message: error.message });
+        } else {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+}
+
 export async function getAuditLogsForReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;

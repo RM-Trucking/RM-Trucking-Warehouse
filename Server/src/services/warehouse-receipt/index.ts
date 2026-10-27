@@ -12,7 +12,7 @@ import * as carrierDB from "../../database/maintanance/carrier";
 import * as userDB from "../../database/maintanance/auth";
 import { emitAuditLog, emitEmail, sendStatusUpdateEmail } from "../../utils/email";
 import { WarehouseReceipt, FreightInfo, AuditLog, WarehouseReceiptRate, WarehouseReceiptTemp } from "../../entities/warehouse-receipt";
-import { getProDetailFromCsv, validateProCsvData, findProCsvFile } from "../../utils/pro-csv-handler";
+import { getProDetailFromCsv, validateProCsvData, findProCsvFile, ProCsvData } from "../../utils/pro-csv-handler";
 import { createWarehouseReceiptPDF } from "../../utils/warehouseReceiptPDFHandler";
 import { ensureUploadDirExists } from "../../config/multer";
 import ExcelJS from 'exceljs';
@@ -1238,7 +1238,7 @@ export async function batchProcessWarehouseReceiptsService(
                 }
             }
 
-            receipt.status = "ON_HAND";
+            receipt.status = receipt.isPending ? "PENDING" : "ON_HAND";
             if (split && parentReceiptId && parentReceipt?.createdAt) {
                 receipt.createdAt = parentReceipt.createdAt;
                 receipt.parentReceipt = parentReceiptId;
@@ -1358,8 +1358,10 @@ export async function batchProcessWarehouseReceiptsService(
                     receiptId,
                     proNumber: updatedReceiptData.proNumber,
                     userId: userId,
-                    status: "ON_HAND",
-                    description: `Receipt now ON-HAND for verification ID ${updatedReceiptData.verificationId}`,
+                    status: receipt.status,
+                    description: receipt.status === "PENDING"
+                        ? `Receipt marked as PENDING for verification ID ${updatedReceiptData.verificationId}`
+                        : `Receipt now ON-HAND for verification ID ${updatedReceiptData.verificationId}`,
                     level: "INFO"
                 });
 
@@ -1509,8 +1511,10 @@ export async function batchProcessWarehouseReceiptsService(
                     receiptId,
                     proNumber: createdReceiptData.proNumber,
                     userId: userId,
-                    status: "ON_HAND",
-                    description: `Receipt now ON-HAND for verification ID ${createdReceiptData.verificationId}`,
+                    status: receipt.status,
+                    description: receipt.status === "PENDING"
+                        ? `Receipt marked as PENDING for verification ID ${createdReceiptData.verificationId}`
+                        : `Receipt now ON-HAND for verification ID ${createdReceiptData.verificationId}`,
                     level: "INFO"
                 });
 
@@ -1688,63 +1692,31 @@ export async function rejectWarehouseReceiptService(conn: Connection, receiptId:
  * Flow:
  * 1. Check database first (Warehouse_RM_Pro_Detail)
  * 2. If not found, read from CSV file in FTP folder
- * 3. Validate data and save to database for future use
- * 4. Check for duplicate warehouse receipts
- * 5. Validate customer/station and carrier
- * 6. Delete CSV file after successful processing
+ * 3. Validate CSV data, duplicate receipts, customer/station, and carrier
+ * 4. Save valid CSV data to the database
+ * 5. Delete the CSV file after saving
+ * 6. Create a temporary warehouse receipt
  * 7. Return formatted response with all relevant fields
  */
-export async function getProHeaderDetailsService(conn: Connection, proNumber: string, userId: number) {
-    let proDetail = await warehouseReceiptDB.getProHeaderDetailsByProNumber(conn, proNumber);
-    let csvFilePath: string | null = null;
+function mapProCsvDataToDetail(csvData: ProCsvData) {
+    return {
+        proNumber: csvData.proNumber,
+        driverNumber: csvData.driverNumber,
+        shipperAccountNumber: csvData.shipperAccountNumber,
+        shipperName: csvData.shipperName,
+        customrAccountNumber: csvData.fwdrAccountNumber,
+        customerName: csvData.fwdrName,
+        carrierName: csvData.carrierName,
+        pieces: csvData.pieces,
+        weight: csvData.weight,
+        proDate: csvData.proDate,
+        customerReferenceNumber: csvData.fwdrRef,
+        city: csvData.destCity,
+        hazmat: csvData.hazmat
+    };
+}
 
-    // If not in database, try to read from CSV file
-    if (!proDetail) {
-        try {
-            const csvData = await getProDetailFromCsv(proNumber);
-
-            if (!csvData) {
-                throw new Error(`No PRO detail found for PRO number: ${proNumber} (not in database or CSV file)`);
-            }
-
-            // Validate CSV data
-            const validation = validateProCsvData(csvData);
-            if (!validation.valid) {
-                throw new Error(`Invalid PRO data in CSV: ${validation.errors.join(', ')}`);
-            }
-
-            // Save CSV data to database for future use
-            await warehouseReceiptDB.saveProDetail(conn, {
-                proNumber: csvData.proNumber,
-                driverNumber: csvData.driverNumber,
-                shipperAccountNumber: csvData.shipperAccountNumber,
-                shipperName: csvData.shipperName,
-                customrAccountNumber: csvData.fwdrAccountNumber,
-                customerName: csvData.fwdrName,
-                carrierName: csvData.carrierName,
-                pieces: csvData.pieces,
-                weight: csvData.weight,
-                proDate: csvData.proDate,
-                customerReferenceNumber: csvData.fwdrRef,
-                city: csvData.destCity,
-                hazmat: csvData.hazmat
-            });
-
-            // Get CSV file path for deletion later
-            csvFilePath = await findProCsvFile(proNumber);
-
-            // Fetch saved data to get proDetailId
-            proDetail = await warehouseReceiptDB.getProHeaderDetailsByProNumber(conn, proNumber);
-        } catch (error: any) {
-            throw new Error(`Failed to retrieve PRO details: ${error.message}`);
-        }
-    }
-
-    if (!proDetail) {
-        throw new Error(`Failed to retrieve or save PRO detail for PRO number: ${proNumber}`);
-    }
-
-    // Check for duplicate warehouse receipts (prevent reuse if already used)
+async function validateProHeaderDetails(conn: Connection, proDetail: any, proNumber: string) {
     const duplicateReceipt = await warehouseReceiptDB.checkDuplicateProByCarrierName(
         conn,
         proDetail.carrierName,
@@ -1754,51 +1726,32 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         throw new Error(`Duplicate - Carrier "${proDetail.carrierName}" with PRO "${proNumber}" already added in another Record`);
     }
 
-    // Validate customer/station exists
-    const station = await customerDB.getStationByRmAccountNumber(conn, proDetail.customrAccountNumber);
-    if (!station) {
-        throw new Error(`Customer not found with customer name: ${proDetail.customerName} with account number: ${proDetail.customrAccountNumber}`);
-    }
-
-    // Validate carrier exists
     const carrier = await carrierDB.getCarrierByName(conn, proDetail.carrierName);
     if (!carrier) {
         throw new Error(`Carrier not found: ${proDetail.carrierName}`);
     }
+    return carrier;
+}
 
-    const receiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn,
-        {
-            verificationId: 0,
-            receiptDate: new Date(),
-            shipper: proDetail.shipperName,
-            customerId: station.customerId,
-            stationId: station.stationId,
-            carrierId: carrier.carrierId,
-            createdBy: userId,
-            status: 'INITIATED',
-            proNumber: proDetail.proNumber,
-            packageId: null,
-            receivedBy: null,
-            location: null
-        }
-    )
-
-    // Delete CSV file after successful processing
-    if (csvFilePath && fs.existsSync(csvFilePath)) {
-        try {
-            await fs.promises.unlink(csvFilePath);
-            console.log(`CSV file deleted successfully: ${csvFilePath}`);
-        } catch (error: any) {
-            console.error(`Failed to delete CSV file: ${csvFilePath}`, error.message);
-            // Don't throw error, just log it
-        }
-    }
+async function createProHeaderReceiptResponse(conn: Connection, proDetail: any, station: any, carrier: any, userId: number) {
+    const receiptNumber = await warehouseReceiptDB.createWarehouseReceiptTemp(conn, {
+        verificationId: 0,
+        receiptDate: new Date(),
+        shipper: proDetail.shipperName,
+        customerId: station.customerId,
+        stationId: station.stationId,
+        carrierId: carrier.carrierId,
+        createdBy: userId,
+        status: 'INITIATED',
+        proNumber: proDetail.proNumber,
+        packageId: null,
+        receivedBy: null,
+        location: null
+    });
 
     const emails = await customerDB.getDepartmentAndPersonnelEmails(conn, station.stationId);
-
     const stationDefaultEmails = await customerDB.getStationDefaultEmails(conn, station.stationId);
 
-    // Format response with required fields and enriched customer/carrier data
     return {
         proDetailId: proDetail.proDetailId,
         driver: proDetail.driverNumber,
@@ -1808,6 +1761,7 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         customerName: station.customerName,
         stationId: station.stationId,
         stationName: station.stationName,
+        customer: station,
         consigneeAccountNumber: proDetail.customrAccountNumber,
         customerReferenceNumber: proDetail.customerReferenceNumber,
         carrierId: carrier.carrierId,
@@ -1818,10 +1772,141 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
         proNumber: proDetail.proNumber,
         proDate: proDetail.proDate,
         hazmat: proDetail.hazmat || 'N',
-        receiptNumber: receiptNumber,
+        receiptNumber,
         customerEmails: emails,
-        stationDefaultEmails: stationDefaultEmails
+        stationDefaultEmails
     };
+}
+
+async function deleteProcessedProCsv(proNumber: string) {
+    const csvFilePath = await findProCsvFile(proNumber);
+    if (!csvFilePath || !fs.existsSync(csvFilePath)) return;
+
+    try {
+        await fs.promises.unlink(csvFilePath);
+        console.log(`CSV file deleted successfully: ${csvFilePath}`);
+    } catch (error: any) {
+        console.error(`Failed to delete CSV file: ${csvFilePath}`, error.message);
+    }
+}
+
+export async function getProHeaderDetailsService(conn: Connection, proNumber: string, userId: number) {
+    let proDetail = await warehouseReceiptDB.getProHeaderDetailsByProNumber(conn, proNumber);
+    console.log(`PRO detail retrieved from database for PRO ${proNumber}:`, proDetail);
+    let csvData: ProCsvData | null = null;
+    let proDetailFromCsv = false;
+
+    if (!proDetail) {
+        try {
+            csvData = await getProDetailFromCsv(proNumber);
+            console.log(`PRO detail retrieved from CSV for PRO ${proNumber}:`, csvData);
+            if (!csvData) {
+                throw new Error(`No PRO detail found for PRO number: ${proNumber} (not in database or CSV file)`);
+            }
+
+            const validation = validateProCsvData(csvData);
+            if (!validation.valid) {
+                throw new Error(`Invalid PRO data in CSV: ${validation.errors.join(', ')}`);
+            }
+
+            proDetail = mapProCsvDataToDetail(csvData);
+            proDetailFromCsv = true;
+        } catch (error: any) {
+            throw new Error(`Failed to retrieve PRO details: ${error.message}`);
+        }
+    } else {
+        csvData = {
+            proNumber: proDetail.proNumber,
+            driverNumber: proDetail.driverNumber,
+            shipperAccountNumber: proDetail.shipperAccountNumber,
+            shipperName: proDetail.shipperName,
+            fwdrAccountNumber: proDetail.customrAccountNumber,
+            fwdrName: proDetail.customerName,
+            fwdrRef: proDetail.customerReferenceNumber,
+            pieces: proDetail.pieces,
+            weight: proDetail.weight,
+            carrierName: proDetail.carrierName,
+            destCity: proDetail.city,
+            hazmat: proDetail.hazmat,
+            proDate: proDetail.proDate
+        };
+    }
+
+    if (!proDetail) {
+        throw new Error(`Failed to retrieve PRO detail for PRO number: ${proNumber}`);
+    }
+
+    const carrier = await validateProHeaderDetails(conn, proDetail, proNumber);
+    const station = await customerDB.getStationByRmAccountNumber(conn, proDetail.customrAccountNumber);
+    if (!station) {
+        const csvDataForResponse = { ...csvData };
+        delete csvDataForResponse.fwdrAccountNumber;
+        delete csvDataForResponse.fwdrName;
+
+        return {
+            proDetailId: proDetail.proDetailId || null,
+            proNumber: proDetail.proNumber,
+            driver: proDetail.driverNumber,
+            shipper: proDetail.shipperName,
+            shipperAccountNumber: proDetail.shipperAccountNumber,
+            customerId: null,
+            customerName: null,
+            stationId: null,
+            stationName: null,
+            consigneeAccountNumber: proDetail.customrAccountNumber,
+            customerReferenceNumber: proDetail.customerReferenceNumber,
+            carrierId: carrier.carrierId,
+            carrier: carrier.carrierName,
+            city: proDetail.city || '',
+            weight: proDetail.weight,
+            pieces: proDetail.pieces,
+            proDate: proDetail.proDate,
+            hazmat: proDetail.hazmat || 'N',
+            receiptNumber: null,
+            customerEmails: [],
+            stationDefaultEmails: { hasDefaultEmails: 'N', emails: [] },
+            csvData: csvDataForResponse
+        };
+    }
+
+    if (proDetailFromCsv) {
+        proDetail.proDetailId = await warehouseReceiptDB.saveProDetail(conn, proDetail);
+        await deleteProcessedProCsv(proNumber);
+    }
+
+    return createProHeaderReceiptResponse(conn, proDetail, station, carrier, userId);
+}
+
+export async function resolveProHeaderCustomerMatchService(
+    conn: Connection,
+    csvData: ProCsvData,
+    customerId: number,
+    stationId: number,
+    userId: number
+) {
+    const validation = validateProCsvData(csvData);
+    if (!validation.valid) {
+        throw new Error(`Invalid PRO data in CSV: ${validation.errors.join(', ')}`);
+    }
+
+    const station = await customerDB.getStationByCustomerAndId(conn, customerId, stationId);
+    if (!station) {
+        throw new Error(`Active station ${stationId} was not found for customer ${customerId}`);
+    }
+
+    const proDetail = {
+        ...mapProCsvDataToDetail(csvData),
+        customrAccountNumber: station.rmAccountNumber ?? "",
+        customerName: station.customerName
+    };
+    const carrier = await validateProHeaderDetails(conn, proDetail, proDetail.proNumber);
+    const savedProDetail = {
+        ...proDetail,
+        proDetailId: await warehouseReceiptDB.saveProDetail(conn, proDetail)
+    };
+    await deleteProcessedProCsv(proDetail.proNumber);
+
+    return createProHeaderReceiptResponse(conn, savedProDetail, station, carrier, userId);
 }
 
 

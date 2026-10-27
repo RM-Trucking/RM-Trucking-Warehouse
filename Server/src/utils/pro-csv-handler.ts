@@ -10,8 +10,8 @@ export interface ProCsvData {
     driverNumber: string;
     shipperAccountNumber: string;
     shipperName: string;
-    fwdrAccountNumber: string;
-    fwdrName: string;
+    fwdrAccountNumber?: string;
+    fwdrName?: string;
     fwdrRef?: string;
     pieces: number;
     weight: number;
@@ -151,16 +151,6 @@ export function validateProCsvData(data: ProCsvData): { valid: boolean; errors: 
     // Validate Shipper Name
     if (!data.shipperName) {
         errors.push(`Missing Shipper Name in CSV file.`);
-    }
-
-    // Validate Freight Forwarder Account Number
-    if (!data.fwdrAccountNumber) {
-        errors.push(`Missing Freight Forwarder Account Number in CSV file.`);
-    }
-
-    // Validate Freight Forwarder Name
-    if (!data.fwdrName) {
-        errors.push(`Missing Freight Forwarder Name in CSV file.`);
     }
 
     // Validate Carrier Name

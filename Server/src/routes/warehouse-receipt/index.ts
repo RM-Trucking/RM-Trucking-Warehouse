@@ -123,6 +123,15 @@ router.get("/pro-detail/:pro", authenticateJWT, async (req: Request, res: Respon
     if (conn) conn.close();
 });
 
+router.post("/pro-detail/customer-match", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.resolveProHeaderCustomerMatch(req, res, conn);
+    } finally {
+        if (conn) await conn.close();
+    }
+});
+
 // Export receipts to spreadsheet
 router.get("/export-spreadsheet", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();

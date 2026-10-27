@@ -1469,10 +1469,10 @@ paths:
 
         **Flow:**
         1. Checks database first (Warehouse_RM_Pro_Detail table)
-        2. If not found, reads from CSV file in FTP folder
-        3. Validates and saves CSV data to database for future use
-        4. Checks for duplicate warehouse receipts (prevents reuse)
-        5. Returns formatted response with all PRO details
+        2. If not found, reads and validates the CSV file in the FTP folder
+        3. Checks for duplicate warehouse receipts (prevents reuse)
+        4. If the CSV customer account does not match an active station, returns `customer: null` and the parsed `csvData` without saving or creating a temporary receipt
+        5. For a matched customer, saves the PRO data, creates a temporary receipt, and returns all PRO details
 
         **Response Fields:**
         - proDetailId: Unique identifier for the PRO detail record
@@ -1597,6 +1597,64 @@ paths:
                   message:
                     type: string
                     example: 'Duplicate - Carrier "Shiva Test Carrier" with PRO "PRO123456" already added in another Record'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/warehouse-receipt/pro-detail/customer-match:
+    post:
+      tags:
+        - Receipts
+      summary: Complete PRO header processing with a manual customer match
+      description: |
+        Completes processing for CSV PRO data returned by `GET /pro-detail/{pro}` when `customer` is null.
+        The selected active station must belong to the supplied customer. The service stores the PRO
+        details using the selected station's RM account and customer name; do not include
+        `fwdrAccountNumber` or `fwdrName` in `csvData`. It removes the processed CSV, creates the
+        temporary warehouse receipt, and returns the same enriched response as a matched lookup.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                [
+                  proNumber,
+                  driverNumber,
+                  shipperAccountNumber,
+                  shipperName,
+                  pieces,
+                  weight,
+                  carrierName,
+                  customerId,
+                  stationId,
+                ]
+              properties:
+                proNumber: { type: string, example: "PRO123456" }
+                driverNumber: { type: string, example: "D123" }
+                shipperAccountNumber: { type: string, example: "SHIP123" }
+                shipperName: { type: string, example: "Example Shipper" }
+                fwdrRef: { type: string, example: "REF789" }
+                pieces: { type: integer, example: 5 }
+                weight: { type: number, example: 100 }
+                carrierName: { type: string, example: "Example Carrier" }
+                destCity: { type: string, example: "New York" }
+                hazmat: { type: string, enum: [Y, N], example: "N" }
+                proDate: { type: string, format: date, example: "2026-05-08" }
+                customerId: { type: integer, example: 12 }
+                stationId: { type: integer, example: 34 }
+      responses:
+        "200":
+          description: PRO data saved and temporary receipt created
+        "400":
+          description: Invalid CSV data or customer/station selection
+        "409":
+          description: PRO already exists on another warehouse receipt
         "500":
           description: Server error
           content:

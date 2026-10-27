@@ -103,6 +103,25 @@ export async function getStationByRmAccountNumber(
     return result.length > 0 ? result[0] : null;
 }
 
+export async function getStationByCustomerAndId(
+    conn: Connection,
+    customerId: number,
+    stationId: number
+): Promise<{ stationId: number; stationName: string; customerId: number; customerName: string; rmAccountNumber: string } | null> {
+    const query = `
+    SELECT s."stationId", s."stationName", s."rmAccountNumber", c."customerId", c."customerName"
+    FROM ${SCHEMA}."Station" s
+    JOIN ${SCHEMA}."Customer" c ON s."customerId" = c."customerId"
+    WHERE s."stationId" = ?
+      AND c."customerId" = ?
+      AND s."activeStatus" = 'Y'
+      AND c."activeStatus" = 'Y'
+    `;
+
+    const result = (await conn.query(query, [stationId, customerId])) as any[];
+    return result.length > 0 ? result[0] : null;
+}
+
 
 export async function getStationRateDetails(
     conn: Connection,
