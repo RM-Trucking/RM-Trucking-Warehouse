@@ -10,7 +10,7 @@ import ShipmentFormLayout, { TopInfoPanel } from '../../sections/shared/Shipment
 
 import { useDispatch, useSelector } from '../../redux/store';
 import { getWarehouseReceiptNotes, postWarehouseReceiptNote, searchWarehouseReceiptCustomers, searchWarehouseReceiptStations } from '../../redux/slices/warehouseReceipt';
-import { getExportAirlineOptions, getShipmentReceiptOptions, postShipment, updateShipment } from '../../redux/slices/shipment';
+import { getShipmentReceiptOptions, postShipment, updateShipment } from '../../redux/slices/shipment';
 
 const getCustomerOptionLabel = (option) => {
     if (!option) return '';
@@ -25,21 +25,6 @@ const getStationOptionLabel = (option) => {
     if (!option) return '';
     if (typeof option === 'string') return option;
     return option.stationName || option.name || option.label || '';
-};
-
-const getConsigneeOptionLabel = (option) => {
-    if (!option) return '';
-    if (typeof option === 'string') return option;
-    return [
-        option.airlineNumber,
-        option.airlineCode,
-        option.airlineName,
-        option.airportCode,
-        option.city,
-        option.state,
-    ]
-        .filter((value) => value !== undefined && value !== null && value !== '')
-        .join(' - ');
 };
 
 const getShipmentReceiptOptionLabel = (option) => {
@@ -84,18 +69,12 @@ NewOceanLCLShipmentForm.propTypes = {
 export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, viewMode = false }) {
     const dispatch = useDispatch();
     const { customerOptions, customerLoading, stationOptions, stationLoading, receiptNotes, receiptNotesLoading, receiptNotesSaving, receiptNotesError } = useSelector((state) => state.warehouseReceiptdata);
-    const { exportAirlineOptions, exportAirlineLoading, shipmentReceiptOptionsByField, shipmentReceiptLoadingByField, createShipmentLoading } = useSelector((state) => state.shipmentdata);
+    const { shipmentReceiptOptionsByField, shipmentReceiptLoadingByField, createShipmentLoading } = useSelector((state) => state.shipmentdata);
     const defaultValues = {
         rmProNo: String(rowData?.barcodeNumber || '').replace(/\s/g, ''),
         customer: rowData ? { customerId: rowData.customerId, customerName: rowData.customerName || rowData.customer || String(rowData.customerId || '') } : null,
         station: rowData ? { stationId: rowData.stationId, stationName: rowData.stationName || rowData.station || String(rowData.stationId || '') } : null,
-        consignee: rowData ? {
-            airlineId: rowData.consigneeId || rowData.airlineId,
-            airlineName: rowData.airlineName || rowData.consigneeName || String(rowData.consigneeId || ''),
-            airlineCode: rowData.airlineCode || '',
-            airlineNumber: rowData.airlineNumber || '',
-            airportCode: rowData.airportCode || '',
-        } : null,
+        consigneeForOcean: rowData?.consigneeForOcean ?? rowData?.consigneeName ?? rowData?.airlineName ?? '',
         booking: rowData?.booking || '',
         customerRefNumber: rowData?.customerRefNumber || '',
         additionalRefNo: rowData?.additionalRefNumber || '',
@@ -360,7 +339,8 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
             barcodeNumber: data.rmProNo,
             customerId: Number(data.customer?.customerId || data.customer?.id || 0),
             stationId: Number(data.station?.stationId || data.station?.id || 0),
-            consigneeId: Number(data.consignee?.airlineId || data.consignee?.id || 0),
+            consigneeId: null,
+            consigneeForOcean: data.consigneeForOcean.trim(),
             booking: data.booking,
             customerRefNumber: data.customerRefNumber,
             additionalRefNumber: data.additionalRefNo,
@@ -550,39 +530,15 @@ export default function NewOceanLCLShipmentForm({ handleClose, rowData = null, v
                                 )}
                             />
                         )} />
-                        <Controller name="consignee" control={control} rules={{ required: 'Required' }} render={({ field, fieldState: { error } }) => (
-                            <Autocomplete
+                        <Controller name="consigneeForOcean" control={control} rules={{ required: 'Required', validate: (value) => !!value.trim() || 'Required' }} render={({ field, fieldState: { error } }) => (
+                            <StyledTextField
+                                {...field}
                                 fullWidth
-                                readOnly={viewMode && !isEditing}
-                                options={exportAirlineOptions}
-                                value={field.value}
-                                loading={exportAirlineLoading}
-                                onOpen={() => dispatch(getExportAirlineOptions())}
-                                getOptionLabel={getConsigneeOptionLabel}
-                                isOptionEqualToValue={(option, value) =>
-                                    String(option?.airlineId || option?.id || '') === String(value?.airlineId || value?.id || '')
-                                }
-                                onChange={(event, newValue) => field.onChange(newValue)}
-                                loadingText="Loading consignees..."
-                                noOptionsText="No consignees found"
-                                renderInput={(params) => (
-                                    <StyledTextField
-                                        {...params}
-                                        variant="standard"
-                                        label="Consignee *"
-                                        error={!!error}
-                                        helperText={error?.message}
-                                        InputProps={{
-                                            ...params.InputProps,
-                                            endAdornment: (
-                                                <>
-                                                    {exportAirlineLoading ? <CircularProgress color="inherit" size={18} /> : null}
-                                                    {params.InputProps.endAdornment}
-                                                </>
-                                            ),
-                                        }}
-                                    />
-                                )}
+                                variant="standard"
+                                label="Consignee *"
+                                error={!!error}
+                                helperText={error?.message}
+                                InputProps={{ readOnly: viewMode && !isEditing }}
                             />
                         )} />
                     </Stack>

@@ -421,6 +421,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             customerId: Number(data.customer?.customerId || data.customer?.id || 0),
             stationId: Number(data.station?.stationId || data.station?.id || 0),
             consigneeId: Number(data.consignee?.airlineId || data.consignee?.id || 0),
+            consigneeForOcean: null,
             airBillNumber: data.airBill,
             booking: data.booking,
             customerRefNumber: data.customerRefNumber,
