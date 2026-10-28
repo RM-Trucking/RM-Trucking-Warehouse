@@ -1596,6 +1596,39 @@ export async function batchProcessWarehouseReceiptsService(
 
 
 
+export async function approveWarehouseReceiptService(conn: Connection, receiptId: number, userId: number) {
+    await conn.beginTransaction();
+    try {
+        const receipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
+        if (!receipt) {
+            throw new Error("Receipt not found");
+        }
+
+        const previousStatus = String(receipt.status).toUpperCase();
+        if (previousStatus !== "PENDING") {
+            throw new Error(`Cannot approve receipt with status ${previousStatus}; expected PENDING`);
+        }
+
+        await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, { status: "ON_HAND" });
+        await warehouseReceiptDB.createAuditLog(conn, {
+            receiptNumber: receipt.receiptNumber,
+            receiptId,
+            proNumber: receipt.proNumber,
+            level: "INFO",
+            userId,
+            status: "ON_HAND",
+            description: `Warehouse receipt approved: status changed from ${previousStatus} to ON_HAND.`
+        });
+
+        const approvedReceipt = await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
+        await conn.commit();
+        return approvedReceipt;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    }
+}
+
 export async function rejectWarehouseReceiptService(conn: Connection, receiptId: number, reason: string, userId: number) {
     await conn.beginTransaction();
     try {

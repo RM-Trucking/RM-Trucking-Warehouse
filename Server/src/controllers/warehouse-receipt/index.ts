@@ -1328,6 +1328,40 @@ export async function warehouseReceiptRateApprove(req: Request, res: Response, c
     }
 }
 
+export async function approveWarehouseReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
+    const receiptId = req.body?.receiptId;
+    const numericReceiptId = Number(receiptId);
+    const userId = Number((req as any).user?.userId || (req as any).user?.id);
+
+    if ((typeof receiptId !== "number" && typeof receiptId !== "string") ||
+        !/^\d+$/.test(String(receiptId)) ||
+        !Number.isSafeInteger(numericReceiptId) || numericReceiptId <= 0) {
+        res.status(400).json({ success: false, message: "A valid receiptId is required" });
+        return;
+    }
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+        res.status(401).json({ success: false, message: "User ID not found in authentication token" });
+        return;
+    }
+
+    try {
+        const approvedReceipt = await warehouseReceiptService.approveWarehouseReceiptService(conn, numericReceiptId, userId);
+        res.status(200).json({
+            success: true,
+            message: "Warehouse receipt approved successfully",
+            data: approvedReceipt
+        });
+    } catch (error: any) {
+        logger.error("Error approving warehouse receipt", error);
+        const statusCode = error.message === "Receipt not found"
+            ? 404
+            : error.message?.startsWith("Cannot approve receipt")
+                ? 409
+                : 500;
+        res.status(statusCode).json({ success: false, message: error.message });
+    }
+}
+
 export async function exportWarehouseReceiptsToSpreadsheet(
     req: Request,
     res: Response,

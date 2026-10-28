@@ -107,6 +107,15 @@ router.put("/rate-approve", authenticateJWT, async (req: Request, res: Response)
     }
 });
 
+router.put("/approve", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await warehouseReceiptController.approveWarehouseReceipt(req, res, conn);
+    } finally {
+        if (conn) await conn.close();
+    }
+});
+
 // ===== SPECIFIC GET ENDPOINTS (EXACT PATHS) =====
 
 // Get freight info temp for a given barcode value
