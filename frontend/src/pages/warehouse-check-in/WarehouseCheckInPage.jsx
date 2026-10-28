@@ -38,6 +38,7 @@ import { useDispatch, useSelector } from "../../redux/store";
 import {
   searchWarehouseReceipt,
   searchWarehouseReceiptProDetail,
+  customerMatchSuccess,
   clearReceiptSearch,
   createTempWarehouseReceipt,
   fetchCargoApiDropdown,
@@ -945,6 +946,60 @@ export default function WarehouseCheckInPage({
       : "PRO",
   );
   const [searchValue, setSearchValue] = useState("");
+  const [missingCustomerRow, setMissingCustomerRow] = useState(null);
+  const [manualCustomer, setManualCustomer] = useState(null);
+  const [manualCustomerSearch, setManualCustomerSearch] = useState("");
+  const [customerMatchLoading, setCustomerMatchLoading] = useState(false);
+  const [customerMatchError, setCustomerMatchError] = useState("");
+  const requiresCustomerSelection = searchType === "rmDriver" &&
+    Boolean(warehouseReceiptSearch.data?.rows?.some((row) =>
+      [row.customerId, row.customerName, row.stationId, row.stationName].every((value) => value == null)));
+  const hideProResults = requiresCustomerSelection || Boolean(missingCustomerRow);
+
+  const handleCustomerMatch = async () => {
+    if (!manualCustomer || !missingCustomerRow || customerMatchLoading) return;
+    if (!missingCustomerRow.csvData || typeof missingCustomerRow.csvData !== "object") {
+      setCustomerMatchError("CSV data is missing for this PRO number. Please search again.");
+      return;
+    }
+    setCustomerMatchLoading(true);
+    setCustomerMatchError("");
+    try {
+      const response = await axios.post("/warehouse-receipt/pro-detail/customer-match", {
+        ...missingCustomerRow.csvData,
+        customerId: manualCustomer.customerId,
+        customerName: manualCustomer.customerName,
+        stationId: manualCustomer.stationId,
+        stationName: manualCustomer.stationName,
+      });
+      if (!response.data?.success || !response.data?.data) {
+        throw new Error(response.data.message || "Failed to match customer");
+      }
+      dispatch(customerMatchSuccess(response.data.data));
+    } catch (error) {
+      setCustomerMatchError(error?.message || error?.error || "Failed to match customer. Please try again.");
+    } finally {
+      setCustomerMatchLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!missingCustomerRow) return undefined;
+    const timer = setTimeout(() => dispatch(searchCustomers(manualCustomerSearch)), 500);
+    return () => clearTimeout(timer);
+  }, [dispatch, missingCustomerRow, manualCustomerSearch]);
+
+  useEffect(() => {
+    const missingRow = searchType === "rmDriver" && !warehouseReceiptSearch.loading
+      ? warehouseReceiptSearch.data?.rows?.find((row) =>
+          [row.customerId, row.customerName, row.stationId, row.stationName].every((value) => value == null))
+      : null;
+    setMissingCustomerRow(missingRow || null);
+    setManualCustomer(null);
+    setManualCustomerSearch("");
+    setCustomerMatchError("");
+    if (missingRow) dispatch(searchCustomers(""));
+  }, [dispatch, searchType, warehouseReceiptSearch.loading, warehouseReceiptSearch.data]);
   const handleSearchValueChange = useCallback((value) => {
     setSearchValue(String(value || "").slice(0, 100));
   }, []);
@@ -1264,6 +1319,11 @@ export default function WarehouseCheckInPage({
   ]);
 
   const handleProceed = async (row) => {
+    if (searchType === "rmDriver" &&
+        [row.customerId, row.customerName, row.stationId, row.stationName].every((value) => value == null)) {
+      setMissingCustomerRow(row);
+      return;
+    }
     const key = `${warehouseReceiptSearch.data.proNumber}-${row.id}`;
     if (proceededReceipts.find((p) => p.key === key)) return;
 
@@ -2086,6 +2146,7 @@ export default function WarehouseCheckInPage({
       receipts: [
         {
           receipt: {
+            ...(row.createdViaCustomerMatch === true ? { isPending: true } : {}),
             receiptId: isTempReceiptForm
               ? 0
               : toNumberOrNull(row.receiptId) || 0,
@@ -3335,7 +3396,9 @@ export default function WarehouseCheckInPage({
           searchValue={searchValue}
           setSearchValue={handleSearchValueChange}
           handleSearch={handleSearch}
-          warehouseReceiptSearch={warehouseReceiptSearch}
+          warehouseReceiptSearch={hideProResults
+            ? { ...warehouseReceiptSearch, found: false, data: null }
+            : warehouseReceiptSearch}
           isSearchDisabled={isSearchDisabled}
           showParcelOption={showParcelOption}
           parcelForm={parcelForm}
@@ -3755,6 +3818,7 @@ export default function WarehouseCheckInPage({
           )}
 
           {!warehouseReceiptSearch.loading &&
+            !hideProResults &&
             warehouseReceiptSearch.found &&
             warehouseReceiptSearch.data && (
               <Box>
@@ -5039,6 +5103,52 @@ export default function WarehouseCheckInPage({
             </Button>
           </Stack>
         </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(missingCustomerRow)} fullWidth maxWidth="sm">
+        <DialogTitle>Select Customer</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>
+            No customer or station was found for this PRO number. Select a customer to continue.
+          </Typography>
+          <Autocomplete
+            disabled={customerMatchLoading}
+            options={customerOptions}
+            value={manualCustomer}
+            getOptionLabel={getCustomerOptionLabel}
+            isOptionEqualToValue={(option, value) =>
+              option.customerId === value.customerId && option.stationId === value.stationId}
+            onChange={(event, value) => setManualCustomer(value)}
+            onInputChange={(event, value, reason) => {
+              if (reason !== "reset") setManualCustomerSearch(value);
+            }}
+            loading={customerLoading}
+            loadingText="Searching customers..."
+            noOptionsText={manualCustomerSearch ? "No customers found" : "Type to search for customers"}
+            renderInput={(params) => (
+              <TextField {...params} required label="Select Customer" placeholder="Select Customer" fullWidth
+                InputProps={{ ...params.InputProps, endAdornment: (
+                  <>
+                    {customerLoading ? <CircularProgress size={20} /> : null}
+                    {params.InputProps.endAdornment}
+                  </>
+                ) }} />
+            )}
+          />
+          {customerMatchError && <Alert severity="error" sx={{ mt: 2 }}>{customerMatchError}</Alert>}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button variant="outlined" size="small"
+            sx={{ textTransform: "none", color: "#333", borderColor: "#aaa", height: 32 }}
+            disabled={customerMatchLoading} onClick={() => {
+            setMissingCustomerRow(null);
+            dispatch(clearReceiptSearch());
+          }}>Cancel</Button>
+          <Button variant="contained" size="small" sx={{ ...actionBtnSx, height: 32 }}
+            disabled={!manualCustomer || customerLoading || customerMatchLoading} onClick={handleCustomerMatch}>
+            {customerMatchLoading ? "Saving..." : "Continue"}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* No Data Dialog */}

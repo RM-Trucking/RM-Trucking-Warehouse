@@ -67,14 +67,26 @@ const transformWarehouseReceiptResponse = (receiptsData, searchValue) => {
     }
 
     if (Array.isArray(receipts) && receipts.length > 0) {
-        const rows = receipts.map((receipt, index) => ({
+        const rows = receipts.map((receipt, index) => {
+            const customer = receipt.customer && typeof receipt.customer === 'object' ? receipt.customer : null;
+            const customerName = receipt.customerName ?? customer?.customerName ?? customer?.name ?? null;
+            const stationName = receipt.stationName ?? customer?.stationName ?? null;
+            const customerLabel = customerName
+                ? `${customerName}${stationName ? ` | ${stationName}` : ''}`
+                : (typeof receipt.customer === 'string' ? receipt.customer : '') || '-';
+            return {
             ...receipt,
+            customerId: receipt.customerId ?? customer?.customerId ?? null,
+            customerName,
+            stationId: receipt.stationId ?? customer?.stationId ?? null,
+            stationName,
             id: receipt.receiptId || receipt.id || index,
             sno: String(index + 1).padStart(2, '0'),
             receiptNumber: receipt.receiptNumber || receipt.receiptNo || receipt.verificationId || '',
             carrier: receipt.carrier || receipt.carrierName || '-',
-            customer: receipt.customer || (receipt.customerName ? `${receipt.customerName} | ${receipt.stationName || '-'}` : '-'),
-        }));
+            customer: customerLabel,
+        };
+        });
 
         return {
             proNumber: receipts[0]?.proNumber || searchValue,
@@ -106,6 +118,15 @@ const slice = createSlice({
         receiptSearchSuccess(state, action) {
             state.warehouseReceiptSearch.loading = false;
             state.warehouseReceiptSearch.data = action.payload;
+            state.warehouseReceiptSearch.found = true;
+            state.warehouseReceiptSearch.error = null;
+        },
+        customerMatchSuccess(state, action) {
+            state.warehouseReceiptSearch.data = transformWarehouseReceiptResponse({
+                ...action.payload,
+                createdViaCustomerMatch: true,
+            }, action.payload.proNumber);
+            state.warehouseReceiptSearch.loading = false;
             state.warehouseReceiptSearch.found = true;
             state.warehouseReceiptSearch.error = null;
         },
@@ -287,6 +308,8 @@ export function searchWarehouseReceipt(searchValue, searchBy) {
 }
 
 // Search Warehouse Receipt PRO detail for RM Driver
+export const customerMatchSuccess = slice.actions.customerMatchSuccess;
+
 export function searchWarehouseReceiptProDetail(proNumber) {
     return async () => {
         dispatch(slice.actions.startReceiptSearch());

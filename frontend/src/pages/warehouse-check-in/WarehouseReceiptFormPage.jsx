@@ -57,6 +57,7 @@ import {
 import { PATH_DASHBOARD } from '../../routes/paths';
 import { HOST_API_KEY } from '../../config';
 import axios from '../../utils/axios';
+import RejectFreightDialog from '../../components/RejectFreightDialog';
 
 const actionBtnSx = {
   bgcolor: '#A22',
@@ -1290,6 +1291,36 @@ function WarehouseReceiptFormContent() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [successDialog, setSuccessDialog] = useState({ open: false, message: '', receiptNumbers: [], source: '' });
   const [cancelEditConfirmOpen, setCancelEditConfirmOpen] = useState(false);
+  const [pendingReceiptAction, setPendingReceiptAction] = useState(null);
+  const [pendingRejectionReason, setPendingRejectionReason] = useState('');
+  const [pendingActionLoading, setPendingActionLoading] = useState(false);
+  const pendingActionInFlight = useRef(false);
+
+  const handlePendingReceiptAction = async () => {
+    if (!pendingReceiptAction || pendingActionInFlight.current) return;
+    if (pendingReceiptAction === 'reject' && !pendingRejectionReason.trim()) return;
+    const receiptId = toNumberOrNull(viewReceiptSummary?.receiptId || activeForm?.row?.receiptId);
+    if (!receiptId) {
+      setSnackbar({ open: true, severity: 'error', message: 'Receipt ID is required' });
+      return;
+    }
+    pendingActionInFlight.current = true;
+    setPendingActionLoading(true);
+    try {
+      const response = pendingReceiptAction === 'approve'
+        ? await axios.put('/warehouse-receipt/approve', { receiptId })
+        : await axios.put(`/warehouse-receipt/${receiptId}/reject`, { rejectionReason: pendingRejectionReason });
+      if (!response.data?.success) throw new Error(response.data?.message || 'Unable to update receipt');
+      setPendingReceiptAction(null);
+      setPendingRejectionReason('');
+      handleBack();
+    } catch (error) {
+      setSnackbar({ open: true, severity: 'error', message: error?.message || 'Unable to update receipt. Please try again.' });
+    } finally {
+      pendingActionInFlight.current = false;
+      setPendingActionLoading(false);
+    }
+  };
   const [printerDialog, setPrinterDialog] = useState({ open: false, receiptNumber: '' });
   const [selectedPrinterId, setSelectedPrinterId] = useState('');
   const [printLoading, setPrintLoading] = useState(false);
@@ -2178,6 +2209,7 @@ function WarehouseReceiptFormContent() {
 
       return {
         receipt: {
+          ...(formRow.createdViaCustomerMatch === true ? { isPending: true } : {}),
           receiptId: receiptId || 0,
           receiptNumber: toNumberOrNull(form.receiptNumber || getRowValue(formRow, 'receiptNumber', null)),
           receiptType: selectedDraftKey === 'trailer' ? 'Trailer' : 'Regular',
@@ -5152,7 +5184,7 @@ function WarehouseReceiptFormContent() {
                 <Typography sx={{ fontSize: 16, fontWeight: 700 }}>{receiptNumber}</Typography>
               </Stack>
               <Typography sx={{ fontSize: 16, pt: { xs: 0, sm: 0.3 } }}>Status :</Typography>
-              <Typography sx={{ fontSize: 16, fontWeight: 700, pt: { xs: 0, sm: 0.3 } }}>{status}</Typography>
+              <Typography sx={{ fontSize: 16, fontWeight: 700, pt: { xs: 0, sm: 0.3 }, ...(status === 'PENDING' ? { color: '#ed6c02' } : {}) }}>{status}</Typography>
               <Box sx={{ pt: { xs: 0, sm: 0.3 } }}>
                 <Button
                   variant="contained"
@@ -5219,6 +5251,18 @@ function WarehouseReceiptFormContent() {
           </Box>
 
           <Stack direction="row" justifyContent="flex-end" spacing={1}>
+            {status === 'PENDING' ? (
+              <>
+                <Button variant="contained" size="small" sx={{ ...actionBtnSx, height: 26, fontSize: 11 }}
+                  disabled={pendingActionLoading} onClick={() => setPendingReceiptAction('approve')}>Approve</Button>
+                <Button variant="contained" size="small" sx={{ ...actionBtnSx, height: 26, fontSize: 11 }}
+                  disabled={pendingActionLoading} onClick={() => {
+                    setPendingRejectionReason('');
+                    setPendingReceiptAction('reject');
+                  }}>Reject</Button>
+              </>
+            ) : (
+              <>
             <Button
               variant="contained"
               size="small"
@@ -5237,6 +5281,8 @@ function WarehouseReceiptFormContent() {
             >
               Edit
             </Button>
+              </>
+            )}
             <IconButton
               size="small"
               onClick={handleOpenNotesDialog}
@@ -5249,6 +5295,33 @@ function WarehouseReceiptFormContent() {
       </Box>
     );
   };
+
+  const pendingActionDialogs = (
+    <>
+      <RejectFreightDialog
+        open={pendingReceiptAction === 'reject'}
+        receiptNumber={viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber || ''}
+        reason={pendingRejectionReason}
+        loading={pendingActionLoading}
+        onClose={() => { if (!pendingActionInFlight.current) setPendingReceiptAction(null); }}
+        onReasonChange={setPendingRejectionReason}
+        onSubmit={handlePendingReceiptAction}
+      />
+      <Dialog open={pendingReceiptAction === 'approve'}
+        onClose={() => { if (!pendingActionInFlight.current) setPendingReceiptAction(null); }} maxWidth="xs" fullWidth>
+        <DialogTitle>Approve Receipt</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to approve receipt {viewReceiptSummary?.receiptNumber || activeForm?.receiptNumber}?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={pendingActionLoading} onClick={() => setPendingReceiptAction(null)}>Cancel</Button>
+          <Button variant="contained" disabled={pendingActionLoading} onClick={handlePendingReceiptAction} sx={actionBtnSx}>
+            {pendingActionLoading ? 'Approving...' : 'Approve'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
 
   const splitMailRow =
     Number.isInteger(splitMailFormIndex)
@@ -5308,6 +5381,7 @@ function WarehouseReceiptFormContent() {
       </Stack>
 
       {renderViewSummary()}
+      {pendingActionDialogs}
 
       {((!isWarehouseReceiptView && !isWarehouseReceiptEdit) || receiptForms.length > 1) && (
       <Box sx={{ px: 2, bgcolor: '#efefef', boxSizing: 'border-box' }}>

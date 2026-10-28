@@ -144,6 +144,7 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     };
 
     const { control, handleSubmit, setValue, clearErrors, reset, formState: { isDirty } } = useForm({ defaultValues });
+    const savedFormValuesRef = useRef(defaultValues);
     useUnsavedChanges(isDirty);
 
     const [barcodeValue, setBarcodeValue] = useState(viewMode ? String(rowData?.barcodeNumber || '').replace(/\s/g, '') : '');
@@ -370,10 +371,11 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
     };
 
     const handleDiscardChanges = () => {
-        reset(defaultValues);
-        setBarcodeValue(String(rowData?.barcodeNumber || '').replace(/\s/g, ''));
-        setCustomerSearchValue(rowData?.customerName || rowData?.customer || String(rowData?.customerId || ''));
-        setStationSearchValue(rowData?.stationName || rowData?.station || String(rowData?.stationId || ''));
+        const savedValues = savedFormValuesRef.current;
+        reset(savedValues);
+        setBarcodeValue(String(savedValues.rmProNo || '').replace(/\s/g, ''));
+        setCustomerSearchValue(savedValues.customer?.customerName || String(savedValues.customer?.customerId || ''));
+        setStationSearchValue(savedValues.station?.stationName || String(savedValues.station?.stationId || ''));
         setSubmitError('');
         setRowSaveError('');
         setCancelEditDialogOpen(false);
@@ -448,6 +450,8 @@ export default function NewAirShipmentForm({ handleClose, rowData = null, viewMo
             : await dispatch(postShipment(payload));
         if (result?.success) {
             if (viewMode) {
+                savedFormValuesRef.current = structuredClone(data);
+                reset(savedFormValuesRef.current);
                 setIsEditing(false);
             } else {
                 handleClose();
