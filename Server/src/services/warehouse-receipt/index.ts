@@ -1589,6 +1589,7 @@ export async function batchProcessWarehouseReceiptsService(
             receiptNumbers
         };
     } catch (err) {
+        console.error("Error during batch processing of warehouse receipts:", err);
         await conn.rollback();
         throw err;
     }
@@ -1740,8 +1741,8 @@ function mapProCsvDataToDetail(csvData: ProCsvData) {
         customrAccountNumber: csvData.fwdrAccountNumber,
         customerName: csvData.fwdrName,
         carrierName: csvData.carrierName,
-        pieces: csvData.pieces,
-        weight: csvData.weight,
+        piecesInland: csvData.piecesInland,
+        weightInland: csvData.weightInland,
         proDate: csvData.proDate,
         customerReferenceNumber: csvData.fwdrRef,
         city: csvData.destCity,
@@ -1800,8 +1801,8 @@ async function createProHeaderReceiptResponse(conn: Connection, proDetail: any, 
         carrierId: carrier.carrierId,
         carrier: carrier.carrierName,
         city: proDetail.city || '',
-        weight: proDetail.weight,
-        pieces: proDetail.pieces,
+        weightInland: proDetail.weight,
+        piecesInland: proDetail.pieces,
         proNumber: proDetail.proNumber,
         proDate: proDetail.proDate,
         hazmat: proDetail.hazmat || 'N',
@@ -1856,8 +1857,8 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
             fwdrAccountNumber: proDetail.customrAccountNumber,
             fwdrName: proDetail.customerName,
             fwdrRef: proDetail.customerReferenceNumber,
-            pieces: proDetail.pieces,
-            weight: proDetail.weight,
+            piecesInland: proDetail.pieces,
+            weightInland: proDetail.weight,
             carrierName: proDetail.carrierName,
             destCity: proDetail.city,
             hazmat: proDetail.hazmat,
@@ -1893,8 +1894,8 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
             carrierId: carrier.carrierId,
             carrier: carrier.carrierName,
             city: proDetail.city || '',
-            weight: proDetail.weight,
-            pieces: proDetail.pieces,
+            weightInland: proDetail.weight,
+            piecesInland: proDetail.pieces,
             proDate: proDetail.proDate,
             hazmat: proDetail.hazmat || 'N',
             receiptNumber: null,

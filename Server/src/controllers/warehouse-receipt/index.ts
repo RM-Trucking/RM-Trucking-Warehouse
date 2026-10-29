@@ -666,6 +666,7 @@ export async function printLabel(req: Request, res: Response, conn: Connection):
             data: result
         });
     } catch (error: any) {
+        console.log(error);
         logger.error("Error printing label", error);
         res.status(400).json({ success: false, message: error.message });
     }

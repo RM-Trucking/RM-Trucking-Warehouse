@@ -1807,8 +1807,8 @@ export async function saveProDetail(
         customrAccountNumber: string;
         customerName: string;
         carrierName: string;
-        pieces: number;
-        weight: number;
+        piecesInland: number;
+        weightInland: number;
         proDate?: string;
         customerReferenceNumber?: string;
         city?: string;
@@ -1834,8 +1834,8 @@ export async function saveProDetail(
         proDetail.customrAccountNumber,
         proDetail.customerName,
         proDetail.carrierName,
-        proDetail.pieces,
-        proDetail.weight,
+        proDetail.piecesInland,
+        proDetail.weightInland,
         proDetail.proDate || new Date().toISOString().split('T')[0],
         proDetail.customerReferenceNumber || null,
         proDetail.city || null,
