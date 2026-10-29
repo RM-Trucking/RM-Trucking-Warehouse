@@ -1870,7 +1870,9 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
     }
 
     const carrier = await validateProHeaderDetails(conn, proDetail, proNumber);
-    const station = await customerDB.getStationByRmAccountNumber(conn, proDetail.customrAccountNumber);
+    const station = proDetail.customrAccountNumber
+        ? await customerDB.getStationByRmAccountNumber(conn, proDetail.customrAccountNumber)
+        : null;
     if (!station) {
         const csvDataForResponse = { ...csvData };
         delete csvDataForResponse.fwdrAccountNumber;
@@ -1886,7 +1888,7 @@ export async function getProHeaderDetailsService(conn: Connection, proNumber: st
             customerName: null,
             stationId: null,
             stationName: null,
-            consigneeAccountNumber: proDetail.customrAccountNumber,
+            consigneeAccountNumber: proDetail.customrAccountNumber ?? null,
             customerReferenceNumber: proDetail.customerReferenceNumber,
             carrierId: carrier.carrierId,
             carrier: carrier.carrierName,

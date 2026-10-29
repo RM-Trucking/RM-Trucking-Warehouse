@@ -1471,7 +1471,7 @@ paths:
         1. Checks database first (Warehouse_RM_Pro_Detail table)
         2. If not found, reads and validates the CSV file in the FTP folder
         3. Checks for duplicate warehouse receipts (prevents reuse)
-        4. If the CSV customer account does not match an active station, returns `customer: null` and the parsed `csvData` without saving or creating a temporary receipt
+        4. If the CSV customer account is missing or does not match an active station, returns `customer: null` and the parsed `csvData` without saving or creating a temporary receipt; `consigneeAccountNumber` is `null` when missing
         5. For a matched customer, saves the PRO data, creates a temporary receipt, and returns all PRO details
 
         **Response Fields:**
@@ -1530,6 +1530,7 @@ paths:
                         example: "ABC Customer"
                       consigneeAccountNumber:
                         type: string
+                        nullable: true
                         example: "CACC456"
                       customerReferenceNumber:
                         type: string
