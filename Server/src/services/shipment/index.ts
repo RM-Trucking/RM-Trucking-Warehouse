@@ -354,7 +354,11 @@ export async function createShipmentWithRelations(
                     unscannedItems: unscannedItems,
                 };
                 console.log(`${logPrefix} Updating receipt status to PREPARED`, { shipmentId, receiptId: receipt.receiptId });
-                await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, { status: "PREPARED", updatedBy: userId });
+                await warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, {
+                    status: "PREPARED",
+                    customerRefNumber: normalizedPayload.customerRefNumber,
+                    updatedBy: userId,
+                });
                 console.log(`${logPrefix} Receipt status updated`, { shipmentId, receiptId: receipt.receiptId });
 
                 if (warehouseReceipt) {
