@@ -923,6 +923,7 @@ export default function WarehouseCheckInPage({
   const barcodeControlsRef = useRef(null);
   const draftRestoredRef = useRef(false);
   const searchLoadingRef = useRef(false);
+  const trailerSubmissionProgressRef = useRef(new Map());
   const {
     warehouseReceiptSearch,
     cargoApiDropdown,
@@ -2396,6 +2397,7 @@ export default function WarehouseCheckInPage({
       form,
       receiptKey,
       mode: "mobileTrailerSubmit",
+      trackSubmission: searchType === "rmDriver" && draftKey === "trailer",
     });
     dispatch(fetchPrintersDropdown());
   };
@@ -2404,7 +2406,7 @@ export default function WarehouseCheckInPage({
     const printer = printersDropdown.data.find(
       (item) => String(item.printerId) === String(selectedPrinterId),
     );
-    const { receipt, form, receiptKey } = printerContext || {};
+    const { receipt, form, receiptKey, trackSubmission } = printerContext || {};
 
     if (!printer) {
       setSnackbar({
@@ -2441,28 +2443,42 @@ export default function WarehouseCheckInPage({
       return;
     }
 
+    const submissionKey = String(receiptNumber).trim();
+    const progress = trackSubmission
+      ? trailerSubmissionProgressRef.current.get(submissionKey) || {}
+      : {};
+    if (progress.inFlight) return;
+    if (trackSubmission) {
+      progress.inFlight = true;
+      trailerSubmissionProgressRef.current.set(submissionKey, progress);
+    }
+
     setTempReceiptLoading((prev) => ({ ...prev, [receiptKey]: true }));
     setPrintLoading(true);
 
     try {
-      const submitPayload = hasTrailerMobileSubmitImages(form)
-        ? await buildTrailerMobileSubmitFormData(receipt, form)
-        : buildTrailerMobileSubmitPayload(receipt, form);
-      const submitResponse = await dispatch(
-        submitWarehouseReceiptBatch(submitPayload),
-      );
+      if (!progress.batchSubmitted) {
+        const submitPayload = hasTrailerMobileSubmitImages(form)
+          ? await buildTrailerMobileSubmitFormData(receipt, form)
+          : buildTrailerMobileSubmitPayload(receipt, form);
+        const submitResponse = await dispatch(
+          submitWarehouseReceiptBatch(submitPayload),
+        );
 
-      if (submitResponse?.error || submitResponse?.success === false) {
-        setSnackbar({
-          open: true,
-          message:
-            submitResponse?.message || "Failed to submit warehouse receipt",
-          severity: "error",
-        });
-        return;
+        if (submitResponse?.error || submitResponse?.success === false) {
+          setSnackbar({
+            open: true,
+            message:
+              submitResponse?.message || "Failed to submit warehouse receipt",
+            severity: "error",
+          });
+          return;
+        }
+
+        if (trackSubmission) progress.batchSubmitted = true;
       }
 
-      const tempResponse = await dispatch(
+      const tempResponse = progress.tempResponse || await dispatch(
         createTempWarehouseReceipt(buildTempReceiptPayload(receipt)),
       );
 
@@ -2476,6 +2492,8 @@ export default function WarehouseCheckInPage({
         });
         return;
       }
+
+      if (trackSubmission) progress.tempResponse = tempResponse;
 
       const tempReceiptNumber = tempResponse?.data?.receiptNumber;
       const nextReceiptErrors = {
@@ -2503,6 +2521,34 @@ export default function WarehouseCheckInPage({
           : currentReceipt,
       );
 
+      const resetSubmittedForm = () => {
+        setProceededReceipts(nextProceededReceipts);
+        setReceiptErrors(nextReceiptErrors);
+        dispatch(
+          setWarehouseCheckInDraft(
+            {
+              searchType,
+              searchBy,
+              searchValue,
+              savedResults,
+              collapsed,
+              rejectedRowIds,
+              isSearchDisabled,
+              receiptErrors: nextReceiptErrors,
+              parcelForm,
+              parcelErrors,
+              proceededReceipts: nextProceededReceipts,
+            },
+            draftKey,
+          ),
+        );
+      };
+      // Temp creation completes check-in, even when printing fails or is cancelled.
+      if (trackSubmission && !progress.formReset) {
+        resetSubmittedForm();
+        progress.formReset = true;
+      }
+
       const printResponse = await dispatch(
         printWarehouseReceiptLabel({
           printerIP: printer.printerIP,
@@ -2523,26 +2569,7 @@ export default function WarehouseCheckInPage({
         return;
       }
 
-      setProceededReceipts(nextProceededReceipts);
-      setReceiptErrors(nextReceiptErrors);
-      dispatch(
-        setWarehouseCheckInDraft(
-          {
-            searchType,
-            searchBy,
-            searchValue,
-            savedResults,
-            collapsed,
-            rejectedRowIds,
-            isSearchDisabled,
-            receiptErrors: nextReceiptErrors,
-            parcelForm,
-            parcelErrors,
-            proceededReceipts: nextProceededReceipts,
-          },
-          draftKey,
-        ),
-      );
+      if (!trackSubmission) resetSubmittedForm();
       handleClosePrinterDialog();
       setSnackbar({
         open: true,
@@ -2551,6 +2578,7 @@ export default function WarehouseCheckInPage({
       });
       navigate(PATH_DASHBOARD.warehouseCheckInTrailer, { replace: true });
     } finally {
+      if (trackSubmission) progress.inFlight = false;
       setTempReceiptLoading((prev) => ({ ...prev, [receiptKey]: false }));
       setPrintLoading(false);
     }
