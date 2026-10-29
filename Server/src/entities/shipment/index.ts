@@ -4,7 +4,8 @@ export interface WarehouseShipment {
     barcodeNumber: string;
     customerId: number;
     stationId: number | null;
-    consigneeId: number;
+    consigneeId: number | null;
+    consigneeForOcean: string | null;
     airBillNumber: string;
     booking: string;
     customerRefNumber: string;
@@ -90,7 +91,11 @@ export interface WarehouseShipmentPickupEntry {
     createdAt: Date;
 }
 
-export type CreateWarehouseShipment = Omit<WarehouseShipment, 'shipmentId' | 'createdAt' | 'updatedAt' | 'isCanceled' | 'isShipped' | 'isScanned' | 'pickupEntry' | 'pickupEntryNumber'> & {
+type ShipmentConsigneeInput =
+    | { shipmentType: "AIR"; consigneeId: number; consigneeForOcean?: null }
+    | { shipmentType: "OCEAN_LCL" | "OCEAN_FCL"; consigneeId?: null; consigneeForOcean: string };
+
+export type CreateWarehouseShipment = Omit<WarehouseShipment, 'shipmentId' | 'createdAt' | 'updatedAt' | 'isCanceled' | 'isShipped' | 'isScanned' | 'pickupEntry' | 'pickupEntryNumber' | 'shipmentType' | 'consigneeId' | 'consigneeForOcean'> & ShipmentConsigneeInput & {
     containers?: Omit<WarehouseShipmentContainers, 'containerId' | 'shipmentId'>[];
     receipts?: Omit<WarehouseShipmentReceipts, 'shipmentReceiptId' | 'shipmentId'>[];
 };

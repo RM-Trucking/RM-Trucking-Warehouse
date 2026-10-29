@@ -666,6 +666,7 @@ export async function printLabel(req: Request, res: Response, conn: Connection):
             data: result
         });
     } catch (error: any) {
+        console.log(error);
         logger.error("Error printing label", error);
         res.status(400).json({ success: false, message: error.message });
     }
@@ -1120,6 +1121,38 @@ export async function getProHeaderDetails(req: Request, res: Response, conn: Con
     }
 }
 
+export async function resolveProHeaderCustomerMatch(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const userId = (req as any).user?.userId || (req as any).user?.id;
+        const { customerId: rawCustomerId, stationId: rawStationId, ...csvData } = req.body || {};
+        const customerId = Number(rawCustomerId);
+        const stationId = Number(rawStationId);
+
+        if (!csvData.proNumber || !Number.isInteger(customerId) || customerId <= 0 || !Number.isInteger(stationId) || stationId <= 0) {
+            res.status(400).json({ success: false, message: "PRO data, customerId, and stationId are required" });
+            return;
+        }
+
+        const data = await warehouseReceiptService.resolveProHeaderCustomerMatchService(
+            conn,
+            csvData,
+            customerId,
+            stationId,
+            userId
+        );
+        res.status(200).json({ success: true, data });
+    } catch (error: any) {
+        logger.error("Error resolving PRO header customer match", error);
+        if (error.message.includes("Duplicate")) {
+            res.status(409).json({ success: false, message: error.message });
+        } else if (error.message.includes("Invalid PRO data") || error.message.includes("station")) {
+            res.status(400).json({ success: false, message: error.message });
+        } else {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+}
+
 export async function getAuditLogsForReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
@@ -1293,6 +1326,40 @@ export async function warehouseReceiptRateApprove(req: Request, res: Response, c
     catch (error: any) {
         logger.error("Error updating warehouse receipt status", error);
         res.status(500).json({ success: false, message: error.message });
+    }
+}
+
+export async function approveWarehouseReceipt(req: Request, res: Response, conn: Connection): Promise<void> {
+    const receiptId = req.body?.receiptId;
+    const numericReceiptId = Number(receiptId);
+    const userId = Number((req as any).user?.userId || (req as any).user?.id);
+
+    if ((typeof receiptId !== "number" && typeof receiptId !== "string") ||
+        !/^\d+$/.test(String(receiptId)) ||
+        !Number.isSafeInteger(numericReceiptId) || numericReceiptId <= 0) {
+        res.status(400).json({ success: false, message: "A valid receiptId is required" });
+        return;
+    }
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+        res.status(401).json({ success: false, message: "User ID not found in authentication token" });
+        return;
+    }
+
+    try {
+        const approvedReceipt = await warehouseReceiptService.approveWarehouseReceiptService(conn, numericReceiptId, userId);
+        res.status(200).json({
+            success: true,
+            message: "Warehouse receipt approved successfully",
+            data: approvedReceipt
+        });
+    } catch (error: any) {
+        logger.error("Error approving warehouse receipt", error);
+        const statusCode = error.message === "Receipt not found"
+            ? 404
+            : error.message?.startsWith("Cannot approve receipt")
+                ? 409
+                : 500;
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 }
 

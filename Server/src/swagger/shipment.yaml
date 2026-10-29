@@ -713,6 +713,11 @@ components:
         consigneeId:
           type: integer
           example: 30
+          description: Required for AIR shipments; identifies the airline. Do not use for ocean shipments.
+        consigneeForOcean:
+          type: string
+          minLength: 1
+          description: Required for OCEAN_LCL and OCEAN_FCL shipments; enter the consignee name manually.
         airBillNumber:
           type: string
           example: "AB-001"
@@ -755,7 +760,6 @@ components:
         - barcodeNumber
         - customerId
         - stationScope
-        - consigneeId
         - pieces
         - weight
       properties:
@@ -780,6 +784,11 @@ components:
           description: Optional for AIR and OCEAN_LCL; required for OCEAN_FCL. Must match a destination available in warehouse receipt data for the selected customer and station scope.
         consigneeId:
           type: integer
+          description: Required for AIR shipments; identifies the airline. Do not use for ocean shipments.
+        consigneeForOcean:
+          type: string
+          minLength: 1
+          description: Required for OCEAN_LCL and OCEAN_FCL shipments; enter the consignee name manually.
         airBillNumber:
           type: string
         booking:
@@ -841,6 +850,11 @@ components:
           description: Optional for AIR and OCEAN_LCL; required when the effective shipment type is OCEAN_FCL. Must match a destination available in warehouse receipt data for the selected customer and station scope.
         consigneeId:
           type: integer
+          description: For AIR shipments, provide the airline ID. When changing shipment type, provide the consignee field required by the resulting type.
+        consigneeForOcean:
+          type: string
+          minLength: 1
+          description: For OCEAN_LCL and OCEAN_FCL shipments, provide the consignee name manually. Required when the resulting shipment type is ocean.
         airBillNumber:
           type: string
         booking:

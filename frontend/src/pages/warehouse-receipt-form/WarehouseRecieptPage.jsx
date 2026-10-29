@@ -65,6 +65,7 @@ const statusTabs = [
 
 const quickStatuses = [
   { label: 'Initiated', countKey: 'initiate' },
+  { label: 'Pending', countKey: 'receiptPending' },
   { label: 'On-Hand', countKey: 'onHand' },
   { label: 'Prepared', countKey: 'prepared' },
   { label: 'Scanned', countKey: 'scanned' },
@@ -80,6 +81,7 @@ const accountingStatuses = [
 
 const statusApiValues = {
   Initiated: 'INITIATED',
+  Pending: 'PENDING',
   'On-Hand': 'ON_HAND',
   Prepared: 'PREPARED',
   Scanned: 'SCANNED',
@@ -188,6 +190,7 @@ const hasAvailableRateInformation = (value) => {
 };
 
 const statusPillColors = {
+  pending: '#ed6c02',
   'on-hand': '#4aa3d8',
   initiated: '#a87b4f',
   prepared: '#8f63c7',
@@ -852,7 +855,7 @@ export default function WarehouseRecieptPage() {
             : ['SHIPPED', 'SCANNED', 'PREPARED'].includes(String(params.row.status).trim().toUpperCase())
               ? ['mdi:eye', 'mdi:printer', 'mdi:upload', 'mdi:file-document', 'mdi:send']
               : ['mdi:eye'];
-        const canReject = ['INITIATED', 'ON-HAND'].includes(
+        const canReject = ['INITIATED', 'PENDING', 'ON-HAND'].includes(
           String(params.row.rawData?.status ?? params.row.status ?? '').trim().toUpperCase().replace('_', '-')
         );
         const visibleActionIcons = [...(activeTab === 'Accounting' ? accountingActionIcons : actionIcons), 'reject'];

@@ -10,11 +10,11 @@ export interface ProCsvData {
     driverNumber: string;
     shipperAccountNumber: string;
     shipperName: string;
-    fwdrAccountNumber: string;
-    fwdrName: string;
+    fwdrAccountNumber?: string;
+    fwdrName?: string;
     fwdrRef?: string;
-    pieces: number;
-    weight: number;
+    piecesInland: number;
+    weightInland: number;
     carrierName: string;
     destCity?: string;
     hazmat?: string;
@@ -44,8 +44,8 @@ export async function readCsvContent(filePath: string): Promise<ProCsvData[]> {
                     fwdrAccountNumber: (row.fwdrAccountNumber || '').trim(),
                     fwdrName: row.fwdrName || '',
                     fwdrRef: row.fwdrRef || '',
-                    pieces: parseInt(row.pieces || '0', 10),
-                    weight: parseInt(row.weight || '0', 10),
+                    piecesInland: parseInt(row.pieces || '0', 10),
+                    weightInland: parseInt(row.weight || '0', 10),
                     carrierName: row.carrierName || '',
                     destCity: row.destCity || '',
                     hazmat: row.hazmat || 'N',
@@ -153,32 +153,22 @@ export function validateProCsvData(data: ProCsvData): { valid: boolean; errors: 
         errors.push(`Missing Shipper Name in CSV file.`);
     }
 
-    // Validate Freight Forwarder Account Number
-    if (!data.fwdrAccountNumber) {
-        errors.push(`Missing Freight Forwarder Account Number in CSV file.`);
-    }
-
-    // Validate Freight Forwarder Name
-    if (!data.fwdrName) {
-        errors.push(`Missing Freight Forwarder Name in CSV file.`);
-    }
-
     // Validate Carrier Name
     if (!data.carrierName) {
         errors.push(`Missing Carrier Name in CSV file.`);
     }
 
     // Validate Pieces
-    if (!data.pieces) {
+    if (!data.piecesInland) {
         errors.push(`Missing Pieces count in CSV file.`);
-    } else if (Number.isNaN(data.pieces)) {
+    } else if (Number.isNaN(data.piecesInland)) {
         errors.push(`Invalid Pieces value in CSV file.`);
     }
 
     // Validate Weight
-    if (!data.weight) {
+    if (!data.weightInland) {
         errors.push(`Missing Weight in CSV file.`);
-    } else if (Number.isNaN(data.weight)) {
+    } else if (Number.isNaN(data.weightInland)) {
         errors.push(`Invalid Weight value in CSV file.`);
     }
 

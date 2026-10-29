@@ -696,7 +696,7 @@ export async function getEligibleWarehouseReceiptInvoiceRows(
     return await conn.query(query, params) as EligibleWarehouseReceiptInvoiceRow[];
 }
 
-export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number, ready: number, pending: number }> {
+export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ active: number; accounting: number; initiate: number; onHand: number; prepared: number; scanned: number; shipped: number; rejected: number; archived: number, ready: number, pending: number, receiptPending: number }> {
     let activeCountQuery = `
     SELECT COUNT(*) as "total" 
     FROM ${SCHEMA}."Warehouse_Receipt" "wr" 
@@ -743,6 +743,11 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
     FROM ${SCHEMA}."Warehouse_Receipt" "wr"
     WHERE "wr"."status" = 'ARCHIVED'`;
 
+    let receiptPendingCountQuery = `
+    SELECT COUNT(*) as "total"
+    FROM ${SCHEMA}."Warehouse_Receipt" "wr"
+    WHERE "wr"."status" = 'PENDING'`;
+
     let readyCountQuery = `
     SELECT COUNT(*) as "total"
     FROM ${SCHEMA}."Warehouse_Receipt" "wr"
@@ -763,6 +768,7 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
     const scannedCount = await conn.query(scannedCountQuery, params) as { total: number }[];
     const shippedCount = await conn.query(shippedCountQuery, params) as { total: number }[];
     const rejectedCount = await conn.query(rejectedCountQuery, params) as { total: number }[];
+    const receiptPendingCount = await conn.query(receiptPendingCountQuery, params) as { total: number }[];
     const archivedCount = await conn.query(archivedCountQuery, params) as { total: number }[];
     const readyCount = await conn.query(readyCountQuery, params) as { total: number }[];
     const pendingCount = await conn.query(pendingCountQuery, params) as { total: number }[];
@@ -779,7 +785,8 @@ export async function getCountOfWarehouseReceipts(conn: Connection): Promise<{ a
         rejected: getCount(rejectedCount),
         archived: getCount(archivedCount),
         ready: getCount(readyCount),
-        pending: getCount(pendingCount)
+        pending: getCount(pendingCount),
+        receiptPending: getCount(receiptPendingCount)
     };
 }
 
@@ -1800,8 +1807,8 @@ export async function saveProDetail(
         customrAccountNumber: string;
         customerName: string;
         carrierName: string;
-        pieces: number;
-        weight: number;
+        piecesInland: number;
+        weightInland: number;
         proDate?: string;
         customerReferenceNumber?: string;
         city?: string;
@@ -1827,8 +1834,8 @@ export async function saveProDetail(
         proDetail.customrAccountNumber,
         proDetail.customerName,
         proDetail.carrierName,
-        proDetail.pieces,
-        proDetail.weight,
+        proDetail.piecesInland,
+        proDetail.weightInland,
         proDetail.proDate || new Date().toISOString().split('T')[0],
         proDetail.customerReferenceNumber || null,
         proDetail.city || null,
