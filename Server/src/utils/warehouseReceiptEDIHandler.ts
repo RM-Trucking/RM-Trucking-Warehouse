@@ -72,6 +72,8 @@ export function toWarehouseReceiptEDI(form: any) {
     const referenceNumber = toString(form.receiptNumber || form.referenceNumber || form.verificationId || '000000000');
     const poNumber = toString(form.poNumber || form.purchaseOrderNumber || '');
     const customerRefNumber = toString(form.customerRefNumber || form.customerReferenceNumber || '');
+    const packageId = toString(form.PackageId || form.packageId || '');
+    const proNumber = toString(form.proNumber || '');
 
     return {
         date,
@@ -86,6 +88,8 @@ export function toWarehouseReceiptEDI(form: any) {
         piecesOnReceipt,
         poNumber,
         customerRefNumber,
+        packageId,
+        proNumber,
         reWeight,
         dimFactor,
         baseRate,
@@ -118,8 +122,9 @@ ST*204*${transactionSetControlNumber}${segmentBreaker}
 B2**RMFT**${data.referenceNumber}${segmentBreaker}
 B2A*00${segmentBreaker}
 L11*${data.referenceNumber}*ZZ${segmentBreaker}
-L11*${data.poNumber}*PO${segmentBreaker}
+L11*${data.proNumber}*PO${segmentBreaker}
 L11*${data.customerRefNumber}*CO${segmentBreaker}
+L11*${data.packageId}*3H${segmentBreaker}
 N1*BT*${data.billToName}* *${data.billTo}*${segmentBreaker}
 N1*SF*${data.shipperName}* * *${segmentBreaker}
 N1*CA*${data.carrierName}* * *${segmentBreaker}

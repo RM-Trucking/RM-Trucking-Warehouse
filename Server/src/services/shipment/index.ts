@@ -508,6 +508,16 @@ export async function updateShipmentWithRelations(
             }));
         }
 
+        if (Object.prototype.hasOwnProperty.call(payload, "customerRefNumber")) {
+            const linkedReceipts = await shipmentDB.getReceiptsByShipmentId(conn, shipmentId);
+            await Promise.all(linkedReceipts.map((receipt) =>
+                warehouseReceiptDB.updateWarehouseReceipt(conn, receipt.receiptId, {
+                    customerRefNumber: normalizedPayload.customerRefNumber,
+                    updatedBy: userId,
+                })
+            ));
+        }
+
 
         const shipment = await getShipmentById(conn, shipmentId);
         if (!shipment) {
