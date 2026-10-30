@@ -34,7 +34,7 @@ The Edit Warehouse Receipt API (`PUT /api/warehouse-receipt/{receiptId}`) suppor
                  │
                  ▼
 ┌─────────────────────────────────────────────────┐
-│  Service: editWarehouseReceiptService()         │
+│  Service: updateWarehouseReceiptService()       │
 │  ├─ BEGIN TRANSACTION                          │
 │  ├─ Update receipt fields                      │
 │  ├─ Update freight items                       │
@@ -216,22 +216,10 @@ payload.badFreightImages = ["damage.jpg"]; // ← File attached
 **File**: [Server/src/controllers/warehouse-receipt/index.ts](Server/src/controllers/warehouse-receipt/index.ts#L324)
 
 ```typescript
-if (hasComplexChanges) {
-  result = await editWarehouseReceiptService(conn, receiptId, payload, userId);
-} else {
-  result = await updateWarehouseReceiptService(
-    conn,
-    receiptId,
-    payload,
-    userId,
-  );
-}
+result = await updateWarehouseReceiptService(conn, receiptId, payload, userId);
 ```
 
-**Decision logic**:
-
-- If payload includes freight updates, deletions, or image operations → use `editWarehouseReceiptService()`
-- Otherwise → use simpler `updateWarehouseReceiptService()`
+The service handles receipt-only updates as well as freight updates, deletions, and image operations.
 
 ---
 
@@ -240,7 +228,7 @@ if (hasComplexChanges) {
 **File**: [Server/src/services/warehouse-receipt/index.ts](Server/src/services/warehouse-receipt/index.ts#L249)
 
 ```typescript
-export async function editWarehouseReceiptService(
+export async function updateWarehouseReceiptService(
   conn,
   receiptId,
   payload,

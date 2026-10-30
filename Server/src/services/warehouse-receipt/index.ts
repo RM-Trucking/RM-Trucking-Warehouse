@@ -439,36 +439,6 @@ export async function getWarehouseReceiptDestinationsService(
  * UPDATE WAREHOUSE RECEIPT
  * - If status is updated, automatically create an audit log for the status change
  */
-export async function updateWarehouseReceiptService(
-    conn: Connection,
-    receiptId: number,
-    updates: Partial<Omit<WarehouseReceipt, 'receiptId' | 'createdAt' | 'createdBy'>>
-) {
-    // Get current receipt before update
-    const currentReceipt = await warehouseReceiptDB.getWarehouseReceiptById(conn, receiptId);
-    if (!currentReceipt) {
-        throw new Error(`Receipt with ID ${receiptId} not found`);
-    }
-
-    // Update receipt
-    await warehouseReceiptDB.updateWarehouseReceipt(conn, receiptId, updates);
-
-    // If status changed, emit audit log automatically (centralized handling)
-    if (updates.status && updates.status !== currentReceipt.status) {
-        emitAuditLog({
-            receiptNumber: currentReceipt.receiptNumber,
-            receiptId,
-            proNumber: currentReceipt.proNumber || undefined,
-            userId: updates.updatedBy || currentReceipt.createdBy,
-            status: updates.status,
-            description: `Status changed from ${currentReceipt.status} to ${updates.status}`,
-            level: "INFO"
-        });
-    }
-
-    return await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
-}
-
 export async function updateWarehouseReceiptInvoiceNumberService(
     conn: Connection,
     receiptId: number,
@@ -483,7 +453,7 @@ export async function updateWarehouseReceiptInvoiceNumberService(
     return await getWarehouseReceiptByIdOrReceiptNumberService(conn, receiptId, "receiptId");
 }
 
-export async function editWarehouseReceiptService(
+export async function updateWarehouseReceiptService(
     conn: Connection,
     receiptId: number,
     payload: any,
@@ -731,7 +701,7 @@ export async function editWarehouseReceiptService(
         await conn.commit();
         return await getWarehouseReceiptWithDetailsService(conn, receiptId);
     } catch (error) {
-        console.error("Error in editWarehouseReceiptService:", error);
+        console.error("Error in updateWarehouseReceiptService:", error);
         await conn.rollback();
         throw error;
     }

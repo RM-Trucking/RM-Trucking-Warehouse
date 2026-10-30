@@ -37,7 +37,7 @@ const isBase64 = value.startsWith("data:image/") || value.startsWith("base64,");
 
 **File**: [Server/src/services/warehouse-receipt/index.ts](Server/src/services/warehouse-receipt/index.ts)
 
-**Function**: `editWarehouseReceiptService()`
+**Function**: `updateWarehouseReceiptService()`
 
 **Transaction Pattern**:
 

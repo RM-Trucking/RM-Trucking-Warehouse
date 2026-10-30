@@ -1243,6 +1243,10 @@ export async function updateFreightInfo(conn: Connection, freightId: number | bi
         fields.push(`"pieces" = ?`);
         params.push(updates.pieces);
     }
+    if (updates.type !== undefined) {
+        fields.push(`"type" = ?`);
+        params.push(updates.type);
+    }
     if (updates.length !== undefined) {
         fields.push(`"length" = ?`);
         params.push(updates.length);

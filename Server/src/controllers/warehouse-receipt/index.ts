@@ -561,30 +561,14 @@ export async function updateWarehouseReceipt(req: Request, res: Response, conn: 
         attachUploadedFilesToPayload(payload, (req as any).files || []);
         const userId = (req as any).user?.userId || (req as any).user?.id;
 
-        const hasFreightUpdate = Array.isArray(payload.freightDetails) && payload.freightDetails.length > 0;
-        const hasRemoval = Array.isArray(payload.removeFreightIds) && payload.removeFreightIds.length > 0;
-        const hasBadFreightUpdate = Array.isArray(payload.badFreightImages) && payload.badFreightImages.length > 0;
-        const hasBadFreightRemoval = Array.isArray(payload.removeBadFreightImagePaths) && payload.removeBadFreightImagePaths.length > 0;
-        const hasUploadedFiles = Array.isArray((req as any).files) && (req as any).files.length > 0;
-        const hasReceiptUpdates = Object.keys(payload.receipt || {}).length > 0;
-
         console.log("Payload Data - ", payload);
 
-        let result;
-        if (hasFreightUpdate || hasRemoval || hasBadFreightUpdate || hasBadFreightRemoval || hasUploadedFiles || hasReceiptUpdates) {
-            result = await warehouseReceiptService.editWarehouseReceiptService(
-                conn,
-                Number(receiptId),
-                payload,
-                userId
-            );
-        } else {
-            result = await warehouseReceiptService.updateWarehouseReceiptService(
-                conn,
-                Number(receiptId),
-                req.body
-            );
-        }
+        const result = await warehouseReceiptService.updateWarehouseReceiptService(
+            conn,
+            Number(receiptId),
+            payload,
+            userId
+        );
 
         // if (!result) {
         //     res.status(404).json({ success: false, message: "Receipt not found" });
