@@ -313,7 +313,7 @@ async function startServer(): Promise<void> {
 
         // Schedule warehouse receipt invoice batch job only in the production environment
         if (process.env.ENVIRONMENT === 'prod') {
-            const cronSchedule = process.env.WAREHOUSE_RECEIPT_INVOICE_CRON || '0 10 * * *';
+            const cronSchedule = process.env.WAREHOUSE_RECEIPT_INVOICE_CRON || '0 * * * *';
             if (!cron.validate(cronSchedule)) {
                 throw new Error(`Invalid WAREHOUSE_RECEIPT_INVOICE_CRON schedule: ${cronSchedule}`);
             }
