@@ -78,17 +78,8 @@ const attachUploadedFilesToPayload = (
 #### Step 4: Route to Service
 
 ```typescript
-// Determines if complex edit (with freight/image changes) needed
-if (hasComplexChanges) {
-  await editWarehouseReceiptService(conn, receiptId, normalizedPayload, userId);
-} else {
-  await updateWarehouseReceiptService(
-    conn,
-    receiptId,
-    normalizedPayload,
-    userId,
-  );
-}
+// One transactional service handles receipt, freight, and image changes
+await updateWarehouseReceiptService(conn, receiptId, normalizedPayload, userId);
 ```
 
 ---
@@ -185,7 +176,7 @@ These functions support atomic removal of images during edit operations.
 ### Edit Service with Atomic Transactions
 
 ```typescript
-editWarehouseReceiptService(
+updateWarehouseReceiptService(
   conn: Connection,
   receiptId: string,
   payload: EditPayload,
