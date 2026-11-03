@@ -411,7 +411,7 @@ export default function WarehouseRecieptPage() {
   const [appliedReceiptFilters, setAppliedReceiptFilters] = useState(gridState.appliedReceiptFilters || emptyReceiptFilters);
   const [filterSearchVersion, setFilterSearchVersion] = useState(0);
   const [receiptSearchVersion, setReceiptSearchVersion] = useState(0);
-  const [paginationModel, setPaginationModel] = useState(gridState.paginationModel || { page: 0, pageSize: 10 });
+  const [paginationModel, setPaginationModel] = useState(gridState.paginationModel || { page: 0, pageSize: 50 });
   const [gridStateByTab, setGridStateByTab] = useState(() => {
     const emptyTabState = {
       selectedStatus: '',
@@ -419,21 +419,21 @@ export default function WarehouseRecieptPage() {
       submittedReceiptNumber: '',
       receiptFilters: { ...emptyReceiptFilters },
       appliedReceiptFilters: { ...emptyReceiptFilters },
-      paginationModel: { page: 0, pageSize: 10 },
+      paginationModel: { page: 0, pageSize: 50 },
       selectedApprovalReceiptIds: [],
     };
     const initialTab = gridState.activeTab === 'Accounting' ? 'Accounting' : 'Active';
 
     return {
-      Active: { ...emptyTabState, receiptFilters: { ...emptyReceiptFilters }, appliedReceiptFilters: { ...emptyReceiptFilters }, paginationModel: { page: 0, pageSize: 10 } },
-      Accounting: { ...emptyTabState, receiptFilters: { ...emptyReceiptFilters }, appliedReceiptFilters: { ...emptyReceiptFilters }, paginationModel: { page: 0, pageSize: 10 } },
+      Active: { ...emptyTabState, receiptFilters: { ...emptyReceiptFilters }, appliedReceiptFilters: { ...emptyReceiptFilters }, paginationModel: { page: 0, pageSize: 50 } },
+      Accounting: { ...emptyTabState, receiptFilters: { ...emptyReceiptFilters }, appliedReceiptFilters: { ...emptyReceiptFilters }, paginationModel: { page: 0, pageSize: 50 } },
       [initialTab]: {
         selectedStatus: gridState.selectedStatus || '',
         searchValue: gridState.searchValue || '',
         submittedReceiptNumber: gridState.submittedReceiptNumber || '',
         receiptFilters: gridState.receiptFilters || gridState.appliedReceiptFilters || { ...emptyReceiptFilters },
         appliedReceiptFilters: gridState.appliedReceiptFilters || { ...emptyReceiptFilters },
-        paginationModel: gridState.paginationModel || { page: 0, pageSize: 10 },
+        paginationModel: gridState.paginationModel || { page: 0, pageSize: 50 },
         selectedApprovalReceiptIds: [],
       },
     };

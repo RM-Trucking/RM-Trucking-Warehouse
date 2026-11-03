@@ -75,7 +75,7 @@ const initialState = {
     shipmentReceiptOptionsByField: {},
     shipmentReceiptLoadingByField: {},
     shipmentReceiptErrorByField: {},
-    pagination: { page: 1, pageSize: 10, totalRecords: 0 },
+    pagination: { page: 1, pageSize: 50, totalRecords: 0 },
 };
 
 const slice = createSlice({
@@ -354,7 +354,7 @@ let latestShipmentListRequestId = 0;
 
 export function getShipmentData({
     pageNo = 1,
-    pageSize = 10,
+    pageSize = 50,
     paginate = true,
     searchTerm = '',
     request = '',
