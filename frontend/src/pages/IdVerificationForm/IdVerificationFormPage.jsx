@@ -108,7 +108,7 @@ export default function IdVerificationFormPage() {
   const isInitialMount = useRef(true);
 
   const [filterAnchorEl, setFilterAnchorEl] = useState(null);
-  const [paginationModel, setPaginationModel] = useState(savedPaginationModel || { pageSize: 10, page: 0 });
+  const [paginationModel, setPaginationModel] = useState(savedPaginationModel || { pageSize: 50, page: 0 });
   const [printReceipts, setPrintReceipts] = useState([]);
 
   // Redux selectors for filter state
@@ -462,7 +462,7 @@ export default function IdVerificationFormPage() {
           getRowId={(row) => row.verificationId}
           paginationModel={paginationModel}
           onPaginationModelChange={handlePaginationModelChange}
-          pageSizeOptions={[10, 25, 50]}
+          pageSizeOptions={[10, 20, 50, 100]}
           rowCount={pagination.total}
           paginationMode="server"
           loading={isLoading}

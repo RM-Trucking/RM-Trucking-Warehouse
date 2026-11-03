@@ -20,7 +20,7 @@ export default function EnRoutePage() {
   const dispatch = useDispatch();
   const { enrouteData, isLoading, error, pagination, carrierOptions, carrierLoading, customerOptions, customerLoading } = useSelector((state) => state.enroutedata);
 
-  const [paginationModel, setPaginationModel] = useState({ pageSize: 10, page: 0 });
+  const [paginationModel, setPaginationModel] = useState({ pageSize: 50, page: 0 });
   const [searchValue, setSearchValue] = useState('');
   const [openModal, setOpenModal] = useState(false);
   const [viewMode, setViewMode] = useState(false); // Track if modal is in view mode

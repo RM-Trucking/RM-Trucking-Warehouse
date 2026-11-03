@@ -116,7 +116,7 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     // Local state for the DataGrid pagination model
     const [paginationModel, setPaginationModel] = useState({
         page: 0,
-        pageSize: 10,
+        pageSize: 50,
     });
     const shipmentSearchStrRef = useRef(shipmentSearchStr);
     useEffect(() => {
@@ -329,7 +329,7 @@ const handleClosePickupForm = () => {
         if (!pagination) return;
 
         const nextPage = pagination.page ? parseInt(pagination.page, 10) - 1 : 0;
-        const nextPageSize = pagination.pageSize || 10;
+        const nextPageSize = pagination.pageSize || 50;
 
         setPaginationModel((prev) => {
             if (prev.page === nextPage && prev.pageSize === nextPageSize) {
@@ -679,7 +679,7 @@ const handleClosePickupForm = () => {
                         paginationMode="server"
                         paginationModel={paginationModel}
                         rowCount={parseInt(pagination?.totalRecords || '0', 10)}
-                        pageSizeOptions={[5, 10, 25, 50]}
+                        pageSizeOptions={[10, 20, 50, 100]}
                         
                         // Handle user interactions with the pagination controls
                         onPaginationModelChange={(newModel) => {

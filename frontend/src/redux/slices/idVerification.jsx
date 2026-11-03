@@ -22,7 +22,7 @@ const initialState = {
   searchValue: '',
   paginationModel: {
     page: 0,
-    pageSize: 10,
+    pageSize: 50,
   },
 };
 
