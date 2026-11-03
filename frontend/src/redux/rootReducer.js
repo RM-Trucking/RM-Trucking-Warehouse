@@ -1,4 +1,5 @@
 import { combineReducers } from 'redux';
+import { createMigrate } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 // import slices
 import dashboardReducer from './slices/dashboard';
@@ -22,6 +23,20 @@ const rootPersistConfig = {
   storage,
   keyPrefix: 'redux-',
   whitelist: ['idVerificationdata'],
+  version: 1,
+  migrate: createMigrate({
+    1: (state) => {
+      if (!state?.idVerificationdata) return state;
+
+      return {
+        ...state,
+        idVerificationdata: {
+          ...state.idVerificationdata,
+          paginationModel: { page: 0, pageSize: 50 },
+        },
+      };
+    },
+  }),
 };
 
 const rootReducer = combineReducers({
