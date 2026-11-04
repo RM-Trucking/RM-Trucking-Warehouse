@@ -130,7 +130,7 @@ N1*SF*${data.shipperName}* * *${segmentBreaker}
 N1*CA*${data.carrierName}* * *${segmentBreaker}
 AT8*G*L*${data.weight}*${data.pieces}*${data.reWeight}${segmentBreaker}
 L508*${hazmatIndicator}${segmentBreaker}
-L3*${data.reWeight}*G* * *${data.totalRate}* * * * * *${data.piecesOnReceipt}*L*${segmentBreaker}
+L3*${data.reWeight}*G* * *${data.totalRate.toFixed(2)}* * * * * *${data.piecesOnReceipt}*L*${segmentBreaker}
 SE*${numberOfSegments}*${transactionSetControlNumber}${segmentBreaker}
 GE*${numberOfTransactionSetsInGS}*${data.referenceNumber}${segmentBreaker}
 IEA*1*${data.referenceNumber}${segmentBreaker}`;
