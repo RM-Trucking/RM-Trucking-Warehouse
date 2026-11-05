@@ -366,6 +366,7 @@ export function getShipmentData({
     customerId = '',
     stationId = '',
     consigneeId = '',
+    consigneeForOcean = '',
     airBillNumber = '',
 } = {}) {
     return async () => {
@@ -383,6 +384,7 @@ export function getShipmentData({
             if (customerId) params.customerId = customerId;
             if (stationId) params.stationId = stationId;
             if (consigneeId) params.consigneeId = consigneeId;
+            if (String(consigneeForOcean).trim()) params.consigneeForOcean = String(consigneeForOcean).trim();
             if (String(airBillNumber).trim()) params.airBillNumber = String(airBillNumber).trim();
             const response = await axios.get('shipment', { params });
             if (requestId !== latestShipmentListRequestId) return;

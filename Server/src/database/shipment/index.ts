@@ -181,7 +181,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string }
 ): Promise<any[]> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -266,6 +266,10 @@ export async function listShipments(
         query += ` AND "consigneeId" = ?`;
         params.push(filters.consigneeId);
     }
+    if (filters.consigneeForOcean) {
+        query += ` AND UPPER(COALESCE("consigneeForOcean", '')) LIKE ?`;
+        params.push(`%${filters.consigneeForOcean.toUpperCase()}%`);
+    }
 
     query += ` ORDER BY "shipmentId" DESC LIMIT ? OFFSET ?`;
     params.push(pageSize, offset);
@@ -275,7 +279,7 @@ export async function listShipments(
 
 export async function countShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string, consigneeForOcean?: string }
 ): Promise<number> {
     let query = `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE 1 = 1`;
     const params: any[] = [];
@@ -349,6 +353,11 @@ export async function countShipments(
     if (filters.consigneeId) {
         query += ` AND "consigneeId" = ?`;
         params.push(filters.consigneeId);
+    }
+
+    if (filters.consigneeForOcean) {
+        query += ` AND UPPER(COALESCE("consigneeForOcean", '')) LIKE ?`;
+        params.push(`%${filters.consigneeForOcean.toUpperCase()}%`);
     }
 
     const result = await conn.query(query, params as any) as any[];

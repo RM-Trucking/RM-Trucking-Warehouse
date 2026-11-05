@@ -148,6 +148,11 @@ paths:
           schema:
             type: string
           description: Filter shipments by air bill number.
+        - in: query
+          name: consigneeForOcean
+          schema:
+            type: string
+          description: Case-insensitive partial match for the ocean consignee name.
       responses:
         "200":
           description: Shipment list retrieved successfully
