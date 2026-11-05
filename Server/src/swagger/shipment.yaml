@@ -9,6 +9,77 @@ tags:
     description: Warehouse shipment CRUD operations
 
 paths:
+  /api/shipment/export-spreadsheet:
+    get:
+      tags:
+        - Shipments
+      summary: Export filtered shipments to an Excel spreadsheet
+      description: Exports all shipments matching the supplied shipment-list filters as an XLSX file.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: searchTerm
+          schema:
+            type: string
+          description: Search shipment barcode numbers.
+        - in: query
+          name: scanned
+          schema:
+            type: boolean
+        - in: query
+          name: pickup
+          schema:
+            type: boolean
+        - in: query
+          name: shipped
+          schema:
+            type: boolean
+        - in: query
+          name: canceled
+          schema:
+            type: boolean
+        - in: query
+          name: request
+          schema:
+            type: boolean
+        - in: query
+          name: shipmentType
+          schema:
+            type: string
+            enum: [AIR, OCEAN_FCL, OCEAN_LCL]
+        - in: query
+          name: customerId
+          schema:
+            type: string
+        - in: query
+          name: stationId
+          schema:
+            type: string
+        - in: query
+          name: consigneeId
+          schema:
+            type: string
+        - in: query
+          name: airBillNumber
+          schema:
+            type: string
+        - in: query
+          name: consigneeForOcean
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Shipment spreadsheet generated successfully.
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No shipments matched the supplied filters.
+        "500":
+          description: Spreadsheet export failed.
   /api/shipment/image-upload:
     post:
       tags:

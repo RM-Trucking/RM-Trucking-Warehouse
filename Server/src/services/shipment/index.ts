@@ -8,6 +8,7 @@ import * as entityDB from "../../database/maintanance/entity";
 import * as noteDB from "../../database/maintanance/note";
 import * as userDB from "../../database/maintanance/auth";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
+import ExcelJS from "exceljs";
 import { emitAuditLog } from "../../utils/email";
 import { generatePickupEDI } from "../../utils/pickupEDIHandler";
 import { CreateWarehouseShipment, ShipmentResposeForPickup, UpdateWarehouseShipment, WarehouseShipmentPickupRequest, WarehouseShipmentWithRelations } from "../../entities/shipment";
@@ -891,6 +892,61 @@ export async function listShipments(
     }
 
     return { data, total, page, pageSize, countList };
+}
+
+export async function exportShipmentsToSpreadsheetService(
+    conn: Connection,
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string }
+) {
+    const shipmentIds = await shipmentDB.listShipments(conn, { ...filters, exportAll: true });
+    if (shipmentIds.length === 0) {
+        throw new Error("No Record Found");
+    }
+
+    const shipments: any[] = [];
+    for (const { shipmentId } of shipmentIds) {
+        const shipment = await shipmentDB.getShipmentById(conn, Number(shipmentId));
+        if (!shipment) continue;
+        shipments.push(shipment);
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Shipments");
+    worksheet.columns = [
+        { header: "Shipment Type", key: "shipmentType", width: 15 },
+        { header: "Barcode Number", key: "barcodeNumber", width: 24 },
+        { header: "Customer", key: "customerName", width: 30 },
+        { header: "Station", key: "stationName", width: 25 },
+        { header: "Consignee", key: "consignee", width: 30 },
+        { header: "Air Bill Number", key: "airBillNumber", width: 22 },
+        { header: "Booking", key: "booking", width: 22 },
+        { header: "Customer Reference", key: "customerRefNumber", width: 24 },
+        { header: "Additional Reference", key: "additionalRefNumber", width: 24 },
+        { header: "Destination", key: "destination", width: 24 },
+        { header: "Pieces", key: "pieces", width: 12 },
+        { header: "Weight", key: "weight", width: 12 },
+        { header: "Created Date", key: "createdAt", width: 20 },
+        { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 }
+    ];
+    worksheet.addRows(shipments.map((shipment) => ({
+        ...shipment,
+        shipmentType: shipment.shipmentType,
+        consignee: shipment.airlineName ?? shipment.consigneeForOcean ?? "",
+        createdAt: shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
+    })));
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.eachRow({ includeEmpty: true }, (row) => {
+        row.eachCell({ includeEmpty: true }, (cell) => {
+            cell.border = {
+                top: { style: "thin" },
+                left: { style: "thin" },
+                bottom: { style: "thin" },
+                right: { style: "thin" },
+            };
+        });
+    });
+
+    return workbook;
 }
 
 function hasAllFreightScanned(freightInfos: Array<{ isScanned?: unknown }>): boolean {
