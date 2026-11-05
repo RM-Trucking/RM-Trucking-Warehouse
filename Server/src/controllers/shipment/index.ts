@@ -130,6 +130,35 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
     }
 }
 
+export async function exportShipmentsToSpreadsheet(req: Request, res: Response, conn: Connection): Promise<void> {
+    try {
+        const booleanFilter = (value: unknown) => value === "true" ? true : value === "false" ? false : undefined;
+        const workbook = await shipmentService.exportShipmentsToSpreadsheetService(conn, {
+            barcodeNumber: req.query.searchTerm as string | undefined,
+            scanned: booleanFilter(req.query.scanned),
+            pickup: booleanFilter(req.query.pickup),
+            shipped: booleanFilter(req.query.shipped),
+            request: booleanFilter(req.query.request),
+            canceled: booleanFilter(req.query.canceled),
+            shipmentType: req.query.shipmentType ? String(req.query.shipmentType).toUpperCase() : undefined,
+            customerId: req.query.customerId as string | undefined,
+            stationId: req.query.stationId as string | undefined,
+            consigneeId: req.query.consigneeId as string | undefined,
+            airBillNumber: req.query.airBillNumber as string | undefined,
+            consigneeForOcean: req.query.consigneeForOcean as string | undefined,
+        });
+
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", "attachment; filename=shipments.xlsx");
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (error: any) {
+        console.error(error);
+        const statusCode = error.message === "No Record Found" ? 404 : 500;
+        res.status(statusCode).json({ success: false, message: error.message || "Failed to export shipments" });
+    }
+}
+
 export async function getShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const shipmentIdParam = req.params.id;

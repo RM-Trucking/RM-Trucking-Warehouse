@@ -33,6 +33,15 @@ router.get("/unscan-freight", authenticateJWT, async (req: Request, res: Respons
     }
 });
 
+router.get("/export-spreadsheet", authenticateJWT, async (req: Request, res: Response) => {
+    const conn = await db();
+    try {
+        await shipmentController.exportShipmentsToSpreadsheet(req, res, conn);
+    } finally {
+        if (conn) conn.close();
+    }
+});
+
 router.get("/:id", authenticateJWT, async (req: Request, res: Response) => {
     const conn = await db();
     try {

@@ -181,7 +181,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string; exportAll?: boolean }
 ): Promise<any[]> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -271,8 +271,11 @@ export async function listShipments(
         params.push(`%${filters.consigneeForOcean.toUpperCase()}%`);
     }
 
-    query += ` ORDER BY "shipmentId" DESC LIMIT ? OFFSET ?`;
-    params.push(pageSize, offset);
+    query += ` ORDER BY "shipmentId" DESC`;
+    if (!filters.exportAll) {
+        query += ` LIMIT ? OFFSET ?`;
+        params.push(pageSize, offset);
+    }
 
     return await conn.query(query, params as any) as any[];
 }
