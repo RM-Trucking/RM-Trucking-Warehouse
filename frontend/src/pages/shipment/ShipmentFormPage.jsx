@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Autocomplete, Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
@@ -68,6 +68,7 @@ const emptyShipmentFilters = {
   stationId: '',
   consignee: '',
   consigneeId: '',
+  consigneeForOcean: '',
   airBillNumber: '',
 };
 
@@ -102,7 +103,13 @@ function ShipmentFormPageContent() {
   const [shipmentFilters, setShipmentFilters] = useState(emptyShipmentFilters);
   const [appliedShipmentFilters, setAppliedShipmentFilters] = useState(emptyShipmentFilters);
   const [selectedShipmentType, setSelectedShipmentType] = useState('AIR');
-  const activeFilterCount = Object.entries(appliedShipmentFilters)
+  const activeShipmentFilters = useMemo(() => ({
+    ...appliedShipmentFilters,
+    consignee: selectedShipmentType === 'AIR' ? appliedShipmentFilters.consignee : '',
+    consigneeId: selectedShipmentType === 'AIR' ? appliedShipmentFilters.consigneeId : '',
+    consigneeForOcean: selectedShipmentType === 'AIR' ? '' : appliedShipmentFilters.consigneeForOcean,
+  }), [appliedShipmentFilters, selectedShipmentType]);
+  const activeFilterCount = Object.entries(activeShipmentFilters)
     .filter(([key, value]) => !['customerId', 'stationId', 'consigneeId'].includes(key) && String(value).trim() !== '')
     .length;
   const requestedViewShipmentId = searchParams.get('viewShipmentId')
@@ -339,7 +346,7 @@ function ShipmentFormPageContent() {
               <SharedHomepageHeader title="Shipment Form" buttonText='New Shipment' onButtonClick={onClickOfNewShipment} />
               <SharedSearchField
                 page="shipment"
-                filters={appliedShipmentFilters}
+                filters={activeShipmentFilters}
                 onFilterClick={handleOpenShipmentFilters}
                 activeFilterCount={activeFilterCount}
                 shipmentType={selectedShipmentType}
@@ -347,7 +354,7 @@ function ShipmentFormPageContent() {
               <ShipmentTabs
                 initialShipmentType={selectedShipmentType}
                 onViewShipment={handleViewShipment}
-                filters={appliedShipmentFilters}
+                filters={activeShipmentFilters}
                 onShipmentTypeChange={setSelectedShipmentType}
               />
               {/* <CarrierTable /> */}
@@ -462,7 +469,7 @@ function ShipmentFormPageContent() {
                 <MenuItem value="false">No</MenuItem>
               </TextField>
             ))}
-            <Autocomplete
+            {selectedShipmentType === 'AIR' ? <Autocomplete
               fullWidth
               options={exportAirlineOptions}
               value={
@@ -495,7 +502,15 @@ function ShipmentFormPageContent() {
                   }}
                 />
               )}
-            />
+            /> : (
+              <TextField
+                fullWidth
+                size="small"
+                label="Consignee"
+                value={shipmentFilters.consigneeForOcean}
+                onChange={(event) => handleShipmentFilterChange('consigneeForOcean', event.target.value)}
+              />
+            )}
             <TextField
               size="small"
               label="Air Bill Number"
