@@ -11,6 +11,7 @@ import cors from 'cors';
 import { initializeDB2Pool, closeDB2Pool, getSchema } from './config/db2';
 import { setupStatusEventHandlers, setupAuditLogEventHandlers, emitEmail } from './utils/email';
 import { runWarehouseReceiptInvoiceBatch } from './utils/warehouseReceiptInvoiceBatch';
+import { closeReceiptInvoiceResponseWatcher, initializeReceiptInvoiceResponseWatcher } from './utils/receiptInvoiceResponseWatcher';
 import cron from 'node-cron';
 
 
@@ -302,6 +303,13 @@ async function startServer(): Promise<void> {
         db2PoolInitialized = true;
         console.log('DB2 pool initialized');
 
+        if (process.env.ENVIRONMENT === 'prod') {
+            await initializeReceiptInvoiceResponseWatcher();
+            console.log('Receipt invoice response watcher initialized');
+        } else {
+            console.log('[Receipt Invoice Response] Watcher disabled: ENVIRONMENT is not prod.');
+        }
+
         // Initialize email event handlers
         setupStatusEventHandlers();
         console.log('Email handlers initialized');
@@ -369,6 +377,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     console.log(`\n📍 ${signal} received - starting graceful shutdown...`);
 
     if (!server) {
+        try {
+            await closeReceiptInvoiceResponseWatcher();
+        } catch (err) {
+            console.error('Error closing receipt invoice response watcher:', err);
+        }
         if (db2PoolInitialized) {
             try {
                 await closeDB2Pool();
@@ -391,6 +404,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
         console.log('✓ HTTP server closed');
 
         if (db2PoolInitialized) {
+            try {
+                await closeReceiptInvoiceResponseWatcher();
+            } catch (err) {
+                console.error('Error closing receipt invoice response watcher:', err);
+            }
             try {
                 await closeDB2Pool();
                 console.log('✓ DB2 pool closed');
