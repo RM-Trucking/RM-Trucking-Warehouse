@@ -94,6 +94,7 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
         const stationId = req.query.stationId as string | undefined;
         const consigneeId = req.query.consigneeId as string | undefined;
         const airBillNumber = req.query.airBillNumber as string | undefined;
+        const consigneeForOcean = req.query.consigneeForOcean as string | undefined;
 
         const filters = {
             barcodeNumber,
@@ -109,9 +110,10 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
             stationId: stationId ? stationId : undefined,
             consigneeId: consigneeId ? consigneeId : undefined,
             airBillNumber: airBillNumber ? airBillNumber : undefined,
+            consigneeForOcean: consigneeForOcean ? consigneeForOcean : undefined,
         }
 
-        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber });
+        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean });
         res.status(200).json({
             success: true,
             data: result.data,
