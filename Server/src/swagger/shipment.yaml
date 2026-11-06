@@ -68,6 +68,11 @@ paths:
           name: consigneeForOcean
           schema:
             type: string
+        - in: query
+          name: container
+          schema:
+            type: string
+          description: Case-insensitive partial match for a shipment container number.
       responses:
         "200":
           description: Shipment spreadsheet generated successfully.
@@ -224,6 +229,11 @@ paths:
           schema:
             type: string
           description: Case-insensitive partial match for the ocean consignee name.
+        - in: query
+          name: container
+          schema:
+            type: string
+          description: Case-insensitive partial match for a shipment container number.
       responses:
         "200":
           description: Shipment list retrieved successfully

@@ -875,7 +875,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, canceled?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, canceled?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string; container?: string }
 ): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number; countList: { air: number; fcl: number; lcl: number } }> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -896,7 +896,7 @@ export async function listShipments(
 
 export async function exportShipmentsToSpreadsheetService(
     conn: Connection,
-    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string; container?: string }
 ) {
     const shipmentIds = await shipmentDB.listShipments(conn, { ...filters, exportAll: true });
     if (shipmentIds.length === 0) {
@@ -912,6 +912,43 @@ export async function exportShipmentsToSpreadsheetService(
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Shipments");
+    const shipmentRows = await Promise.all(shipments.map(async (shipment) => {
+        const shipmentId = Number(shipment.shipmentId);
+        const [containers, receipts] = await Promise.all([
+            shipmentDB.getContainersByShipmentId(conn, shipmentId),
+            shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
+        ]);
+        const rowCount = Math.max(containers.length, receipts.length, 1);
+
+        return Array.from({ length: rowCount }, (_, index) => {
+            const firstRow = index === 0;
+            const receipt = receipts[index];
+
+            return {
+                shipmentType: firstRow ? shipment.shipmentType ?? "" : "",
+                barcodeNumber: firstRow ? shipment.barcodeNumber ?? "" : "",
+                customerName: firstRow ? shipment.customerName ?? "" : "",
+                stationName: firstRow ? shipment.stationName ?? "" : "",
+                consignee: firstRow ? shipment.airlineName ?? shipment.consigneeForOcean ?? "" : "",
+                airBillNumber: firstRow && shipment.shipmentType === "AIR" ? shipment.airBillNumber ?? "" : "",
+                booking: firstRow ? shipment.booking ?? "" : "",
+                customerRefNumber: firstRow ? shipment.customerRefNumber ?? "" : "",
+                additionalRefNumber: firstRow ? shipment.additionalRefNumber ?? "" : "",
+                destination: firstRow && shipment.shipmentType === "OCEAN_FCL" ? shipment.destination ?? "" : "",
+                pieces: firstRow ? shipment.pieces ?? "" : "",
+                weight: firstRow ? shipment.weight ?? "" : "",
+                createdAt: firstRow && shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
+                pickupEntryNumber: firstRow ? shipment.pickupEntryNumber ?? "" : "",
+                container: containers[index]?.container ?? "",
+                receiptNumber: receipt?.receiptNumber ?? "",
+                receiptStatus: receipt?.status ?? "",
+                receiptPieces: receipt?.piecesOnReceipt ?? "",
+                receiptWeight: receipt?.weightInland ?? receipt?.reWeight ?? "",
+                receiptLocation: receipt?.location ?? "",
+                receiptDestination: receipt?.destination ?? "",
+            };
+        });
+    }));
     const shipmentType = String(filters.shipmentType ?? "").toUpperCase();
     const columns: Partial<ExcelJS.Column>[] = [
         { header: "Shipment Type", key: "shipmentType", width: 15 },
@@ -935,17 +972,17 @@ export async function exportShipmentsToSpreadsheetService(
         { header: "Pieces", key: "pieces", width: 12 },
         { header: "Weight", key: "weight", width: 12 },
         { header: "Created Date", key: "createdAt", width: 20 },
-        { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 }
+        { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 },
+        { header: "Container", key: "container", width: 22 },
+        { header: "Warehouse Receipt Number", key: "receiptNumber", width: 24 },
+        { header: "Receipt Status", key: "receiptStatus", width: 18 },
+        { header: "Receipt Pieces", key: "receiptPieces", width: 16 },
+        { header: "Receipt Weight", key: "receiptWeight", width: 16 },
+        { header: "Receipt Location", key: "receiptLocation", width: 22 },
+        { header: "Receipt Destination", key: "receiptDestination", width: 24 }
     );
     worksheet.columns = columns;
-    worksheet.addRows(shipments.map((shipment) => ({
-        ...shipment,
-        shipmentType: shipment.shipmentType,
-        consignee: shipment.airlineName ?? shipment.consigneeForOcean ?? "",
-        airBillNumber: shipment.shipmentType === "AIR" ? shipment.airBillNumber ?? "" : "",
-        destination: shipment.shipmentType === "OCEAN_FCL" ? shipment.destination ?? "" : "",
-        createdAt: shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
-    })));
+    worksheet.addRows(shipmentRows.flat());
     worksheet.getRow(1).font = { bold: true };
     worksheet.eachRow({ includeEmpty: true }, (row) => {
         row.eachCell({ includeEmpty: true }, (cell) => {

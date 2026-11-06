@@ -95,6 +95,7 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
         const consigneeId = req.query.consigneeId as string | undefined;
         const airBillNumber = req.query.airBillNumber as string | undefined;
         const consigneeForOcean = req.query.consigneeForOcean as string | undefined;
+        const container = req.query.container as string | undefined;
 
         const filters = {
             barcodeNumber,
@@ -111,9 +112,10 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
             consigneeId: consigneeId ? consigneeId : undefined,
             airBillNumber: airBillNumber ? airBillNumber : undefined,
             consigneeForOcean: consigneeForOcean ? consigneeForOcean : undefined,
+            container: container?.trim() || undefined,
         }
 
-        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean });
+        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean, container: filters.container });
         res.status(200).json({
             success: true,
             data: result.data,
@@ -146,6 +148,7 @@ export async function exportShipmentsToSpreadsheet(req: Request, res: Response, 
             consigneeId: req.query.consigneeId as string | undefined,
             airBillNumber: req.query.airBillNumber as string | undefined,
             consigneeForOcean: req.query.consigneeForOcean as string | undefined,
+            container: typeof req.query.container === "string" ? req.query.container.trim() || undefined : undefined,
         });
 
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
