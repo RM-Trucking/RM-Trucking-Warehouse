@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Autocomplete, Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
-  DialogContent, useMediaQuery, Alert, CircularProgress, TextField, MenuItem
+  DialogContent, useMediaQuery, Alert, CircularProgress, TextField, MenuItem, Snackbar
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -90,6 +90,7 @@ function ShipmentFormPageContent() {
   const {
     exportAirlineOptions = [],
     exportAirlineLoading = false,
+    shipmentData = [],
   } = useSelector((state) => state.shipmentdata || {});
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -103,6 +104,7 @@ function ShipmentFormPageContent() {
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [noExportDataOpen, setNoExportDataOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState({});
   const shipmentSearchStr = useSelector((state) => state.shipmentdata.shipmentSearchStr);
   const [shipmentFilters, setShipmentFilters] = useState(emptyShipmentFilters);
@@ -118,6 +120,10 @@ function ShipmentFormPageContent() {
     .filter(([key, value]) => !['customerId', 'stationId', 'consigneeId'].includes(key) && String(value).trim() !== '')
     .length;
   const handleExportSpreadsheet = async () => {
+    if (!shipmentData.length) {
+      setNoExportDataOpen(true);
+      return;
+    }
     setExportingSpreadsheet(true);
     setExportError('');
     const exportFilters = { ...activeShipmentFilters, shipmentType: selectedShipmentType, searchTerm: shipmentSearchStr };
@@ -647,6 +653,16 @@ function ShipmentFormPageContent() {
           </Box>
         </DialogContent>
       </Dialog>
+      <Snackbar
+        open={noExportDataOpen}
+        autoHideDuration={3000}
+        onClose={(event, reason) => {
+          if (reason !== 'clickaway') setNoExportDataOpen(false);
+        }}
+        message="No data available to export"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        ContentProps={{ sx: { bgcolor: '#000', color: '#fff', '& .MuiSnackbarContent-message': { width: '100%', textAlign: 'center' } } }}
+      />
     </>
   );
 }
