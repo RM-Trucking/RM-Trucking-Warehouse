@@ -21,7 +21,7 @@ import OceanLCLForm from './OceanLCLForm';
 import OceanFCLForm from './OceanFCLForm';
 import ShipmentMobileScanPage from './ShipmentMobileScanPage';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getExportAirlineOptions, getShipmentById } from '../../redux/slices/shipment';
+import { exportShipmentSpreadsheet, getExportAirlineOptions, getShipmentById } from '../../redux/slices/shipment';
 import {
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
@@ -70,6 +70,7 @@ const emptyShipmentFilters = {
   consigneeId: '',
   consigneeForOcean: '',
   airBillNumber: '',
+  container: '',
 };
 
 export default function ShipmentFormPage() {
@@ -100,6 +101,10 @@ function ShipmentFormPageContent() {
   const [viewShipment, setViewShipment] = useState(null);
   const [viewShipmentError, setViewShipmentError] = useState('');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [statusFilters, setStatusFilters] = useState({});
+  const shipmentSearchStr = useSelector((state) => state.shipmentdata.shipmentSearchStr);
   const [shipmentFilters, setShipmentFilters] = useState(emptyShipmentFilters);
   const [appliedShipmentFilters, setAppliedShipmentFilters] = useState(emptyShipmentFilters);
   const [selectedShipmentType, setSelectedShipmentType] = useState('AIR');
@@ -112,6 +117,20 @@ function ShipmentFormPageContent() {
   const activeFilterCount = Object.entries(activeShipmentFilters)
     .filter(([key, value]) => !['customerId', 'stationId', 'consigneeId'].includes(key) && String(value).trim() !== '')
     .length;
+  const handleExportSpreadsheet = async () => {
+    setExportingSpreadsheet(true);
+    setExportError('');
+    const exportFilters = { ...activeShipmentFilters, shipmentType: selectedShipmentType, searchTerm: shipmentSearchStr };
+    Object.entries(statusFilters).forEach(([key, enabled]) => {
+      exportFilters[key] = enabled || activeShipmentFilters[key];
+    });
+    try {
+      const result = await dispatch(exportShipmentSpreadsheet(exportFilters));
+      if (result?.error) setExportError(result.message);
+    } finally {
+      setExportingSpreadsheet(false);
+    }
+  };
   const requestedViewShipmentId = searchParams.get('viewShipmentId')
     || location.state?.viewShipment?.shipmentId
     || location.state?.viewShipment?.id
@@ -343,6 +362,7 @@ function ShipmentFormPageContent() {
           <>
             <Box>
               {viewShipmentError && <Alert severity="error" sx={{ mb: 2 }}>{viewShipmentError}</Alert>}
+              {exportError && <Alert severity="error" sx={{ mb: 2 }}>{exportError}</Alert>}
               <SharedHomepageHeader title="Shipment Form" buttonText='New Shipment' onButtonClick={onClickOfNewShipment} />
               <SharedSearchField
                 page="shipment"
@@ -350,12 +370,15 @@ function ShipmentFormPageContent() {
                 onFilterClick={handleOpenShipmentFilters}
                 activeFilterCount={activeFilterCount}
                 shipmentType={selectedShipmentType}
+                onExportClick={handleExportSpreadsheet}
+                exporting={exportingSpreadsheet}
               />
               <ShipmentTabs
                 initialShipmentType={selectedShipmentType}
                 onViewShipment={handleViewShipment}
                 filters={activeShipmentFilters}
                 onShipmentTypeChange={setSelectedShipmentType}
+                onStatusFiltersChange={setStatusFilters}
               />
               {/* <CarrierTable /> */}
             </Box>
@@ -595,7 +618,15 @@ function ShipmentFormPageContent() {
               )}
               fullWidth
             />
-            <Box sx={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Container"
+              inputProps={{ 'aria-label': 'Container' }}
+              value={shipmentFilters.container}
+              onChange={(event) => handleShipmentFilterChange('container', event.target.value)}
+            />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
               <Button
                 variant="outlined"
                 size="small"
