@@ -678,9 +678,7 @@ function ShipmentFormPageContent() {
             {selectedShipmentType !== 'OCEAN_LCL' && <TextField
               fullWidth
               size="small"
-              placeholder="Container"
-              sx={{ '& input::placeholder': { color: 'text.secondary', opacity: 1 } }}
-              inputProps={{ 'aria-label': 'Container' }}
+              label="Container"
               value={shipmentFilters.container}
               onChange={(event) => handleShipmentFilterChange('container', event.target.value)}
             />}
