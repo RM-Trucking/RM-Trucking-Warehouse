@@ -896,7 +896,7 @@ export async function listShipments(
 
 export async function exportShipmentsToSpreadsheetService(
     conn: Connection,
-    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string; container?: string }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string; container?: string; booking?: string; destination?: string; customerRefNumber?: string }
 ) {
     const shipmentIds = await shipmentDB.listShipments(conn, { ...filters, exportAll: true });
     if (shipmentIds.length === 0) {

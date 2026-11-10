@@ -155,6 +155,9 @@ export async function exportShipmentsToSpreadsheet(req: Request, res: Response, 
             airBillNumber: req.query.airBillNumber as string | undefined,
             consigneeForOcean: req.query.consigneeForOcean as string | undefined,
             container: typeof req.query.container === "string" ? req.query.container.trim() || undefined : undefined,
+            booking: typeof req.query.booking === "string" ? req.query.booking.trim() || undefined : undefined,
+            destination: typeof req.query.destination === "string" ? req.query.destination.trim() || undefined : undefined,
+            customerRefNumber: typeof req.query.customerRefNumber === "string" ? req.query.customerRefNumber.trim() || undefined : undefined,
         });
 
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
