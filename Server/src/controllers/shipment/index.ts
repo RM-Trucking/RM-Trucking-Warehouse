@@ -96,6 +96,9 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
         const airBillNumber = req.query.airBillNumber as string | undefined;
         const consigneeForOcean = req.query.consigneeForOcean as string | undefined;
         const container = req.query.container as string | undefined;
+        const booking = req.query.booking as string | undefined;
+        const destination = req.query.destination as string | undefined;
+        const customerRefNumber = req.query.customerRefNumber as string | undefined;
 
         const filters = {
             barcodeNumber,
@@ -113,9 +116,12 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
             airBillNumber: airBillNumber ? airBillNumber : undefined,
             consigneeForOcean: consigneeForOcean ? consigneeForOcean : undefined,
             container: container?.trim() || undefined,
+            booking: booking?.trim() || undefined,
+            destination: destination?.trim() || undefined,
+            customerRefNumber: customerRefNumber?.trim() || undefined,
         }
 
-        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean, container: filters.container });
+        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean, container: filters.container, booking: filters.booking, destination: filters.destination, customerRefNumber: filters.customerRefNumber });
         res.status(200).json({
             success: true,
             data: result.data,

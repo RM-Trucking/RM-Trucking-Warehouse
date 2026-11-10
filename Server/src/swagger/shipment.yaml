@@ -73,6 +73,21 @@ paths:
           schema:
             type: string
           description: Case-insensitive partial match for a shipment container number.
+        - in: query
+          name: booking
+          schema:
+            type: string
+          description: Case-insensitive partial match for shipment booking.
+        - in: query
+          name: destination
+          schema:
+            type: string
+          description: Case-insensitive partial match for shipment destination.
+        - in: query
+          name: customerRefNumber
+          schema:
+            type: string
+          description: Case-insensitive partial match for customer reference number.
       responses:
         "200":
           description: Shipment spreadsheet generated successfully.
@@ -234,6 +249,21 @@ paths:
           schema:
             type: string
           description: Case-insensitive partial match for a shipment container number.
+        - in: query
+          name: booking
+          schema:
+            type: string
+          description: Case-insensitive partial match for shipment booking.
+        - in: query
+          name: destination
+          schema:
+            type: string
+          description: Case-insensitive partial match for shipment destination.
+        - in: query
+          name: customerRefNumber
+          schema:
+            type: string
+          description: Case-insensitive partial match for customer reference number.
       responses:
         "200":
           description: Shipment list retrieved successfully
