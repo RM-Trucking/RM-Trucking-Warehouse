@@ -80,7 +80,7 @@ export async function updateShipment(conn: Connection, shipmentId: number, paylo
     const params: any[] = [];
 
     Object.entries(payload).forEach(([key, value]) => {
-        if (key === "shipmentId" || key === "containers" || key === "receipts") {
+        if (key === "shipmentId" || key === "containers" || key === "receipts" || key === "updatedBy") {
             return;
         }
 
@@ -88,6 +88,8 @@ export async function updateShipment(conn: Connection, shipmentId: number, paylo
         params.push(value);
     });
 
+    fields.push(`"updatedBy" = ?`);
+    params.push(Number(userId));
     fields.push(`"updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)`);
     params.push(shipmentId);
 

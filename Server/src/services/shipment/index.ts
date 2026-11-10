@@ -1017,7 +1017,7 @@ function hasAllFreightScanned(freightInfos: Array<{ isScanned?: unknown }>): boo
     return freightInfos.every((freightInfo) => String(freightInfo.isScanned).toUpperCase() === "Y");
 }
 
-export async function scanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId = 0) {
+export async function scanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId: number) {
     const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
         .split("-")
         .map(part => part.trim())
@@ -1133,7 +1133,7 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
         const allShipmentsReceiptsScanned = !(await shipmentDB.hasUnscannedFreightByShipment(conn, shipmentId));
 
         if (allShipmentsReceiptsScanned) {
-            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "Y" }, 0);
+            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "Y" }, userId);
         }
 
         const record = await getShipmentById(conn, shipmentId);
@@ -1150,7 +1150,7 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
     }
 }
 
-export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId = 0) {
+export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId: number) {
     const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
         .split("-")
         .map(part => part.trim())
@@ -1224,7 +1224,7 @@ export async function unscanFreight(conn: Connection, shipmentId: number, barcod
         }))).every(Boolean);
 
         if (!allShipmentsReceiptsScanned) {
-            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "N" }, 0);
+            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "N" }, userId);
         }
 
         const record = await getShipmentById(conn, shipmentId);

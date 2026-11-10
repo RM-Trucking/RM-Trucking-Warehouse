@@ -3,6 +3,12 @@ import { Connection } from "odbc";
 import * as shipmentService from "../../services/shipment";
 import { CreateWarehouseShipment, UpdateWarehouseShipment, WarehouseShipmentPickupRequest } from "../../entities/shipment";
 
+function getAuthenticatedUserId(req: Request): number | null {
+    const rawUserId = (req as any).user?.userId ?? (req as any).user?.id;
+    const userId = Number(rawUserId);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+}
+
 export async function createShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const payload = req.body as CreateWarehouseShipment;
@@ -374,7 +380,11 @@ export async function scanFreight(req: Request, res: Response, conn: Connection)
             return;
         }
 
-        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const userId = getAuthenticatedUserId(req);
+        if (userId === null) {
+            res.status(401).json({ success: false, message: "Authenticated user ID is required" });
+            return;
+        }
         const updatedShipment = await shipmentService.scanFreight(conn, shipmentId, barcodeValue, userId);
         res.status(200).json({ success: true, message: "Freight scanned successfully", data: updatedShipment });
 
@@ -397,7 +407,11 @@ export async function unscanFreight(req: Request, res: Response, conn: Connectio
             return;
         }
 
-        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const userId = getAuthenticatedUserId(req);
+        if (userId === null) {
+            res.status(401).json({ success: false, message: "Authenticated user ID is required" });
+            return;
+        }
         const updatedShipment = await shipmentService.unscanFreight(conn, shipmentId, barcodeValue, userId);
         res.status(200).json({ success: true, message: "Freight un-scanned successfully", data: updatedShipment });
 
@@ -486,7 +500,11 @@ export async function cancelShipment(req: Request, res: Response, conn: Connecti
     try {
         const shipmentId = Number(req.body.shipmentId);
         const canceledReason = typeof req.body?.canceledReason === "string" ? req.body.canceledReason.trim() : "";
-        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const userId = getAuthenticatedUserId(req);
+        if (userId === null) {
+            res.status(401).json({ success: false, message: "Authenticated user ID is required" });
+            return;
+        }
 
         if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
             res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });
