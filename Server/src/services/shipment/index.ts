@@ -5,6 +5,7 @@ import { UPLOAD_PATHS } from "../../config/env";
 import { ensureUploadDirExists } from "../../config/multer";
 import * as shipmentDB from "../../database/shipment";
 import * as entityDB from "../../database/maintanance/entity";
+import * as customerDB from "../../database/maintanance/customer";
 import * as noteDB from "../../database/maintanance/note";
 import * as userDB from "../../database/maintanance/auth";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
@@ -918,6 +919,11 @@ export async function exportShipmentsToSpreadsheetService(
             shipmentDB.getContainersByShipmentId(conn, shipmentId),
             shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
         ]);
+        const stationName = shipment.shipmentType === "OCEAN_FCL" && String(shipment.stationScope).toUpperCase() === "ALL"
+            ? (await customerDB.getStationDropdown(conn, Number(shipment.customerId), "", true))
+                .map((station) => station.stationName)
+                .join(", ")
+            : shipment.stationName ?? "";
         const showContainerColumn = shipment.shipmentType === "AIR" || shipment.shipmentType === "OCEAN_FCL";
         const rowCount = Math.max(containers.length, receipts.length, 1);
 
@@ -929,7 +935,7 @@ export async function exportShipmentsToSpreadsheetService(
                 shipmentType: firstRow ? shipment.shipmentType ?? "" : "",
                 barcodeNumber: firstRow ? shipment.barcodeNumber ?? "" : "",
                 customerName: firstRow ? shipment.customerName ?? "" : "",
-                stationName: firstRow ? shipment.stationName ?? "" : "",
+                stationName: firstRow ? stationName : "",
                 consignee: firstRow ? shipment.airlineName ?? shipment.consigneeForOcean ?? "" : "",
                 airBillNumber: firstRow && shipment.shipmentType === "AIR" ? shipment.airBillNumber ?? "" : "",
                 booking: firstRow ? shipment.booking ?? "" : "",
