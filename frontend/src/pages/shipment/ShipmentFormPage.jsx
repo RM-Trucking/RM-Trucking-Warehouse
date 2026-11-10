@@ -71,6 +71,9 @@ const emptyShipmentFilters = {
   consigneeForOcean: '',
   airBillNumber: '',
   container: '',
+  booking: '',
+  customerRefNumber: '',
+  destination: '',
 };
 
 export default function ShipmentFormPage() {
@@ -323,6 +326,12 @@ function ShipmentFormPageContent() {
     setAppliedShipmentFilters(emptyShipmentFilters);
   };
 
+  const handleShipmentTypeChange = (shipmentType) => {
+    if (shipmentType === selectedShipmentType) return;
+    handleClearShipmentFilters();
+    setSelectedShipmentType(shipmentType);
+  };
+
   const handleCloseShipmentFilters = () => {
     if (Object.values(shipmentFilters).every((value) => String(value).trim() === '')) {
       handleClearShipmentFilters();
@@ -383,7 +392,7 @@ function ShipmentFormPageContent() {
                 initialShipmentType={selectedShipmentType}
                 onViewShipment={handleViewShipment}
                 filters={activeShipmentFilters}
-                onShipmentTypeChange={setSelectedShipmentType}
+                onShipmentTypeChange={handleShipmentTypeChange}
                 onStatusFiltersChange={setStatusFilters}
               />
               {/* <CarrierTable /> */}
@@ -467,7 +476,7 @@ function ShipmentFormPageContent() {
         <DialogContent sx={{ p: 2 }}>
           <Box sx={{ position: 'relative', pb: 1 }}>
             <Typography sx={{ textAlign: 'center', fontWeight: 700, fontSize: 16, mt: 2, mb: 2.2 }}>
-              Search Filters
+              Search Filters - {({ AIR: 'AIR', OCEAN_LCL: 'LCL', OCEAN_FCL: 'FCL' })[selectedShipmentType]}
             </Typography>
             <IconButton
               size="small"
@@ -542,13 +551,16 @@ function ShipmentFormPageContent() {
             )}
             <TextField
               size="small"
-              label="Air Bill Number"
-              value={shipmentFilters.airBillNumber}
-              onChange={(event) => handleShipmentFilterChange('airBillNumber', event.target.value)}
+              label={selectedShipmentType === 'AIR' ? 'Air Bill Number' : 'Booking Number'}
+              value={selectedShipmentType === 'AIR' ? shipmentFilters.airBillNumber : shipmentFilters.booking}
+              onChange={(event) => handleShipmentFilterChange(
+                selectedShipmentType === 'AIR' ? 'airBillNumber' : 'booking', event.target.value
+              )}
               fullWidth
             />
             <Autocomplete
               options={customerOptions}
+              sx={{ order: selectedShipmentType === 'OCEAN_LCL' ? 1 : 0 }}
               getOptionLabel={getCustomerOptionLabel}
               isOptionEqualToValue={(option, value) =>
                 String(option?.customerId || option?.id || '') === String(value?.customerId || value?.id || '')
@@ -569,6 +581,7 @@ function ShipmentFormPageContent() {
                   {...params}
                   size="small"
                   placeholder="Search by Customer"
+                  sx={{ '& input::placeholder': { color: 'text.secondary', opacity: 1 } }}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -584,6 +597,7 @@ function ShipmentFormPageContent() {
             />
             <Autocomplete
               options={stationOptions}
+              sx={{ order: selectedShipmentType === 'OCEAN_LCL' ? 1 : 0 }}
               getOptionLabel={getStationOptionLabel}
               isOptionEqualToValue={(option, value) =>
                 String(option?.stationId || option?.id || '') === String(value?.stationId || value?.id || '')
@@ -611,6 +625,7 @@ function ShipmentFormPageContent() {
                   {...params}
                   size="small"
                   placeholder="Search by Station"
+                  sx={{ '& input::placeholder': { color: 'text.secondary', opacity: 1 } }}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -624,15 +639,55 @@ function ShipmentFormPageContent() {
               )}
               fullWidth
             />
-            <TextField
+            {selectedShipmentType === 'AIR' && [
+              ['booking', 'Booking'],
+              ['customerRefNumber', 'Customer Ref Number'],
+            ].map(([field, label]) => (
+              <TextField
+                key={field}
+                fullWidth
+                size="small"
+                label={label}
+                value={shipmentFilters[field]}
+                onChange={(event) => handleShipmentFilterChange(field, event.target.value)}
+              />
+            ))}
+            {selectedShipmentType === 'OCEAN_LCL' && (
+              <TextField
+                fullWidth
+                size="small"
+                label="Customer Reference Number"
+                sx={{ order: 2 }}
+                value={shipmentFilters.customerRefNumber}
+                onChange={(event) => handleShipmentFilterChange('customerRefNumber', event.target.value)}
+              />
+            )}
+            {selectedShipmentType === 'OCEAN_FCL' && [
+              ['customerRefNumber', 'Customer Reference Number'],
+              ['destination', 'Destination'],
+            ].map(([field, label]) => (
+              <TextField
+                key={field}
+                fullWidth
+                size="small"
+                label={label}
+                value={shipmentFilters[field]}
+                onChange={(event) => handleShipmentFilterChange(field, event.target.value)}
+              />
+            ))}
+            {selectedShipmentType !== 'OCEAN_LCL' && <TextField
               fullWidth
               size="small"
               placeholder="Container"
+              sx={{ '& input::placeholder': { color: 'text.secondary', opacity: 1 } }}
               inputProps={{ 'aria-label': 'Container' }}
               value={shipmentFilters.container}
               onChange={(event) => handleShipmentFilterChange('container', event.target.value)}
-            />
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+            />}
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1,
+              ...(selectedShipmentType === 'OCEAN_LCL' && { order: 2 }),
+            }}>
               <Button
                 variant="outlined"
                 size="small"

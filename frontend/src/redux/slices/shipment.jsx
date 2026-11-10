@@ -357,7 +357,7 @@ export function exportShipmentSpreadsheet(filters = {}) {
         try {
             const params = {};
             ['searchTerm', 'request', 'canceled', 'scanned', 'pickup', 'shipped', 'shipmentType',
-                'customerId', 'stationId', 'consigneeId', 'consigneeForOcean', 'airBillNumber', 'container'].forEach((key) => {
+                'customerId', 'stationId', 'consigneeId', 'consigneeForOcean', 'airBillNumber', 'container', 'booking', 'customerRefNumber', 'destination'].forEach((key) => {
                 const value = String(filters[key] ?? '').trim();
                 if (value) params[key] = value;
             });
@@ -399,6 +399,9 @@ export function getShipmentData({
     consigneeForOcean = '',
     airBillNumber = '',
     container = '',
+    booking = '',
+    customerRefNumber = '',
+    destination = '',
 } = {}) {
     return async () => {
         const requestId = ++latestShipmentListRequestId;
@@ -418,6 +421,9 @@ export function getShipmentData({
             if (String(consigneeForOcean).trim()) params.consigneeForOcean = String(consigneeForOcean).trim();
             if (String(airBillNumber).trim()) params.airBillNumber = String(airBillNumber).trim();
             if (String(container).trim()) params.container = String(container).trim();
+            if (String(booking).trim()) params.booking = String(booking).trim();
+            if (String(customerRefNumber).trim()) params.customerRefNumber = String(customerRefNumber).trim();
+            if (String(destination).trim()) params.destination = String(destination).trim();
             const response = await axios.get('shipment', { params });
             if (requestId !== latestShipmentListRequestId) return;
             dispatch(slice.actions.getShipmentDataSuccess(response.data));
