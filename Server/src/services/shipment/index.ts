@@ -918,6 +918,7 @@ export async function exportShipmentsToSpreadsheetService(
             shipmentDB.getContainersByShipmentId(conn, shipmentId),
             shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
         ]);
+        const showContainerColumn = shipment.shipmentType === "AIR" || shipment.shipmentType === "OCEAN_FCL";
         const rowCount = Math.max(containers.length, receipts.length, 1);
 
         return Array.from({ length: rowCount }, (_, index) => {
@@ -939,7 +940,7 @@ export async function exportShipmentsToSpreadsheetService(
                 weight: firstRow ? shipment.weight ?? "" : "",
                 createdAt: firstRow && shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
                 pickupEntryNumber: firstRow ? shipment.pickupEntryNumber ?? "" : "",
-                container: containers[index]?.container ?? "",
+                container: showContainerColumn ? containers[index]?.container ?? "" : "",
                 receiptNumber: receipt?.receiptNumber ?? "",
                 receiptStatus: receipt?.status ?? "",
                 receiptPieces: receipt?.piecesOnReceipt ?? "",
@@ -972,8 +973,12 @@ export async function exportShipmentsToSpreadsheetService(
         { header: "Pieces", key: "pieces", width: 12 },
         { header: "Weight", key: "weight", width: 12 },
         { header: "Created Date", key: "createdAt", width: 20 },
-        { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 },
-        { header: "Container", key: "container", width: 22 },
+        { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 }
+    );
+    if (shipmentType === "AIR" || shipmentType === "OCEAN_FCL") {
+        columns.push({ header: "Container", key: "container", width: 22 });
+    }
+    columns.push(
         { header: "Warehouse Receipt Number", key: "receiptNumber", width: 24 },
         { header: "Receipt Status", key: "receiptStatus", width: 18 },
         { header: "Receipt Pieces", key: "receiptPieces", width: 16 },
