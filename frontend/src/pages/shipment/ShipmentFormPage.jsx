@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Autocomplete, Box, Typography, Dialog, DialogTitle, Stack, Button, Divider, IconButton,
-  DialogContent, useMediaQuery, Alert, CircularProgress, TextField, MenuItem
+  DialogContent, useMediaQuery, Alert, CircularProgress, TextField, MenuItem, Snackbar
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -21,7 +21,7 @@ import OceanLCLForm from './OceanLCLForm';
 import OceanFCLForm from './OceanFCLForm';
 import ShipmentMobileScanPage from './ShipmentMobileScanPage';
 import { useDispatch, useSelector } from '../../redux/store';
-import { getExportAirlineOptions, getShipmentById } from '../../redux/slices/shipment';
+import { exportShipmentSpreadsheet, getExportAirlineOptions, getShipmentById } from '../../redux/slices/shipment';
 import {
   searchWarehouseReceiptCustomers,
   searchWarehouseReceiptStations,
@@ -70,6 +70,10 @@ const emptyShipmentFilters = {
   consigneeId: '',
   consigneeForOcean: '',
   airBillNumber: '',
+  container: '',
+  booking: '',
+  customerRefNumber: '',
+  destination: '',
 };
 
 export default function ShipmentFormPage() {
@@ -89,6 +93,7 @@ function ShipmentFormPageContent() {
   const {
     exportAirlineOptions = [],
     exportAirlineLoading = false,
+    shipmentData = [],
   } = useSelector((state) => state.shipmentdata || {});
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -100,6 +105,11 @@ function ShipmentFormPageContent() {
   const [viewShipment, setViewShipment] = useState(null);
   const [viewShipmentError, setViewShipmentError] = useState('');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [exportingSpreadsheet, setExportingSpreadsheet] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [noExportDataOpen, setNoExportDataOpen] = useState(false);
+  const [statusFilters, setStatusFilters] = useState({});
+  const shipmentSearchStr = useSelector((state) => state.shipmentdata.shipmentSearchStr);
   const [shipmentFilters, setShipmentFilters] = useState(emptyShipmentFilters);
   const [appliedShipmentFilters, setAppliedShipmentFilters] = useState(emptyShipmentFilters);
   const [selectedShipmentType, setSelectedShipmentType] = useState('AIR');
@@ -112,6 +122,24 @@ function ShipmentFormPageContent() {
   const activeFilterCount = Object.entries(activeShipmentFilters)
     .filter(([key, value]) => !['customerId', 'stationId', 'consigneeId'].includes(key) && String(value).trim() !== '')
     .length;
+  const handleExportSpreadsheet = async () => {
+    if (!shipmentData.length) {
+      setNoExportDataOpen(true);
+      return;
+    }
+    setExportingSpreadsheet(true);
+    setExportError('');
+    const exportFilters = { ...activeShipmentFilters, shipmentType: selectedShipmentType, searchTerm: shipmentSearchStr };
+    Object.entries(statusFilters).forEach(([key, enabled]) => {
+      exportFilters[key] = enabled || activeShipmentFilters[key];
+    });
+    try {
+      const result = await dispatch(exportShipmentSpreadsheet(exportFilters));
+      if (result?.error) setExportError(result.message);
+    } finally {
+      setExportingSpreadsheet(false);
+    }
+  };
   const requestedViewShipmentId = searchParams.get('viewShipmentId')
     || location.state?.viewShipment?.shipmentId
     || location.state?.viewShipment?.id
@@ -298,6 +326,12 @@ function ShipmentFormPageContent() {
     setAppliedShipmentFilters(emptyShipmentFilters);
   };
 
+  const handleShipmentTypeChange = (shipmentType) => {
+    if (shipmentType === selectedShipmentType) return;
+    handleClearShipmentFilters();
+    setSelectedShipmentType(shipmentType);
+  };
+
   const handleCloseShipmentFilters = () => {
     if (Object.values(shipmentFilters).every((value) => String(value).trim() === '')) {
       handleClearShipmentFilters();
@@ -343,6 +377,7 @@ function ShipmentFormPageContent() {
           <>
             <Box>
               {viewShipmentError && <Alert severity="error" sx={{ mb: 2 }}>{viewShipmentError}</Alert>}
+              {exportError && <Alert severity="error" sx={{ mb: 2 }}>{exportError}</Alert>}
               <SharedHomepageHeader title="Shipment Form" buttonText='New Shipment' onButtonClick={onClickOfNewShipment} />
               <SharedSearchField
                 page="shipment"
@@ -350,12 +385,15 @@ function ShipmentFormPageContent() {
                 onFilterClick={handleOpenShipmentFilters}
                 activeFilterCount={activeFilterCount}
                 shipmentType={selectedShipmentType}
+                onExportClick={handleExportSpreadsheet}
+                exporting={exportingSpreadsheet}
               />
               <ShipmentTabs
                 initialShipmentType={selectedShipmentType}
                 onViewShipment={handleViewShipment}
                 filters={activeShipmentFilters}
-                onShipmentTypeChange={setSelectedShipmentType}
+                onShipmentTypeChange={handleShipmentTypeChange}
+                onStatusFiltersChange={setStatusFilters}
               />
               {/* <CarrierTable /> */}
             </Box>
@@ -438,7 +476,7 @@ function ShipmentFormPageContent() {
         <DialogContent sx={{ p: 2 }}>
           <Box sx={{ position: 'relative', pb: 1 }}>
             <Typography sx={{ textAlign: 'center', fontWeight: 700, fontSize: 16, mt: 2, mb: 2.2 }}>
-              Search Filters
+              Search Filters - {({ AIR: 'AIR', OCEAN_LCL: 'LCL', OCEAN_FCL: 'FCL' })[selectedShipmentType]}
             </Typography>
             <IconButton
               size="small"
@@ -513,13 +551,16 @@ function ShipmentFormPageContent() {
             )}
             <TextField
               size="small"
-              label="Air Bill Number"
-              value={shipmentFilters.airBillNumber}
-              onChange={(event) => handleShipmentFilterChange('airBillNumber', event.target.value)}
+              label={selectedShipmentType === 'AIR' ? 'Air Bill Number' : 'Booking Number'}
+              value={selectedShipmentType === 'AIR' ? shipmentFilters.airBillNumber : shipmentFilters.booking}
+              onChange={(event) => handleShipmentFilterChange(
+                selectedShipmentType === 'AIR' ? 'airBillNumber' : 'booking', event.target.value
+              )}
               fullWidth
             />
             <Autocomplete
               options={customerOptions}
+              sx={{ order: selectedShipmentType === 'OCEAN_LCL' ? 1 : 0 }}
               getOptionLabel={getCustomerOptionLabel}
               isOptionEqualToValue={(option, value) =>
                 String(option?.customerId || option?.id || '') === String(value?.customerId || value?.id || '')
@@ -540,6 +581,7 @@ function ShipmentFormPageContent() {
                   {...params}
                   size="small"
                   placeholder="Search by Customer"
+                  sx={{ '& input::placeholder': { color: 'text.secondary', opacity: 1 } }}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -555,6 +597,7 @@ function ShipmentFormPageContent() {
             />
             <Autocomplete
               options={stationOptions}
+              sx={{ order: selectedShipmentType === 'OCEAN_LCL' ? 1 : 0 }}
               getOptionLabel={getStationOptionLabel}
               isOptionEqualToValue={(option, value) =>
                 String(option?.stationId || option?.id || '') === String(value?.stationId || value?.id || '')
@@ -582,6 +625,7 @@ function ShipmentFormPageContent() {
                   {...params}
                   size="small"
                   placeholder="Search by Station"
+                  sx={{ '& input::placeholder': { color: 'text.secondary', opacity: 1 } }}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -595,7 +639,53 @@ function ShipmentFormPageContent() {
               )}
               fullWidth
             />
-            <Box sx={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            {selectedShipmentType === 'AIR' && [
+              ['booking', 'Booking'],
+              ['customerRefNumber', 'Customer Ref Number'],
+            ].map(([field, label]) => (
+              <TextField
+                key={field}
+                fullWidth
+                size="small"
+                label={label}
+                value={shipmentFilters[field]}
+                onChange={(event) => handleShipmentFilterChange(field, event.target.value)}
+              />
+            ))}
+            {selectedShipmentType === 'OCEAN_LCL' && (
+              <TextField
+                fullWidth
+                size="small"
+                label="Customer Reference Number"
+                sx={{ order: 2 }}
+                value={shipmentFilters.customerRefNumber}
+                onChange={(event) => handleShipmentFilterChange('customerRefNumber', event.target.value)}
+              />
+            )}
+            {selectedShipmentType === 'OCEAN_FCL' && [
+              ['customerRefNumber', 'Customer Reference Number'],
+              ['destination', 'Destination'],
+            ].map(([field, label]) => (
+              <TextField
+                key={field}
+                fullWidth
+                size="small"
+                label={label}
+                value={shipmentFilters[field]}
+                onChange={(event) => handleShipmentFilterChange(field, event.target.value)}
+              />
+            ))}
+            {selectedShipmentType !== 'OCEAN_LCL' && <TextField
+              fullWidth
+              size="small"
+              label="Container"
+              value={shipmentFilters.container}
+              onChange={(event) => handleShipmentFilterChange('container', event.target.value)}
+            />}
+            <Box sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1,
+              ...(selectedShipmentType === 'OCEAN_LCL' && { order: 2 }),
+            }}>
               <Button
                 variant="outlined"
                 size="small"
@@ -616,6 +706,16 @@ function ShipmentFormPageContent() {
           </Box>
         </DialogContent>
       </Dialog>
+      <Snackbar
+        open={noExportDataOpen}
+        autoHideDuration={3000}
+        onClose={(event, reason) => {
+          if (reason !== 'clickaway') setNoExportDataOpen(false);
+        }}
+        message="No data available to export"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        ContentProps={{ sx: { bgcolor: '#000', color: '#fff', '& .MuiSnackbarContent-message': { width: '100%', textAlign: 'center' } } }}
+      />
     </>
   );
 }

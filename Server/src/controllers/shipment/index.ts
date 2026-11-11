@@ -3,6 +3,12 @@ import { Connection } from "odbc";
 import * as shipmentService from "../../services/shipment";
 import { CreateWarehouseShipment, UpdateWarehouseShipment, WarehouseShipmentPickupRequest } from "../../entities/shipment";
 
+function getAuthenticatedUserId(req: Request): number | null {
+    const rawUserId = (req as any).user?.userId ?? (req as any).user?.id;
+    const userId = Number(rawUserId);
+    return Number.isInteger(userId) && userId > 0 ? userId : null;
+}
+
 export async function createShipment(req: Request, res: Response, conn: Connection): Promise<void> {
     try {
         const payload = req.body as CreateWarehouseShipment;
@@ -95,6 +101,10 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
         const consigneeId = req.query.consigneeId as string | undefined;
         const airBillNumber = req.query.airBillNumber as string | undefined;
         const consigneeForOcean = req.query.consigneeForOcean as string | undefined;
+        const container = req.query.container as string | undefined;
+        const booking = req.query.booking as string | undefined;
+        const destination = req.query.destination as string | undefined;
+        const customerRefNumber = req.query.customerRefNumber as string | undefined;
 
         const filters = {
             barcodeNumber,
@@ -111,9 +121,13 @@ export async function listShipments(req: Request, res: Response, conn: Connectio
             consigneeId: consigneeId ? consigneeId : undefined,
             airBillNumber: airBillNumber ? airBillNumber : undefined,
             consigneeForOcean: consigneeForOcean ? consigneeForOcean : undefined,
+            container: container?.trim() || undefined,
+            booking: booking?.trim() || undefined,
+            destination: destination?.trim() || undefined,
+            customerRefNumber: customerRefNumber?.trim() || undefined,
         }
 
-        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean });
+        const result = await shipmentService.listShipments(conn, { barcodeNumber: filters.barcodeNumber, page: filters.page, pageSize: filters.pageSize, scanned: filters.scanned, pickup: filters.pickup, shipped: filters.shipped, request: filters.request, canceled: filters.canceled, shipmentType: filters.shipmentType, customerId: filters.customerId, stationId: filters.stationId, consigneeId: filters.consigneeId, airBillNumber: filters.airBillNumber, consigneeForOcean: filters.consigneeForOcean, container: filters.container, booking: filters.booking, destination: filters.destination, customerRefNumber: filters.customerRefNumber });
         res.status(200).json({
             success: true,
             data: result.data,
@@ -146,6 +160,10 @@ export async function exportShipmentsToSpreadsheet(req: Request, res: Response, 
             consigneeId: req.query.consigneeId as string | undefined,
             airBillNumber: req.query.airBillNumber as string | undefined,
             consigneeForOcean: req.query.consigneeForOcean as string | undefined,
+            container: typeof req.query.container === "string" ? req.query.container.trim() || undefined : undefined,
+            booking: typeof req.query.booking === "string" ? req.query.booking.trim() || undefined : undefined,
+            destination: typeof req.query.destination === "string" ? req.query.destination.trim() || undefined : undefined,
+            customerRefNumber: typeof req.query.customerRefNumber === "string" ? req.query.customerRefNumber.trim() || undefined : undefined,
         });
 
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -362,7 +380,11 @@ export async function scanFreight(req: Request, res: Response, conn: Connection)
             return;
         }
 
-        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const userId = getAuthenticatedUserId(req);
+        if (userId === null) {
+            res.status(401).json({ success: false, message: "Authenticated user ID is required" });
+            return;
+        }
         const updatedShipment = await shipmentService.scanFreight(conn, shipmentId, barcodeValue, userId);
         res.status(200).json({ success: true, message: "Freight scanned successfully", data: updatedShipment });
 
@@ -385,7 +407,11 @@ export async function unscanFreight(req: Request, res: Response, conn: Connectio
             return;
         }
 
-        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const userId = getAuthenticatedUserId(req);
+        if (userId === null) {
+            res.status(401).json({ success: false, message: "Authenticated user ID is required" });
+            return;
+        }
         const updatedShipment = await shipmentService.unscanFreight(conn, shipmentId, barcodeValue, userId);
         res.status(200).json({ success: true, message: "Freight un-scanned successfully", data: updatedShipment });
 
@@ -474,7 +500,11 @@ export async function cancelShipment(req: Request, res: Response, conn: Connecti
     try {
         const shipmentId = Number(req.body.shipmentId);
         const canceledReason = typeof req.body?.canceledReason === "string" ? req.body.canceledReason.trim() : "";
-        const userId = (req as any).user?.userId || (req as any).user?.id || 0;
+        const userId = getAuthenticatedUserId(req);
+        if (userId === null) {
+            res.status(401).json({ success: false, message: "Authenticated user ID is required" });
+            return;
+        }
 
         if (!Number.isInteger(shipmentId) || shipmentId <= 0) {
             res.status(400).json({ success: false, message: "shipmentId must be a positive integer" });

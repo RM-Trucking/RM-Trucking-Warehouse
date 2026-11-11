@@ -26,6 +26,7 @@ ShipmentTabs.propTypes = {
     onViewShipment: PropTypes.func.isRequired,
     filters: PropTypes.object,
     onShipmentTypeChange: PropTypes.func,
+    onStatusFiltersChange: PropTypes.func,
     initialShipmentType: PropTypes.oneOf(['AIR', 'OCEAN_LCL', 'OCEAN_FCL']),
 };
 
@@ -53,7 +54,7 @@ ScanActionIcon.propTypes = {
     width: PropTypes.number,
 };
 
-export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentTypeChange, initialShipmentType = 'AIR' }) {
+export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentTypeChange, onStatusFiltersChange, initialShipmentType = 'AIR' }) {
     const dispatch = useDispatch();
     const {
         shipmentData: apiShipmentData,
@@ -72,6 +73,15 @@ export default function ShipmentTabs({ onViewShipment, filters = {}, onShipmentT
     const scannedFilterEnabled = airStatusFilters.includes('scan');
     const pickupFilterEnabled = airStatusFilters.includes('pickup');
     const shippedFilterEnabled = airStatusFilters.includes('shipment');
+    useEffect(() => {
+        onStatusFiltersChange?.({
+            request: requestFilterEnabled,
+            canceled: canceledFilterEnabled,
+            scanned: scannedFilterEnabled,
+            pickup: pickupFilterEnabled,
+            shipped: shippedFilterEnabled,
+        });
+    }, [onStatusFiltersChange, requestFilterEnabled, canceledFilterEnabled, scannedFilterEnabled, pickupFilterEnabled, shippedFilterEnabled]);
     // const [selectedRowData, setSelectedRowData] = useState(null);
     // const [openPickupFormType, setOpenPickupFormType] = useState(null);
     const [activeForm, setActiveForm] = useState({ type: null, data: null });

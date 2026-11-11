@@ -5,6 +5,7 @@ import { UPLOAD_PATHS } from "../../config/env";
 import { ensureUploadDirExists } from "../../config/multer";
 import * as shipmentDB from "../../database/shipment";
 import * as entityDB from "../../database/maintanance/entity";
+import * as customerDB from "../../database/maintanance/customer";
 import * as noteDB from "../../database/maintanance/note";
 import * as userDB from "../../database/maintanance/auth";
 import * as warehouseReceiptDB from "../../database/warehouse-receipt";
@@ -875,7 +876,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, canceled?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean, request?: boolean, canceled?: boolean, shipmentType?: string, customerId?: string, stationId?: string, consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string; container?: string, booking?: string, destination?: string, customerRefNumber?: string }
 ): Promise<{ data: WarehouseShipmentWithRelations[]; total: number; page: number; pageSize: number; countList: { air: number; fcl: number; lcl: number } }> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -896,7 +897,7 @@ export async function listShipments(
 
 export async function exportShipmentsToSpreadsheetService(
     conn: Connection,
-    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string; consigneeForOcean?: string; container?: string; booking?: string; destination?: string; customerRefNumber?: string }
 ) {
     const shipmentIds = await shipmentDB.listShipments(conn, { ...filters, exportAll: true });
     if (shipmentIds.length === 0) {
@@ -912,6 +913,49 @@ export async function exportShipmentsToSpreadsheetService(
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Shipments");
+    const shipmentRows = await Promise.all(shipments.map(async (shipment) => {
+        const shipmentId = Number(shipment.shipmentId);
+        const [containers, receipts] = await Promise.all([
+            shipmentDB.getContainersByShipmentId(conn, shipmentId),
+            shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
+        ]);
+        const stationName = shipment.shipmentType === "OCEAN_FCL" && String(shipment.stationScope).toUpperCase() === "ALL"
+            ? (await customerDB.getStationDropdown(conn, Number(shipment.customerId), "", true))
+                .map((station) => station.stationName)
+                .join(", ")
+            : shipment.stationName ?? "";
+        const showContainerColumn = shipment.shipmentType === "AIR" || shipment.shipmentType === "OCEAN_FCL";
+        const rowCount = Math.max(containers.length, receipts.length, 1);
+
+        return Array.from({ length: rowCount }, (_, index) => {
+            const firstRow = index === 0;
+            const receipt = receipts[index];
+
+            return {
+                shipmentType: firstRow ? shipment.shipmentType ?? "" : "",
+                barcodeNumber: firstRow ? shipment.barcodeNumber ?? "" : "",
+                customerName: firstRow ? shipment.customerName ?? "" : "",
+                stationName: firstRow ? stationName : "",
+                consignee: firstRow ? shipment.airlineName ?? shipment.consigneeForOcean ?? "" : "",
+                airBillNumber: firstRow && shipment.shipmentType === "AIR" ? shipment.airBillNumber ?? "" : "",
+                booking: firstRow ? shipment.booking ?? "" : "",
+                customerRefNumber: firstRow ? shipment.customerRefNumber ?? "" : "",
+                additionalRefNumber: firstRow ? shipment.additionalRefNumber ?? "" : "",
+                destination: firstRow && shipment.shipmentType === "OCEAN_FCL" ? shipment.destination ?? "" : "",
+                pieces: firstRow ? shipment.pieces ?? "" : "",
+                weight: firstRow ? shipment.weight ?? "" : "",
+                createdAt: firstRow && shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
+                pickupEntryNumber: firstRow ? shipment.pickupEntryNumber ?? "" : "",
+                container: showContainerColumn ? containers[index]?.container ?? "" : "",
+                receiptNumber: receipt?.receiptNumber ?? "",
+                receiptStatus: receipt?.status ?? "",
+                receiptPieces: receipt?.piecesOnReceipt ?? "",
+                receiptWeight: receipt?.weightInland ?? receipt?.reWeight ?? "",
+                receiptLocation: receipt?.location ?? "",
+                receiptDestination: receipt?.destination ?? "",
+            };
+        });
+    }));
     const shipmentType = String(filters.shipmentType ?? "").toUpperCase();
     const columns: Partial<ExcelJS.Column>[] = [
         { header: "Shipment Type", key: "shipmentType", width: 15 },
@@ -937,15 +981,19 @@ export async function exportShipmentsToSpreadsheetService(
         { header: "Created Date", key: "createdAt", width: 20 },
         { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 }
     );
+    if (shipmentType === "AIR" || shipmentType === "OCEAN_FCL") {
+        columns.push({ header: "Container", key: "container", width: 22 });
+    }
+    columns.push(
+        { header: "Warehouse Receipt Number", key: "receiptNumber", width: 24 },
+        { header: "Receipt Status", key: "receiptStatus", width: 18 },
+        { header: "Receipt Pieces", key: "receiptPieces", width: 16 },
+        { header: "Receipt Weight", key: "receiptWeight", width: 16 },
+        { header: "Receipt Location", key: "receiptLocation", width: 22 },
+        { header: "Receipt Destination", key: "receiptDestination", width: 24 }
+    );
     worksheet.columns = columns;
-    worksheet.addRows(shipments.map((shipment) => ({
-        ...shipment,
-        shipmentType: shipment.shipmentType,
-        consignee: shipment.airlineName ?? shipment.consigneeForOcean ?? "",
-        airBillNumber: shipment.shipmentType === "AIR" ? shipment.airBillNumber ?? "" : "",
-        destination: shipment.shipmentType === "OCEAN_FCL" ? shipment.destination ?? "" : "",
-        createdAt: shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
-    })));
+    worksheet.addRows(shipmentRows.flat());
     worksheet.getRow(1).font = { bold: true };
     worksheet.eachRow({ includeEmpty: true }, (row) => {
         row.eachCell({ includeEmpty: true }, (cell) => {
@@ -969,7 +1017,7 @@ function hasAllFreightScanned(freightInfos: Array<{ isScanned?: unknown }>): boo
     return freightInfos.every((freightInfo) => String(freightInfo.isScanned).toUpperCase() === "Y");
 }
 
-export async function scanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId = 0) {
+export async function scanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId: number) {
     const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
         .split("-")
         .map(part => part.trim())
@@ -1085,7 +1133,7 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
         const allShipmentsReceiptsScanned = !(await shipmentDB.hasUnscannedFreightByShipment(conn, shipmentId));
 
         if (allShipmentsReceiptsScanned) {
-            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "Y" }, 0);
+            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "Y" }, userId);
         }
 
         const record = await getShipmentById(conn, shipmentId);
@@ -1102,7 +1150,7 @@ export async function scanFreight(conn: Connection, shipmentId: number, barcodeV
     }
 }
 
-export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId = 0) {
+export async function unscanFreight(conn: Connection, shipmentId: number, barcodeValue: string, userId: number) {
     const [receiptNumberPart, freightBarcodeValuePart] = barcodeValue
         .split("-")
         .map(part => part.trim())
@@ -1176,7 +1224,7 @@ export async function unscanFreight(conn: Connection, shipmentId: number, barcod
         }))).every(Boolean);
 
         if (!allShipmentsReceiptsScanned) {
-            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "N" }, 0);
+            await shipmentDB.updateShipment(conn, shipmentId, { isScanned: "N" }, userId);
         }
 
         const record = await getShipmentById(conn, shipmentId);

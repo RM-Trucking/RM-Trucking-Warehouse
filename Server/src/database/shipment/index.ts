@@ -80,7 +80,7 @@ export async function updateShipment(conn: Connection, shipmentId: number, paylo
     const params: any[] = [];
 
     Object.entries(payload).forEach(([key, value]) => {
-        if (key === "shipmentId" || key === "containers" || key === "receipts") {
+        if (key === "shipmentId" || key === "containers" || key === "receipts" || key === "updatedBy") {
             return;
         }
 
@@ -88,6 +88,8 @@ export async function updateShipment(conn: Connection, shipmentId: number, paylo
         params.push(value);
     });
 
+    fields.push(`"updatedBy" = ?`);
+    params.push(Number(userId));
     fields.push(`"updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)`);
     params.push(shipmentId);
 
@@ -181,7 +183,7 @@ export async function getShipmentByIdForPickup(conn: Connection, shipmentId: num
 
 export async function listShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string; exportAll?: boolean }
+    filters: { barcodeNumber?: string; page?: number; pageSize?: number; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string, airBillNumber?: string, consigneeForOcean?: string; container?: string; booking?: string; destination?: string; customerRefNumber?: string; exportAll?: boolean }
 ): Promise<any[]> {
     const page = filters.page ?? 1;
     const pageSize = filters.pageSize ?? 10;
@@ -189,7 +191,7 @@ export async function listShipments(
 
     let query = `
         SELECT "shipmentId"
-        FROM ${SCHEMA}."Warehouse_Shipment"
+        FROM ${SCHEMA}."Warehouse_Shipment" AS ws
         WHERE 1 = 1
     `;
 
@@ -198,6 +200,16 @@ export async function listShipments(
         const barcodeValue = `%${filters.barcodeNumber.toUpperCase()}%`;
         query += ` AND UPPER("barcodeNumber") LIKE ?`;
         params.push(barcodeValue);
+    }
+
+    if (filters.container) {
+        query += ` AND EXISTS (
+            SELECT 1
+            FROM ${SCHEMA}."Warehouse_Shipment_Containers" AS wsc
+            WHERE wsc."shipmentId" = ws."shipmentId"
+              AND UPPER(COALESCE(wsc."container", '')) LIKE ?
+        )`;
+        params.push(`%${filters.container.toUpperCase()}%`);
     }
 
     if (filters.airBillNumber) {
@@ -270,6 +282,20 @@ export async function listShipments(
         query += ` AND UPPER(COALESCE("consigneeForOcean", '')) LIKE ?`;
         params.push(`%${filters.consigneeForOcean.toUpperCase()}%`);
     }
+    if (filters.booking) {
+        query += ` AND UPPER(COALESCE("booking", '')) LIKE ?`;
+        params.push(`%${filters.booking.toUpperCase()}%`);
+    }
+
+    if (filters.customerRefNumber) {
+        query += ` AND UPPER(COALESCE("customerRefNumber", '')) LIKE ?`;
+        params.push(`%${filters.customerRefNumber.toUpperCase()}%`);
+    }
+
+    if (filters.destination) {
+        query += ` AND UPPER(COALESCE("destination", '')) LIKE ?`;
+        params.push(`%${filters.destination.toUpperCase()}%`);
+    }
 
     query += ` ORDER BY "shipmentId" DESC`;
     if (!filters.exportAll) {
@@ -282,15 +308,25 @@ export async function listShipments(
 
 export async function countShipments(
     conn: Connection,
-    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string, consigneeForOcean?: string }
+    filters: { barcodeNumber?: string; scanned?: boolean; pickup?: boolean; shipped?: boolean; request?: boolean; canceled?: boolean; shipmentType?: string; customerId?: string; stationId?: string; consigneeId?: string; airBillNumber?: string, consigneeForOcean?: string; container?: string; booking?: string; destination?: string; customerRefNumber?: string }
 ): Promise<number> {
-    let query = `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" WHERE 1 = 1`;
+    let query = `SELECT COUNT(*) AS "total" FROM ${SCHEMA}."Warehouse_Shipment" AS ws WHERE 1 = 1`;
     const params: any[] = [];
 
     if (filters.barcodeNumber) {
         const barcodeValue = `%${filters.barcodeNumber.toUpperCase()}%`;
         query += ` AND UPPER("barcodeNumber") LIKE ?`;
         params.push(barcodeValue);
+    }
+
+    if (filters.container) {
+        query += ` AND EXISTS (
+            SELECT 1
+            FROM ${SCHEMA}."Warehouse_Shipment_Containers" AS wsc
+            WHERE wsc."shipmentId" = ws."shipmentId"
+              AND UPPER(COALESCE(wsc."container", '')) LIKE ?
+        )`;
+        params.push(`%${filters.container.toUpperCase()}%`);
     }
 
     if (filters.airBillNumber) {
@@ -361,6 +397,21 @@ export async function countShipments(
     if (filters.consigneeForOcean) {
         query += ` AND UPPER(COALESCE("consigneeForOcean", '')) LIKE ?`;
         params.push(`%${filters.consigneeForOcean.toUpperCase()}%`);
+    }
+
+    if (filters.booking) {
+        query += ` AND UPPER(COALESCE("booking", '')) LIKE ?`;
+        params.push(`%${filters.booking.toUpperCase()}%`);
+    }
+
+    if (filters.customerRefNumber) {
+        query += ` AND UPPER(COALESCE("customerRefNumber", '')) LIKE ?`;
+        params.push(`%${filters.customerRefNumber.toUpperCase()}%`);
+    }
+
+    if (filters.destination) {
+        query += ` AND UPPER(COALESCE("destination", '')) LIKE ?`;
+        params.push(`%${filters.destination.toUpperCase()}%`);
     }
 
     const result = await conn.query(query, params as any) as any[];

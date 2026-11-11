@@ -88,6 +88,22 @@ function getPathOutputDirectory(explicitPath?: string, defaultPath?: string): st
     return explicitPath || defaultPath || process.cwd();
 }
 
+function getCustomerType(isNonBillable: unknown): 'Billable' | 'Non Billable' {
+    if (typeof isNonBillable === 'boolean') {
+        return isNonBillable ? 'Non Billable' : 'Billable';
+    }
+
+    const value = String(isNonBillable ?? 'N').trim().toUpperCase() || 'N';
+    if (['Y', 'YES', 'TRUE', '1'].includes(value)) {
+        return 'Non Billable';
+    }
+    if (['N', 'NO', 'FALSE', '0'].includes(value)) {
+        return 'Billable';
+    }
+
+    throw new Error('Station billing status is missing or invalid');
+}
+
 async function findEligibleReceipts(conn: Connection, options: WarehouseReceiptInvoiceBatchOptions) {
     return getEligibleWarehouseReceiptInvoiceRows(conn, {
         limit: options.limit,
@@ -153,17 +169,17 @@ async function processWarehouseReceiptInvoice(
             throw new Error('Rate is invalid');
         }
 
-        const pdfPath = await createWarehouseReceiptPDF({
+        const invoiceData = {
             ...receipt,
             rateInformation,
-        }, true, pdfOutputDirectory);
+            customerType: getCustomerType(receipt?.isNonBillable),
+        };
+
+        const pdfPath = await createWarehouseReceiptPDF(invoiceData, true, pdfOutputDirectory);
         result.pdfPath = pdfPath;
 
         const ediSuccess = await generateEDIForWarehouseReceipt(
-            {
-                ...receipt,
-                rateInformation,
-            },
+            invoiceData,
             ediOutputDirectory
         );
 

@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types';
 import { useEffect, useState } from 'react';
-import { Box, Stack, InputAdornment, TextField, IconButton } from '@mui/material';
+import { Box, Stack, InputAdornment, TextField, IconButton, CircularProgress } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import Iconify from '../../components/iconify';
 import { useDispatch, useSelector } from '../../redux/store';
@@ -19,9 +19,11 @@ SharedSearchField.propTypes = {
     onFilterClick: PropTypes.func,
     activeFilterCount: PropTypes.number,
     shipmentType: PropTypes.string,
+    onExportClick: PropTypes.func,
+    exporting: PropTypes.bool,
 };
 
-export default function SharedSearchField({ page, filters = {}, onFilterClick, activeFilterCount = 0, shipmentType = '' }) {
+export default function SharedSearchField({ page, filters = {}, onFilterClick, activeFilterCount = 0, shipmentType = '', onExportClick, exporting = false }) {
     const dispatch = useDispatch();
 
     // state declarations
@@ -176,6 +178,25 @@ export default function SharedSearchField({ page, filters = {}, onFilterClick, a
                             }}
                         >
                             <FilterListIcon sx={{ fontSize: 20 }} />
+                        </IconButton>
+                    )}
+                    {page === 'shipment' && onExportClick && (
+                        <IconButton
+                            size="small"
+                            aria-label="Download shipment Excel spreadsheet"
+                            onClick={onExportClick}
+                            disabled={exporting}
+                            sx={{
+                                ml: 0.5,
+                                bgcolor: '#eef6ef',
+                                color: '#1f7a3a',
+                                borderRadius: 0.8,
+                                '&:hover': { bgcolor: '#dceedd' },
+                                '&.Mui-disabled': { bgcolor: '#e5e5e5', color: '#9a9a9a' },
+                            }}
+                        >
+                            {exporting ? <CircularProgress size={16} color="inherit" />
+                                : <Iconify icon="mdi:file-excel" width={18} sx={{ color: 'inherit' }} />}
                         </IconButton>
                     )}
                 </Stack>

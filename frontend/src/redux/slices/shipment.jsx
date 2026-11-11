@@ -352,6 +352,36 @@ export default slice.reducer;
 // shipment api calls
 let latestShipmentListRequestId = 0;
 
+export function exportShipmentSpreadsheet(filters = {}) {
+    return async () => {
+        try {
+            const params = {};
+            ['searchTerm', 'request', 'canceled', 'scanned', 'pickup', 'shipped', 'shipmentType',
+                'customerId', 'stationId', 'consigneeId', 'consigneeForOcean', 'airBillNumber', 'container', 'booking', 'customerRefNumber', 'destination'].forEach((key) => {
+                const value = String(filters[key] ?? '').trim();
+                if (value) params[key] = value;
+            });
+            const response = await axios.get('/shipment/export-spreadsheet', { params, responseType: 'blob' });
+            const disposition = String(response.headers?.['content-disposition'] || '');
+            const filename = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+                || disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'shipments.xlsx';
+            let decodedFilename = filename;
+            try { decodedFilename = decodeURIComponent(filename); } catch { /* Keep the server filename. */ }
+            const url = window.URL.createObjectURL(response.data);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = decodedFilename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            return { success: true };
+        } catch (error) {
+            return { error: true, message: error.message || 'Failed to export shipment spreadsheet' };
+        }
+    };
+}
+
 export function getShipmentData({
     pageNo = 1,
     pageSize = 50,
@@ -368,6 +398,10 @@ export function getShipmentData({
     consigneeId = '',
     consigneeForOcean = '',
     airBillNumber = '',
+    container = '',
+    booking = '',
+    customerRefNumber = '',
+    destination = '',
 } = {}) {
     return async () => {
         const requestId = ++latestShipmentListRequestId;
@@ -386,6 +420,10 @@ export function getShipmentData({
             if (consigneeId) params.consigneeId = consigneeId;
             if (String(consigneeForOcean).trim()) params.consigneeForOcean = String(consigneeForOcean).trim();
             if (String(airBillNumber).trim()) params.airBillNumber = String(airBillNumber).trim();
+            if (String(container).trim()) params.container = String(container).trim();
+            if (String(booking).trim()) params.booking = String(booking).trim();
+            if (String(customerRefNumber).trim()) params.customerRefNumber = String(customerRefNumber).trim();
+            if (String(destination).trim()) params.destination = String(destination).trim();
             const response = await axios.get('shipment', { params });
             if (requestId !== latestShipmentListRequestId) return;
             dispatch(slice.actions.getShipmentDataSuccess(response.data));
