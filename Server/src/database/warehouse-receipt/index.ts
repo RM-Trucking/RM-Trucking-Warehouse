@@ -188,11 +188,11 @@ export async function createWarehouseReceipt(
 export async function getWarehouseReceiptById(
     conn: Connection,
     receiptId: number
-): Promise<WarehouseReceipt & { carrierName: string; customerName: string; stationName: string } | null> {
+): Promise<WarehouseReceipt & { carrierName: string; customerName: string; stationName: string; isNonBillable: unknown } | null> {
     console.log("Fetching warehouse receipt by ID:", receiptId);
 
     const query = `
-        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName", "s"."rmAccountNumber" as "stationRMAccountNumber"
+        SELECT "wh".*, "c"."carrierName", "cust"."customerName", "s"."stationName", "s"."rmAccountNumber" as "stationRMAccountNumber", "s"."isNonBillable"
         FROM ${SCHEMA}."Warehouse_Receipt" "wh"
         LEFT JOIN ${SCHEMA}."Carrier" "c" ON "wh"."carrierId" = "c"."carrierId"
         LEFT JOIN ${SCHEMA}."Customer" "cust" ON "wh"."customerId" = "cust"."customerId"

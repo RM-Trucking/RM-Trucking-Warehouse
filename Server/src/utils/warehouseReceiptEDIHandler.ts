@@ -79,6 +79,7 @@ export function toWarehouseReceiptEDI(form: any) {
         date,
         time,
         referenceNumber,
+        customerType: toString(form.customerType),
         billToName: form.customerName || form.billToName || '',
         billTo: form.stationRMAccountNumber || '',
         shipperName: form.shipper || form.shipperName || '',
@@ -121,7 +122,8 @@ GS*SM*SRINSOFT3*RMFT*${data.date}*${data.time}*${data.referenceNumber}*X*004010$
 ST*204*${transactionSetControlNumber}${segmentBreaker}
 B2**RMFT**${data.referenceNumber}${segmentBreaker}
 B2A*00${segmentBreaker}
-L11*${data.referenceNumber}*ZZ${segmentBreaker}
+L11*${data.referenceNumber}*CT${segmentBreaker}
+L11*${data.customerType}*ZZ${segmentBreaker}
 L11*${data.proNumber}*PO${segmentBreaker}
 L11*${data.customerRefNumber}*CO${segmentBreaker}
 L11*${data.packageId}*3H${segmentBreaker}
