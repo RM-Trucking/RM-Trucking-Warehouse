@@ -111,6 +111,7 @@ export async function generateEDIForWarehouseReceipt(
         if (!data.referenceNumber || !data.date || !data.time) {
             throw new Error('Warehouse receipt data is missing required EDI fields');
         }
+        const ediRate = data.customerType.trim().toLowerCase() === 'non billable' ? 0 : data.totalRate;
         const hazmatIndicator = data.hazmat === 'Y' ? 'HAZ' : '';
         const numberOfSegments = 12;
         const transactionSetControlNumber = '0001';
@@ -132,7 +133,7 @@ N1*SF*${data.shipperName}* * *${segmentBreaker}
 N1*CA*${data.carrierName}* * *${segmentBreaker}
 AT8*G*L*${data.weight}*${data.pieces}*${data.reWeight}${segmentBreaker}
 L508*${hazmatIndicator}${segmentBreaker}
-L3*${data.reWeight}*G* * *${data.totalRate.toFixed(2)}* * * * * *${data.piecesOnReceipt}*L*${segmentBreaker}
+L3*${data.reWeight}*G* * *${ediRate.toFixed(2)}* * * * * *${data.piecesOnReceipt}*L*${segmentBreaker}
 SE*${numberOfSegments}*${transactionSetControlNumber}${segmentBreaker}
 GE*${numberOfTransactionSetsInGS}*${data.referenceNumber}${segmentBreaker}
 IEA*1*${data.referenceNumber}${segmentBreaker}`;
