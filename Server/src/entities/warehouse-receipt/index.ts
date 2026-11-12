@@ -91,6 +91,7 @@ export interface WarehouseReceipt {
     approvedBy?: number;
     approvedAt?: Date;
     parentReceipt?: number | bigint | null;
+    onHandDate?: Date | null;
 }
 
 /**
