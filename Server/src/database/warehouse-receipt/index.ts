@@ -77,63 +77,32 @@ export async function createWarehouseReceipt(
     conn: Connection,
     receipt: Omit<WarehouseReceipt, "receiptId">
 ): Promise<number> {
+    const columns = [
+        "receiptNumber", "receiptDate", "labelCount", "shipper", "customerId", "stationId", "verificationId",
+        "createdAt", "createdBy", "carrierId", "piecesInland", "weightInland", "proNumber", "status",
+        "entityId", "noteThreadId", "invoiceNumber", "poNumber", "customerRefNumber", "destination", "packageId",
+        "bandedSkid", "shrinkWrappedSkid", "shtIppcSkid", "plasticSkid", "freightCondition", "documents",
+        "handlingDescription", "hazMat", "originalDgd", "unNumber", "class", "properShippingName",
+        "hazardousDescription", "toEmails", "cubicMeter", "receiptType", "notes", "receivedBy", "location",
+        "reWeight", "piecesOnReceipt", "approvalStatus", "parentReceipt", "onHandDate"
+    ];
+    const isOnHand = String(receipt.status ?? "").toUpperCase() === "ON_HAND";
     const onHandDateExpression = receipt.onHandDate !== undefined
         ? "?"
-        : receipt.status === "ON_HAND"
+        : isOnHand
             ? "COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))"
             : "NULL";
+    const valueExpressions = columns.map((column) => {
+        if (column === "createdAt") return "COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))";
+        if (column === "onHandDate") return onHandDateExpression;
+        return "?";
+    });
     const query = `
         SELECT "receiptId"
         FROM FINAL TABLE (
             INSERT INTO ${SCHEMA}."Warehouse_Receipt"
-            (
-                "receiptNumber",
-                "receiptDate",
-                "labelCount",
-                "shipper",
-                "customerId",
-                "stationId",
-                "verificationId",
-                "createdAt",
-                "createdBy",
-                "carrierId",
-                "piecesInland",
-                "weightInland",
-                "proNumber",
-                "status",
-                "entityId",
-                "noteThreadId",
-                "invoiceNumber",
-                "poNumber",
-                "customerRefNumber",
-                "destination",
-                "packageId",
-                "bandedSkid",
-                "shrinkWrappedSkid",
-                "shtIppcSkid",
-                "plasticSkid",
-                "freightCondition",
-                "documents",
-                "handlingDescription",
-                "hazMat",
-                "originalDgd",
-                "unNumber",
-                "class",
-                "properShippingName",
-                "hazardousDescription",
-                "toEmails",
-                "cubicMeter",
-                "receiptType",
-                "notes",
-                "receivedBy",
-                "location",
-                "reWeight",
-                "piecesOnReceipt",
-                "approvalStatus",
-                "parentReceipt",
-                "onHandDate"
-            )
-            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${onHandDateExpression})
+            (${columns.map((column) => `"${column}"`).join(", ")})
+            VALUES (${valueExpressions.join(", ")})
         )
     `;
 
@@ -184,7 +153,7 @@ export async function createWarehouseReceipt(
         receipt.parentReceipt !== undefined && receipt.parentReceipt !== null ? Number(receipt.parentReceipt) : null,
         ...(receipt.onHandDate !== undefined
             ? [receipt.onHandDate instanceof Date ? fromUtcDate(receipt.onHandDate) : null]
-            : receipt.status === "ON_HAND"
+            : isOnHand
                 ? [receipt.createdAt instanceof Date ? fromUtcDate(receipt.createdAt) : null]
                 : [])
     ];
@@ -234,6 +203,7 @@ export async function getWarehouseReceiptById(
         updatedAt: row.updatedAt ? toUtcDate(row.updatedAt) : null,
         requestedAt: row.requestedAt ? toUtcDate(row.requestedAt) : null,
         approvedAt: row.approvedAt ? toUtcDate(row.approvedAt) : null,
+        onHandDate: row.onHandDate ? toUtcDate(row.onHandDate) : null,
     };
 }
 
