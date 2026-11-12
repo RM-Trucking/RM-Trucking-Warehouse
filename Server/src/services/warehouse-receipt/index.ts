@@ -1209,9 +1209,12 @@ export async function batchProcessWarehouseReceiptsService(
             }
 
             receipt.status = receipt.isPending ? "PENDING" : "ON_HAND";
-            if (split && parentReceiptId && parentReceipt?.createdAt) {
-                receipt.createdAt = parentReceipt.createdAt;
+            if (split && parentReceiptId && parentReceipt) {
+                if (parentReceipt.createdAt) {
+                    receipt.createdAt = parentReceipt.createdAt;
+                }
                 receipt.parentReceipt = parentReceiptId;
+                receipt.onHandDate = parentReceipt.onHandDate ?? null;
             }
 
             // Check if this is an update (receipt has receiptId) or create (doesn't have receiptId)
@@ -2341,6 +2344,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
                 proNumber: index === 0 ? receipt.proNumber ?? "" : "",
                 destination: index === 0 ? receipt.destination ?? "" : "",
                 createdDate: index === 0 && receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString() : "",
+                onHandDate: index === 0 && receipt.onHandDate ? new Date(receipt.onHandDate).toLocaleDateString() : "",
                 status: index === 0 ? receipt.status ?? "" : "",
                 idVerification: index === 0 ? receipt.verificationId ?? "" : "",
                 shipper: index === 0 ? receipt.shipper ?? "" : "",
@@ -2380,6 +2384,7 @@ export async function exportWarehouseReceiptsToSpreadsheetService(
         { header: "Pro Number", key: "proNumber", width: 20 },
         { header: "Destination", key: "destination", width: 25 },
         { header: "Created Date", key: "createdDate", width: 20 },
+        { header: "On Hand Date", key: "onHandDate", width: 24 },
         { header: "Status", key: "status", width: 15 },
         { header: "ID Verification Number", key: "idVerification", width: 25 },
         { header: "Shipper", key: "shipper", width: 25 },

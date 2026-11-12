@@ -912,24 +912,20 @@ export async function exportShipmentsToSpreadsheetService(
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Shipments");
+    const shipmentWorksheet = workbook.addWorksheet("Shipments");
     const shipmentRows = await Promise.all(shipments.map(async (shipment) => {
         const shipmentId = Number(shipment.shipmentId);
-        const [containers, receipts] = await Promise.all([
-            shipmentDB.getContainersByShipmentId(conn, shipmentId),
-            shipmentDB.getReceiptsByShipmentId(conn, shipmentId),
-        ]);
+        const containers = await shipmentDB.getContainersByShipmentId(conn, shipmentId);
         const stationName = shipment.shipmentType === "OCEAN_FCL" && String(shipment.stationScope).toUpperCase() === "ALL"
             ? (await customerDB.getStationDropdown(conn, Number(shipment.customerId), "", true))
                 .map((station) => station.stationName)
                 .join(", ")
             : shipment.stationName ?? "";
         const showContainerColumn = shipment.shipmentType === "AIR" || shipment.shipmentType === "OCEAN_FCL";
-        const rowCount = Math.max(containers.length, receipts.length, 1);
+        const rowCount = Math.max(containers.length, 1);
 
         return Array.from({ length: rowCount }, (_, index) => {
             const firstRow = index === 0;
-            const receipt = receipts[index];
 
             return {
                 shipmentType: firstRow ? shipment.shipmentType ?? "" : "",
@@ -947,15 +943,56 @@ export async function exportShipmentsToSpreadsheetService(
                 createdAt: firstRow && shipment.createdAt ? new Date(shipment.createdAt).toLocaleDateString() : "",
                 pickupEntryNumber: firstRow ? shipment.pickupEntryNumber ?? "" : "",
                 container: showContainerColumn ? containers[index]?.container ?? "" : "",
-                receiptNumber: receipt?.receiptNumber ?? "",
-                receiptStatus: receipt?.status ?? "",
-                receiptPieces: receipt?.piecesOnReceipt ?? "",
-                receiptWeight: receipt?.weightInland ?? receipt?.reWeight ?? "",
-                receiptLocation: receipt?.location ?? "",
-                receiptDestination: receipt?.destination ?? "",
             };
         });
     }));
+
+    const receiptRows = await Promise.all(shipments.map(async (shipment) => {
+        const receipts = await shipmentDB.getReceiptsByShipmentId(conn, Number(shipment.shipmentId));
+        const rows = await Promise.all(receipts.map(async (receipt) => {
+            const [warehouseReceipt, freightInformation] = await Promise.all([
+                warehouseReceiptDB.getWarehouseReceiptById(conn, Number(receipt.receiptId)),
+                warehouseReceiptDB.getFreightInfosByReceipt(conn, Number(receipt.receiptId)),
+            ]);
+            const freightRows = freightInformation.length > 0 ? freightInformation : [null];
+
+            return freightRows.map((freight: any, index) => ({
+                shipmentBarcodeNumber: shipment.barcodeNumber ?? "",
+                receiptNumber: index === 0 ? warehouseReceipt?.receiptNumber ?? receipt.receiptNumber ?? "" : "",
+                customerName: index === 0 ? warehouseReceipt?.customerName ?? "" : "",
+                stationName: index === 0 ? warehouseReceipt?.stationName ?? "" : "",
+                carrierName: index === 0 ? warehouseReceipt?.carrierName ?? "" : "",
+                location: index === 0 ? warehouseReceipt?.location ?? "" : "",
+                proNumber: index === 0 ? warehouseReceipt?.proNumber ?? "" : "",
+                destination: index === 0 ? warehouseReceipt?.destination ?? "" : "",
+                createdDate: index === 0 && warehouseReceipt?.createdAt ? new Date(warehouseReceipt.createdAt).toLocaleDateString() : "",
+                onHandDate: index === 0 && warehouseReceipt?.onHandDate ? new Date(warehouseReceipt.onHandDate).toLocaleDateString() : "",
+                status: index === 0 ? warehouseReceipt?.status ?? "" : "",
+                idVerification: index === 0 ? warehouseReceipt?.verificationId ?? "" : "",
+                shipper: index === 0 ? warehouseReceipt?.shipper ?? "" : "",
+                packageId: index === 0 ? warehouseReceipt?.packageId ?? "" : "",
+                customerRefNumber: index === 0 ? warehouseReceipt?.customerRefNumber ?? "" : "",
+                hazmat: index === 0 ? (() => {
+                    const value = warehouseReceipt?.hazMat ?? "";
+                    if (typeof value === "string") {
+                        const normalized = value.trim().toUpperCase();
+                        if (normalized === "Y") return "Yes";
+                        if (normalized === "N") return "No";
+                    }
+                    return value;
+                })() : "",
+                pieces: freight?.pieces ?? "",
+                type: freight?.type ?? "",
+                length: freight?.length ?? "",
+                width: freight?.width ?? "",
+                height: freight?.height ?? "",
+                weight: freight?.weight ?? "",
+            }));
+        }));
+
+        return rows.flat();
+    }));
+
     const shipmentType = String(filters.shipmentType ?? "").toUpperCase();
     const columns: Partial<ExcelJS.Column>[] = [
         { header: "Shipment Type", key: "shipmentType", width: 15 },
@@ -964,7 +1001,7 @@ export async function exportShipmentsToSpreadsheetService(
         { header: "Station", key: "stationName", width: 25 },
         { header: "Consignee", key: "consignee", width: 30 },
     ];
-    if (shipmentType === "AIR") {
+    if (!shipmentType || shipmentType === "AIR") {
         columns.push({ header: "Air Bill Number", key: "airBillNumber", width: 22 });
     }
     columns.push(
@@ -972,7 +1009,7 @@ export async function exportShipmentsToSpreadsheetService(
         { header: "Customer Reference", key: "customerRefNumber", width: 24 },
         { header: "Additional Reference", key: "additionalRefNumber", width: 24 }
     );
-    if (shipmentType === "OCEAN_FCL") {
+    if (!shipmentType || shipmentType === "OCEAN_FCL") {
         columns.push({ header: "Destination", key: "destination", width: 24 });
     }
     columns.push(
@@ -981,30 +1018,52 @@ export async function exportShipmentsToSpreadsheetService(
         { header: "Created Date", key: "createdAt", width: 20 },
         { header: "Pickup Entry Number", key: "pickupEntryNumber", width: 22 }
     );
-    if (shipmentType === "AIR" || shipmentType === "OCEAN_FCL") {
+    if (!shipmentType || shipmentType === "AIR" || shipmentType === "OCEAN_FCL") {
         columns.push({ header: "Container", key: "container", width: 22 });
     }
-    columns.push(
-        { header: "Warehouse Receipt Number", key: "receiptNumber", width: 24 },
-        { header: "Receipt Status", key: "receiptStatus", width: 18 },
-        { header: "Receipt Pieces", key: "receiptPieces", width: 16 },
-        { header: "Receipt Weight", key: "receiptWeight", width: 16 },
-        { header: "Receipt Location", key: "receiptLocation", width: 22 },
-        { header: "Receipt Destination", key: "receiptDestination", width: 24 }
-    );
-    worksheet.columns = columns;
-    worksheet.addRows(shipmentRows.flat());
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.eachRow({ includeEmpty: true }, (row) => {
-        row.eachCell({ includeEmpty: true }, (cell) => {
-            cell.border = {
-                top: { style: "thin" },
-                left: { style: "thin" },
-                bottom: { style: "thin" },
-                right: { style: "thin" },
-            };
+    shipmentWorksheet.columns = columns;
+    shipmentWorksheet.addRows(shipmentRows.flat());
+
+    const receiptWorksheet = workbook.addWorksheet("Warehouse Receipts");
+    receiptWorksheet.columns = [
+        { header: "Shipment Barcode Number", key: "shipmentBarcodeNumber", width: 24 },
+        { header: "Warehouse Receipt ID", key: "receiptNumber", width: 20 },
+        { header: "Customer Name", key: "customerName", width: 30 },
+        { header: "Station Name", key: "stationName", width: 25 },
+        { header: "Carrier", key: "carrierName", width: 20 },
+        { header: "Location", key: "location", width: 20 },
+        { header: "Pro Number", key: "proNumber", width: 20 },
+        { header: "Destination", key: "destination", width: 25 },
+        { header: "Created Date", key: "createdDate", width: 20 },
+        { header: "On Hand Date", key: "onHandDate", width: 24 },
+        { header: "Status", key: "status", width: 15 },
+        { header: "ID Verification Number", key: "idVerification", width: 25 },
+        { header: "Shipper", key: "shipper", width: 25 },
+        { header: "Package ID", key: "packageId", width: 25 },
+        { header: "Customer Ref Number", key: "customerRefNumber", width: 25 },
+        { header: "Hazmat", key: "hazmat", width: 15 },
+        { header: "Pieces", key: "pieces", width: 15 },
+        { header: "Type", key: "type", width: 15 },
+        { header: "Length", key: "length", width: 15 },
+        { header: "Width", key: "width", width: 15 },
+        { header: "Height", key: "height", width: 15 },
+        { header: "Weight", key: "weight", width: 15 },
+    ];
+    receiptWorksheet.addRows(receiptRows.flat());
+
+    for (const worksheet of [shipmentWorksheet, receiptWorksheet]) {
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.eachRow({ includeEmpty: true }, (row) => {
+            row.eachCell({ includeEmpty: true }, (cell) => {
+                cell.border = {
+                    top: { style: "thin" },
+                    left: { style: "thin" },
+                    bottom: { style: "thin" },
+                    right: { style: "thin" },
+                };
+            });
         });
-    });
+    }
 
     return workbook;
 }
@@ -1476,6 +1535,7 @@ export async function shipmentSplitApproval(conn: Connection, shipmentId: number
                 sendToTellSystem: originalReceipt.sendToTellSystem ?? 'N',
                 hasFlatRate: originalReceipt.hasFlatRate ?? 'N',
                 parentReceipt: originalReceipt.receiptId ?? null,
+                onHandDate: originalReceipt.onHandDate ?? null,
             };
 
             const newReceiptId = await warehouseReceiptDB.createWarehouseReceipt(conn, newReceiptPayload);

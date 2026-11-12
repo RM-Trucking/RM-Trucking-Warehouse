@@ -77,6 +77,11 @@ export async function createWarehouseReceipt(
     conn: Connection,
     receipt: Omit<WarehouseReceipt, "receiptId">
 ): Promise<number> {
+    const onHandDateExpression = receipt.onHandDate !== undefined
+        ? "?"
+        : receipt.status === "ON_HAND"
+            ? "COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))"
+            : "NULL";
     const query = `
         SELECT "receiptId"
         FROM FINAL TABLE (
@@ -125,9 +130,10 @@ export async function createWarehouseReceipt(
                 "reWeight",
                 "piecesOnReceipt",
                 "approvalStatus",
-                "parentReceipt"
+                "parentReceipt",
+                "onHandDate"
             )
-            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,COALESCE(?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${onHandDateExpression})
         )
     `;
 
@@ -175,7 +181,12 @@ export async function createWarehouseReceipt(
         receipt.reWeight ?? 0,
         receipt.piecesOnReceipt ?? 0,
         receipt.approvalStatus ?? null,
-        receipt.parentReceipt !== undefined && receipt.parentReceipt !== null ? Number(receipt.parentReceipt) : null
+        receipt.parentReceipt !== undefined && receipt.parentReceipt !== null ? Number(receipt.parentReceipt) : null,
+        ...(receipt.onHandDate !== undefined
+            ? [receipt.onHandDate instanceof Date ? fromUtcDate(receipt.onHandDate) : null]
+            : receipt.status === "ON_HAND"
+                ? [receipt.createdAt instanceof Date ? fromUtcDate(receipt.createdAt) : null]
+                : [])
     ];
 
     console.log("Executing createWarehouseReceipt query:", query, "with params:", params);
@@ -875,6 +886,9 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
     if (updates.status !== undefined) {
         fields.push(`"status" = ?`);
         params.push(updates.status);
+        if (String(updates.status).toUpperCase() === "ON_HAND") {
+            fields.push(`"onHandDate" = CASE WHEN COALESCE("status", '') <> 'ON_HAND' THEN COALESCE("onHandDate", (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)) ELSE "onHandDate" END`);
+        }
     }
     if (updates.updatedBy !== undefined) {
         fields.push(`"updatedBy" = ?`);
