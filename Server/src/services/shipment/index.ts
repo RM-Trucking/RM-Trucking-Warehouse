@@ -1834,6 +1834,13 @@ export async function createShipmentPickupEntry(
         throwValidationError(`Pickup entry for shipment with id ${payload.shipmentId} already exists.`);
     }
 
+    const duplicatePickupField = await shipmentDB.checkShipmentPickupEntryUniqueFields(conn, {
+        barcodeNumber: payload.barcodeNumber
+    });
+    if (duplicatePickupField === "barcodeNumber") {
+        throwValidationError(`Pickup entry barcode number "${payload.barcodeNumber}" already exists.`);
+    }
+
     try {
         await conn.beginTransaction();
 

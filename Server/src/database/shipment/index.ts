@@ -543,6 +543,21 @@ export async function checkShipmentUniqueFields(
     return result.length ? result[0].conflictField : null;
 }
 
+export async function checkShipmentPickupEntryUniqueFields(
+    conn: Connection,
+    { barcodeNumber }: { barcodeNumber?: string | null }
+): Promise<"barcodeNumber" | "airBillNumber" | null> {
+    if (barcodeNumber?.trim()) {
+        const result = await conn.query(
+            `SELECT 1 FROM ${SCHEMA}."Warehouse_Shipment_Pickup_Entry" WHERE TRIM("barcodeNumber") = TRIM(?) FETCH FIRST 1 ROW ONLY`,
+            [barcodeNumber]
+        ) as any[];
+        if (result.length > 0) return "barcodeNumber";
+    }
+
+    return null;
+}
+
 export async function requestShipmentCompletion(conn: Connection, shipmentId: number, userId: number, completeStatus: string = 'REQUESTED'): Promise<void> {
     const query = `
         UPDATE ${SCHEMA}."Warehouse_Shipment"
