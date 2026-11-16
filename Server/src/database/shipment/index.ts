@@ -545,7 +545,7 @@ export async function checkShipmentUniqueFields(
 
 export async function checkShipmentPickupEntryUniqueFields(
     conn: Connection,
-    { barcodeNumber, airBillNumber }: { barcodeNumber?: string | null; airBillNumber?: string | null }
+    { barcodeNumber }: { barcodeNumber?: string | null }
 ): Promise<"barcodeNumber" | "airBillNumber" | null> {
     if (barcodeNumber?.trim()) {
         const result = await conn.query(
@@ -553,14 +553,6 @@ export async function checkShipmentPickupEntryUniqueFields(
             [barcodeNumber]
         ) as any[];
         if (result.length > 0) return "barcodeNumber";
-    }
-
-    if (airBillNumber?.trim()) {
-        const result = await conn.query(
-            `SELECT 1 FROM ${SCHEMA}."Warehouse_Shipment_Pickup_Entry" WHERE TRIM("airBillNumber") = TRIM(?) FETCH FIRST 1 ROW ONLY`,
-            [airBillNumber]
-        ) as any[];
-        if (result.length > 0) return "airBillNumber";
     }
 
     return null;
