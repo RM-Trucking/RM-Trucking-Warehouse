@@ -33,8 +33,7 @@ export async function loginUser(conn: Connection, loginReq: LoginRequest): Promi
     const tokenPayload: any = {
         userId: user.userId,
         userName: user.userName,
-        email: user.email,
-        roleId: user.roleId
+        email: user.email
     };
 
     console.log(JWT_EXPIRY);
