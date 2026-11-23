@@ -1,5 +1,6 @@
 /**
- * Convert AS400 TIMESTAMP string or Date to a JavaScript Date (UTC)
+ * Convert a DB2 timestamp string or Date to a JavaScript Date.
+ * Timestamp strings without an offset are treated as UTC.
  * @param as400Timestamp - e.g. "2026-03-25 11:28:51.558200" or a Date object
  * @returns Date object in UTC
  */
@@ -9,18 +10,18 @@ export const toUtcDate = (
     if (!as400Timestamp) return null;
 
     if (as400Timestamp instanceof Date) {
-        // Already a Date object
-        return as400Timestamp;
+        return Number.isNaN(as400Timestamp.getTime()) ? null : as400Timestamp;
     }
 
-    // Normalize AS400 TIMESTAMP string
+    // Normalize DB2 TIMESTAMP strings; preserve an existing timezone if present.
     let normalized = as400Timestamp.trim().replace(" ", "T");
 
     // Trim fractional seconds to 3 digits (milliseconds)
     normalized = normalized.replace(/(\.\d{3})\d*/, "$1");
 
-    // Append Z to mark UTC
-    return new Date(normalized + "Z");
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+    const date = new Date(hasTimezone ? normalized : `${normalized}Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
 };
 
 
