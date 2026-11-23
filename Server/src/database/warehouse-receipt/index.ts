@@ -998,7 +998,7 @@ export async function updateWarehouseReceipt(conn: Connection, receiptId: number
 
     if (fields.length === 0) return;
 
-    fields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
+    fields.push(`"updatedAt" = (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)`);
 
 
 

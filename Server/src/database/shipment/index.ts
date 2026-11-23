@@ -549,8 +549,8 @@ export async function checkShipmentPickupEntryUniqueFields(
 ): Promise<"barcodeNumber" | "airBillNumber" | null> {
     if (barcodeNumber?.trim()) {
         const result = await conn.query(
-            `SELECT 1 FROM ${SCHEMA}."Warehouse_Shipment_Pickup_Entry" WHERE TRIM("barcodeNumber") = TRIM(?) FETCH FIRST 1 ROW ONLY`,
-            [barcodeNumber]
+            `SELECT 1 FROM ${SCHEMA}."Warehouse_Shipment_Pickup_Entry" WHERE TRIM("barcodeNumber") = ? FETCH FIRST 1 ROW ONLY`,
+            [barcodeNumber.trim()]
         ) as any[];
         if (result.length > 0) return "barcodeNumber";
     }
@@ -597,12 +597,6 @@ export async function revokeShipmentCompletion(conn: Connection, shipmentId: num
 
 
 export async function createShipmentPickupEntry(conn: Connection, payload: any, userId: number): Promise<any> {
-    const nullableText = (value: unknown): string | null => {
-        if (value === null || value === undefined) return null;
-        const text = String(value);
-        return text.trim() === "" ? null : text;
-    };
-
     const query = `
         SELECT "pickupId" FROM FINAL TABLE (
             INSERT INTO ${SCHEMA}."Warehouse_Shipment_Pickup_Entry"
@@ -614,46 +608,18 @@ export async function createShipmentPickupEntry(conn: Connection, payload: any, 
                 "pieces", "weight", "readyTime", "readyDate", "closeTime", "closeDate",
                 "loTime", "loDate", "createdBy", "createdAt"
             )
-            VALUES (
-                CAST(? AS INTEGER), CAST(? AS VARCHAR(100)), CAST(? AS DATE), CAST(? AS VARCHAR(100)), CAST(? AS VARCHAR(50)),
-                CAST(? AS INTEGER), CAST(? AS VARCHAR(255)), CAST(? AS INTEGER), CAST(? AS VARCHAR(255)), CAST(? AS VARCHAR(100)),
-                CAST(? AS VARCHAR(255)), CAST(? AS VARCHAR(255)), CAST(? AS VARCHAR(100)), CAST(? AS VARCHAR(50)),
-                CAST(? AS VARCHAR(20)), CAST(? AS VARCHAR(50)), CAST(? AS VARCHAR(20)), CAST(? AS VARCHAR(100)), CAST(? AS VARCHAR(1)),
-                CAST(? AS INTEGER), CAST(? AS DECIMAL(15, 3)), CAST(? AS TIME), CAST(? AS DATE), CAST(? AS TIME), CAST(? AS DATE),
-                CAST(? AS TIME), CAST(? AS DATE), CAST(? AS INTEGER), (CURRENT_TIMESTAMP - CURRENT_TIMEZONE)
-            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (CURRENT_TIMESTAMP - CURRENT_TIMEZONE))
         )
     `;
 
     const params = [
-        payload.shipmentId,
-        payload.barcodeNumber,
-        payload.pickupDate,
-        nullableText(payload.contactName),
-        nullableText(payload.contactPhoneNumber),
-        payload.customerId,
-        nullableText(payload.customerName),
-        payload.stationId,
-        nullableText(payload.stationName),
-        nullableText(payload.billTo),
-        nullableText(payload.stationAddressLine1),
-        nullableText(payload.stationAddressLine2),
-        nullableText(payload.stationCity),
-        nullableText(payload.stationState),
-        nullableText(payload.stationZipCode),
-        nullableText(payload.stationPhoneNumber),
-        nullableText(payload.airlineCode),
-        nullableText(payload.airBillNumber),
-        payload.hazmat,
-        payload.pieces,
-        payload.weight,
-        nullableText(payload.readyTime),
-        payload.readyDate,
-        nullableText(payload.closeTime),
-        payload.closeDate,
-        nullableText(payload.loTime),
-        payload.loDate,
-        payload.createdBy ?? userId,
+        payload.shipmentId, payload.barcodeNumber, payload.pickupDate, payload.contactName,
+        payload.contactPhoneNumber, payload.customerId, payload.customerName, payload.stationId,
+        payload.stationName, payload.billTo, payload.stationAddressLine1, payload.stationAddressLine2,
+        payload.stationCity, payload.stationState, payload.stationZipCode, payload.stationPhoneNumber,
+        payload.airlineCode, payload.airBillNumber, payload.hazmat, payload.pieces, payload.weight,
+        payload.readyTime, payload.readyDate, payload.closeTime, payload.closeDate, payload.loTime,
+        payload.loDate, payload.createdBy ?? userId,
     ];
 
     const result = await conn.query(query, params as any[]) as any[];

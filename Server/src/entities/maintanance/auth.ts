@@ -7,7 +7,6 @@ export interface User {
     createdAt: Date;
     createdBy: number | null;
     activeStatus: 'Y' | 'N';
-    roleId: number;
     userType: 'EMPLOYEE' | 'CUSTOMER';
     customerId: number | null;
 }
@@ -26,8 +25,6 @@ export interface UserResponse {
     createdAt: Date;
     createdBy: number | null;
     activeStatus: 'Y' | 'N';
-    roleId: number;
-    roleName?: string;
     userType: 'EMPLOYEE' | 'CUSTOMER';
     customerId: number | null;
     customerName?: string;

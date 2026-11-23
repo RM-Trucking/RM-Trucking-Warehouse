@@ -4,7 +4,7 @@ import { User } from '../../entities/maintanance';
 
 export async function getUserByLoginUsername(conn: Connection, loginUserName: string): Promise<User | null> {
     const query = `
-        SELECT "userId", "userName", "loginUserName", "email", "passwordHash", "createdAt", "createdBy", "activeStatus", "roleId", "userType", "customerId"
+        SELECT "userId", "userName", "loginUserName", "email", "passwordHash", "createdAt", "createdBy", "activeStatus", "userType", "customerId"
         FROM ${SCHEMA}."User"
         WHERE "loginUserName" = ?
     `;
