@@ -20,10 +20,34 @@ AirPickupEntryForm.propTypes = {
     onCompleteSuccess: PropTypes.func,
 };
 
+const timePickerSlotProps = {
+    popper: { placement: 'bottom-start' },
+    layout: {
+        sx: {
+            '& .MuiPickersLayout-contentWrapper': { gridColumn: '1 / -1' },
+            '& .MuiMultiSectionDigitalClock-root': { justifyContent: 'flex-start' },
+            '& .MuiMultiSectionDigitalClockSection-root': { paddingInlineStart: 0 },
+        },
+    },
+    digitalClockSectionItem: { sx: { justifyContent: 'flex-start' } },
+    textField: {
+        variant: 'standard',
+        fullWidth: true,
+        InputLabelProps: { shrink: true },
+        sx: {
+            '& .MuiPickersInputBase-sectionsContainer': {
+                justifyContent: 'flex-start',
+                textAlign: 'left',
+            },
+        },
+    },
+};
+
 const getPickupDefaults = (pickupData = {}) => {
     const entryDetails = pickupData.entryDetails || {};
     const customerDetails = pickupData.customerDetails || {};
     const shipmentDetails = pickupData.shipmentDetails || {};
+    const today = dayjs();
 
     return {
         shipmentId: pickupData.shipmentId || entryDetails.shipmentId || shipmentDetails.shipmentId || 0,
@@ -32,7 +56,7 @@ const getPickupDefaults = (pickupData = {}) => {
         booking: entryDetails.booking || '',
         customerRefNumber: entryDetails.customerRefNumber || '',
         additionalRefNo: entryDetails.additionalRefNumber || '',
-        date: dayjs(),
+        date: today,
         customerId: customerDetails.customerId || '',
         customerNameRaw: customerDetails.customerName || '',
         stationId: customerDetails.stationId || '',
@@ -56,11 +80,11 @@ const getPickupDefaults = (pickupData = {}) => {
         totalPieces: shipmentDetails.pieces ?? '',
         totalWeight: shipmentDetails.weight ?? '',
         readyTime: null,
-        readyDate: null,
+        readyDate: today,
         closeTime: null,
-        closeDate: null,
+        closeDate: today,
         lockoutTime: null,
-        lockoutDate: null,
+        lockoutDate: today,
     };
 };
 
@@ -157,13 +181,13 @@ export default function AirPickupEntryForm({ handleClose, rowData, onCompleteSuc
 
                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
-                                <Controller name="readyTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker label="Ready Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="readyTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker ampm={false} format="HH:mm" label="Ready Time *" value={value} onChange={onChange} slotProps={{ ...timePickerSlotProps, textField: { ...timePickerSlotProps.textField, error: !!error } }} />} />
                                 <Controller name="readyDate" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <DatePicker label="Ready Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
-                                <Controller name="closeTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker label="Close Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="closeTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker ampm={false} format="HH:mm" label="Close Time *" value={value} onChange={onChange} slotProps={{ ...timePickerSlotProps, textField: { ...timePickerSlotProps.textField, error: !!error } }} />} />
                                 <Controller name="closeDate" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <DatePicker label="Close Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
                             </Stack>
                             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ width: '50%' }}>
-                                <Controller name="lockoutTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker label="Lockout Time *" value={value} onChange={onChange} slotProps={{ textField: { variant: 'standard', fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
+                                <Controller name="lockoutTime" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <TimePicker ampm={false} format="HH:mm" label="Lockout Time *" value={value} onChange={onChange} slotProps={{ ...timePickerSlotProps, textField: { ...timePickerSlotProps.textField, error: !!error } }} />} />
                                 <Controller name="lockoutDate" control={control} rules={{ required: true }} render={({ field: { onChange, value }, fieldState: { error } }) => <DatePicker label="Lockout Date *" format="MM/DD/YYYY" value={value} onChange={onChange} slotProps={{ textField: { variant: "standard", fullWidth: true, error: !!error, InputLabelProps: { shrink: true } } }} />} />
                             </Stack>
                         </LocalizationProvider>

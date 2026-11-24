@@ -134,7 +134,9 @@ export default function AuthLoginForm() {
     );
   }
 
-  if (showRecovery) {
+  const passwordRecoveryEnabled = false;
+
+  if (passwordRecoveryEnabled && showRecovery) {
     return (
       <Box sx={{ width: '100%', color: '#303030' }}>
         <Typography component="h1" sx={{ fontSize: 30, fontWeight: 600, lineHeight: 1.3, mb: 1 }}>Forgot password?</Typography>
@@ -185,7 +187,7 @@ export default function AuthLoginForm() {
           {...register('email', { required: 'Username / Email ID is required' })}
           error={!!errors.email} helperText={errors.email?.message} />
         <TextField label="Password" type={showPassword ? 'text' : 'password'} variant="standard" fullWidth
-          autoComplete="current-password" sx={fieldStyles}
+          autoComplete="current-password" sx={{ ...fieldStyles, mb: passwordRecoveryEnabled ? 0 : 2 }}
           slotProps={{ inputLabel: { shrink: true }, input: { endAdornment: (
             <InputAdornment position="end">
               <IconButton size="small" edge="end" aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -196,10 +198,12 @@ export default function AuthLoginForm() {
           ) } }}
           {...register('password', { required: 'Password is required' })}
           error={!!errors.password} helperText={errors.password?.message} />
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, mb: 2 }}>
-          <Button type="button" aria-expanded={showRecovery} onClick={() => setShowRecovery((value) => !value)}
-            sx={{ color: '#ad2227', fontSize: 14, minWidth: 0, p: 0, textTransform: 'none' }}>Forgot password?</Button>
-        </Box>
+        {passwordRecoveryEnabled && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1, mb: 2 }}>
+            <Button type="button" aria-expanded={showRecovery} onClick={() => setShowRecovery((value) => !value)}
+              sx={{ color: '#ad2227', fontSize: 14, minWidth: 0, p: 0, textTransform: 'none' }}>Forgot password?</Button>
+          </Box>
+        )}
         <Button type="submit" variant="contained" fullWidth disabled={isSubmitting} disableElevation
           sx={{ bgcolor: '#ad2227', '&:hover': { bgcolor: '#921d22' }, borderRadius: '4px', minHeight: 42, fontSize: 15, fontWeight: 400, textTransform: 'none' }}>
           {isSubmitting ? 'Signing in...' : 'Login'}
